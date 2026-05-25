@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import type { CwcNode } from '../../../../src/schema.ts'
+import type { CwcNode, CwcAgent } from '../../../../src/schema.ts'
 import type { WorkflowAction } from '../../hooks/useWorkflow.ts'
 import { slugify } from '../../../../src/slugify.ts'
 import './NodePanel.css'
@@ -17,7 +17,7 @@ export function NodePanel({ node, isEntryNode, dispatch, onClose }: Props) {
   const [promptExpanded, setPromptExpanded] = useState(false)
   const [newSkill, setNewSkill] = useState('')
 
-  function updateAgent(agentPartial: Partial<import('../../../../src/schema.ts').CwcAgent>) {
+  function updateAgent(agentPartial: Partial<CwcAgent>) {
     dispatch({ type: 'UPDATE_NODE', payload: { nodeId: node.id, agent: agentPartial } })
   }
 
@@ -66,6 +66,7 @@ export function NodePanel({ node, isEntryNode, dispatch, onClose }: Props) {
   }
 
   function handleStartTriggerChange(e: React.ChangeEvent<HTMLInputElement>) {
+    // agent: {} intentional — UPDATE_NODE merges agent fields; only startTrigger is changing
     dispatch({ type: 'UPDATE_NODE', payload: { nodeId: node.id, agent: {}, startTrigger: e.target.value } })
   }
 

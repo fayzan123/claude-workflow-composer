@@ -107,7 +107,7 @@ export function EdgePanel({ edge, dispatch, onClose }: Props) {
           <label className="edge-panel__label">Context / Artifacts</label>
           <div className="edge-panel__artifacts">
             {(edge.context ?? []).map((artifact, index) => (
-              <div key={index} className="edge-panel__artifact">
+              <div key={`${artifact.name}-${artifact.type}-${index}`} className="edge-panel__artifact">
                 <div className="edge-panel__artifact-row">
                   <input
                     className="edge-panel__input edge-panel__input--flex"
