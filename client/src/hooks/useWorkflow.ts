@@ -53,10 +53,13 @@ function reducer(state: CwcFile, action: WorkflowAction): CwcFile {
       meta: { ...state.meta, updated: now },
       edges: [...state.edges, { id: `edge-${uuidv4().slice(0, 8)}`, ...action.payload }],
     }
-    case 'UPDATE_EDGE': return {
-      ...state,
-      meta: { ...state.meta, updated: now },
-      edges: state.edges.map((e) => e.id === action.payload.edgeId ? { ...e, ...action.payload } : e),
+    case 'UPDATE_EDGE': {
+      const { edgeId, ...rest } = action.payload
+      return {
+        ...state,
+        meta: { ...state.meta, updated: now },
+        edges: state.edges.map((e) => e.id === edgeId ? { ...e, ...rest } : e),
+      }
     }
     case 'REMOVE_EDGE': return {
       ...state,
@@ -71,12 +74,16 @@ function reducer(state: CwcFile, action: WorkflowAction): CwcFile {
   }
 }
 
-const EMPTY_WORKFLOW: CwcFile = {
-  meta: { id: '', name: 'Untitled Workflow', description: '', version: 1, created: new Date().toISOString(), updated: new Date().toISOString() },
-  nodes: [], edges: [],
+function makeEmptyWorkflow(): CwcFile {
+  const now = new Date().toISOString()
+  return {
+    meta: { id: '', name: 'Untitled Workflow', description: '', version: 1, created: now, updated: now },
+    nodes: [],
+    edges: [],
+  }
 }
 
 export function useWorkflow(initial?: CwcFile) {
-  const [workflow, dispatch] = useReducer(reducer, initial ?? EMPTY_WORKFLOW)
+  const [workflow, dispatch] = useReducer(reducer, initial ?? makeEmptyWorkflow())
   return { workflow, dispatch }
 }

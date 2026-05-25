@@ -5,6 +5,11 @@ import { api } from '../lib/api.ts'
 export function useAutoSave(workflow: CwcFile, filePath: string | null, onError?: (err: Error) => void) {
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const prevRef = useRef<string>('')
+  const onErrorRef = useRef(onError)
+
+  useEffect(() => {
+    onErrorRef.current = onError
+  })
 
   useEffect(() => {
     if (!filePath) return
@@ -17,10 +22,11 @@ export function useAutoSave(workflow: CwcFile, filePath: string | null, onError?
       try {
         await api.workflows.save(filePath, workflow)
       } catch (err) {
-        onError?.(err as Error)
+        // prevRef already advanced — failed saves are not retried; caller is notified via onError
+        onErrorRef.current?.(err as Error)
       }
     }, 500)
 
     return () => { if (timerRef.current) clearTimeout(timerRef.current) }
-  }, [workflow, filePath, onError])
+  }, [workflow, filePath])  // onError NOT in deps — read via ref instead
 }
