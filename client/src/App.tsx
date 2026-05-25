@@ -1,5 +1,7 @@
 import React, { useState } from 'react'
 import type { CwcFile } from './types.ts'
+import { api } from './lib/api.ts'
+import { TemplatePicker } from './components/TemplatePicker.tsx'
 import './App.css'
 
 type Screen = 'home' | 'editor'
@@ -15,11 +17,16 @@ export default function App() {
     setScreen('editor')
   }
 
+  async function handleOpenRecent(path: string) {
+    const cwc = await api.workflows.read(path)
+    await api.recents.add(path)
+    openWorkflow(cwc, path)
+  }
+
   if (screen === 'home') {
     return (
       <div className="app">
-        {/* TemplatePicker rendered here in Task 14 */}
-        <p>Loading...</p>
+        <TemplatePicker onSelect={openWorkflow} onOpenRecent={handleOpenRecent} />
       </div>
     )
   }
