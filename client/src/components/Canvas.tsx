@@ -82,7 +82,13 @@ export function Canvas({ workflow, dispatch, validation, onSelectNode, onSelectE
 
     const agentData = event.dataTransfer.getData('application/cwc-agent')
     if (agentData) {
-      const agent: CwcAgent = JSON.parse(agentData)
+      let agent: CwcAgent
+      try {
+        agent = JSON.parse(agentData) as CwcAgent
+      } catch {
+        console.error('cwc-agent drag payload was not valid JSON')
+        return
+      }
       const canvasEl = (event.currentTarget as HTMLElement)
       const rect = canvasEl.getBoundingClientRect()
       dispatch({
@@ -93,8 +99,16 @@ export function Canvas({ workflow, dispatch, validation, onSelectNode, onSelectE
     }
 
     const skillData = event.dataTransfer.getData('application/cwc-skill')
+    // Skill drop requires a node to be selected; silently ignore if none is
     if (skillData && selectedNodeId) {
-      const { namespacedSlug } = JSON.parse(skillData) as { namespacedSlug: string }
+      let parsed: { namespacedSlug: string }
+      try {
+        parsed = JSON.parse(skillData) as { namespacedSlug: string }
+      } catch {
+        console.error('cwc-skill drag payload was not valid JSON')
+        return
+      }
+      const { namespacedSlug } = parsed
       const currentNode = workflow.nodes.find((n) => n.id === selectedNodeId)
       if (currentNode) {
         const currentSkills = currentNode.agent.skills ?? []

@@ -3,14 +3,18 @@ import { api } from '../../lib/api.ts'
 import type { AgentEntry } from '../../../../src/server/api/agents.ts'
 import './MyAgentsTab.css'
 
-export function MyAgentsTab() {
+interface Props {
+  projectDir?: string
+}
+
+export function MyAgentsTab({ projectDir }: Props) {
   const [agents, setAgents] = useState<AgentEntry[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [search, setSearch] = useState('')
 
   useEffect(() => {
-    api.agents()
+    api.agents(projectDir)
       .then(setAgents)
       .catch((err: unknown) => setError(err instanceof Error ? err.message : 'Failed to load agents'))
       .finally(() => setLoading(false))

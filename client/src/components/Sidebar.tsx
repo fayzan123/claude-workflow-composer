@@ -6,7 +6,11 @@ import './Sidebar.css'
 
 type Tab = 'library' | 'my-agents' | 'skills'
 
-export function Sidebar() {
+interface Props {
+  projectDir?: string
+}
+
+export function Sidebar({ projectDir }: Props) {
   const [activeTab, setActiveTab] = useState<Tab>('library')
 
   return (
@@ -33,7 +37,7 @@ export function Sidebar() {
       </div>
       <div className="sidebar__content">
         {activeTab === 'library' && <AgentLibrary />}
-        {activeTab === 'my-agents' && <MyAgentsTab />}
+        {activeTab === 'my-agents' && <MyAgentsTab projectDir={projectDir} />}
         {activeTab === 'skills' && <SkillsPanel />}
       </div>
     </div>

@@ -51,10 +51,11 @@ export default function App() {
   const selectedNode = selectedNodeId ? editorWorkflow.nodes.find((n) => n.id === selectedNodeId) ?? null : null
   const selectedEdge = selectedEdgeId ? editorWorkflow.edges.find((e) => e.id === selectedEdgeId) ?? null : null
   const isEntryNode = selectedNode ? !editorWorkflow.edges.some((e) => e.to === selectedNode.id) : false
+  const projectDir = workflowPath ? workflowPath.replace(/\/[^/]*$/, '') : undefined
 
   return (
     <div className="app app--editor">
-      <Sidebar />
+      <Sidebar projectDir={projectDir} />
       <Canvas
         workflow={editorWorkflow}
         dispatch={dispatch}
