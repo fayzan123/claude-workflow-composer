@@ -1,12 +1,12 @@
 {
   "meta": { "id": "parallel-uuid", "name": "Parallel Split", "description": "Fan-out from one architect to two parallel agents", "version": 1, "created": "2026-05-25T00:00:00Z", "updated": "2026-05-25T00:00:00Z" },
   "nodes": [
-    { "id": "node-arch", "position": { "x": 0, "y": 0 }, "exportedSlug": null, "startTrigger": "to design the system", "agent": { "name": "Architect", "description": "Designs the system", "color": "blue" } },
-    { "id": "node-fe", "position": { "x": 300, "y": -100 }, "exportedSlug": null, "agent": { "name": "Frontend Dev", "description": "Builds the UI", "color": "purple" } },
-    { "id": "node-be", "position": { "x": 300, "y": 100 }, "exportedSlug": null, "agent": { "name": "Backend Dev", "description": "Builds the API", "color": "green" } }
+    { "id": "node-arch", "position": { "x": 0, "y": 0 }, "exportedSlug": null, "startTrigger": "to design the system", "agent": { "name": "Architect", "description": "Designs the system", "completionCriteria": "", "color": "blue" } },
+    { "id": "node-fe", "position": { "x": 300, "y": -100 }, "exportedSlug": null, "agent": { "name": "Frontend Dev", "description": "Builds the UI", "completionCriteria": "", "color": "purple" } },
+    { "id": "node-be", "position": { "x": 300, "y": 100 }, "exportedSlug": null, "agent": { "name": "Backend Dev", "description": "Builds the API", "completionCriteria": "", "color": "green" } }
   ],
   "edges": [
-    { "id": "e1", "from": "node-arch", "to": "node-fe", "label": "To frontend", "trigger": "When design is ready, activate Frontend Dev.", "context": ["design"] },
-    { "id": "e2", "from": "node-arch", "to": "node-be", "label": "To backend", "trigger": "When design is ready, activate Backend Dev.", "context": ["design"] }
+    { "id": "e1", "from": "node-arch", "to": "node-fe", "label": "To frontend", "trigger": "When design is ready, activate Frontend Dev.", "context": [{ "name": "design", "type": "text" }] },
+    { "id": "e2", "from": "node-arch", "to": "node-be", "label": "To backend", "trigger": "When design is ready, activate Backend Dev.", "context": [{ "name": "design", "type": "text" }] }
   ]
 }

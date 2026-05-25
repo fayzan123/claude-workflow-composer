@@ -1,4 +1,4 @@
-import type { CwcNode, CwcEdge } from './schema.js'
+import type { CwcNode, CwcEdge, CwcArtifact } from './schema.js'
 import { bfsTraversal } from './bfs.js'
 
 function oxfordJoin(items: string[]): string {
@@ -10,16 +10,19 @@ function oxfordJoin(items: string[]): string {
 
 function boldWrapAgentNames(text: string, agentNames: string[]): string {
   let result = text
-  // Sort by length descending to avoid partial replacements
   for (const name of [...agentNames].sort((a, b) => b.length - a.length)) {
     result = result.replaceAll(name, `**${name}**`)
   }
   return result
 }
 
-function formatContextClause(context: string[] | undefined): string {
+function formatArtifactLabel(a: CwcArtifact): string {
+  return a.type === 'file' && a.path ? `${a.name} (\`${a.path}\`)` : a.name
+}
+
+function formatContextClause(context: CwcArtifact[] | undefined): string {
   if (!context || context.length === 0) return ''
-  return ` Pass the ${oxfordJoin(context)} forward.`
+  return ` Pass the ${oxfordJoin(context.map(formatArtifactLabel))} forward.`
 }
 
 export function generateOrchestratorBody(

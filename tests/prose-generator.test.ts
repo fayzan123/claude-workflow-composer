@@ -1,16 +1,20 @@
 import { describe, it, expect } from 'vitest'
 import { generateOrchestratorBody } from '../src/prose-generator.js'
-import type { CwcNode, CwcEdge } from '../src/schema.js'
+import type { CwcNode, CwcEdge, CwcArtifact } from '../src/schema.js'
 
 const node = (id: string, name: string, startTrigger?: string): CwcNode => ({
   id,
   position: { x: 0, y: 0 },
   exportedSlug: null,
   startTrigger,
-  agent: { name, description: '' },
+  agent: { name, description: '', completionCriteria: '' },
 })
 
-const edge = (from: string, to: string | null, trigger: string, context?: string[]): CwcEdge => ({
+const artifact = (name: string, type: CwcArtifact['type'] = 'text', path?: string): CwcArtifact => ({
+  name, type, ...(path ? { path } : {}),
+})
+
+const edge = (from: string, to: string | null, trigger: string, context?: CwcArtifact[]): CwcEdge => ({
   id: `${from}->${to}`,
   from,
   to,
@@ -41,16 +45,23 @@ describe('generateOrchestratorBody', () => {
     expect(body).toContain('**Reviewer**')
   })
 
-  it('appends Pass the ... forward when context is non-empty', () => {
+  it('appends Pass the ... forward for text artifacts', () => {
     const nodes = [node('A', 'Dev', 'to build'), node('B', 'QA')]
-    const edges = [edge('A', 'B', 'When done, activate QA.', ['schema', 'api-spec'])]
+    const edges = [edge('A', 'B', 'When done, activate QA.', [artifact('schema'), artifact('api-spec')])]
     const body = generateOrchestratorBody(nodes, edges, 'My Workflow')
     expect(body).toContain('Pass the schema and api-spec forward.')
   })
 
+  it('includes file path in artifact label for file artifacts', () => {
+    const nodes = [node('A', 'Dev', 'to build'), node('B', 'QA')]
+    const edges = [edge('A', 'B', 'When done, activate QA.', [artifact('Design Doc', 'file', 'docs/design.md')])]
+    const body = generateOrchestratorBody(nodes, edges, 'My Workflow')
+    expect(body).toContain('Pass the Design Doc (`docs/design.md`) forward.')
+  })
+
   it('Oxford-comma joins three context items', () => {
     const nodes = [node('A', 'Dev', 'to build'), node('B', 'QA')]
-    const edges = [edge('A', 'B', 'When done, activate QA.', ['a', 'b', 'c'])]
+    const edges = [edge('A', 'B', 'When done, activate QA.', [artifact('a'), artifact('b'), artifact('c')])]
     const body = generateOrchestratorBody(nodes, edges, 'My Workflow')
     expect(body).toContain('Pass the a, b, and c forward.')
   })
@@ -67,15 +78,13 @@ describe('generateOrchestratorBody', () => {
     const edges = [
       edge('A', 'B', 'When done, activate Review.'),
       { ...edge('B', null, 'If pass, done.'), terminalType: 'complete' as const },
-      edge('B', 'A', 'If fail, return to Dev.', ['feedback']),
+      edge('B', 'A', 'If fail, return to Dev.', [artifact('feedback')]),
     ]
     const body = generateOrchestratorBody(nodes, edges, 'My Workflow')
     const lines = body.split('\n').filter(l => /^\d+\./.test(l))
-    // Back-edge should appear after forward edges
     const backEdgeIdx = lines.findIndex(l => l.includes('return to'))
     const passIdx = lines.findIndex(l => l.includes('If pass'))
     expect(backEdgeIdx).toBeGreaterThan(passIdx)
-    // Should not appear twice (no infinite recursion)
     expect(lines.filter(l => l.includes('return to'))).toHaveLength(1)
   })
 

@@ -30,17 +30,21 @@ export function buildAgentFileContent(
   const parts: string[] = []
   parts.push(buildFrontmatter(node))
 
-  const { systemPrompt } = node.agent
+  const { systemPrompt, completionCriteria } = node.agent
   if (systemPrompt && systemPrompt.trim().length > 0) {
     parts.push('\n' + systemPrompt)
   }
 
+  if (completionCriteria && completionCriteria.trim().length > 0) {
+    parts.push(`\n\n## Completion Criteria\n\nBefore returning, verify: ${completionCriteria}`)
+  }
+
   const ownershipComment = `<!-- cwc:node:${node.id}:workflow:${workflowId} -->`
+  const hasContent = (systemPrompt && systemPrompt.trim().length > 0) ||
+                     (completionCriteria && completionCriteria.trim().length > 0)
 
   if (resolvedSkills.length > 0) {
-    const separator = systemPrompt && systemPrompt.trim().length > 0
-      ? '\n\n---\n'
-      : '\n'
+    const separator = hasContent ? '\n\n---\n' : '\n'
     parts.push(separator + buildSkillsBlock(resolvedSkills))
     parts.push('\n' + ownershipComment)
   } else {

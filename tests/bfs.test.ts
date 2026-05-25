@@ -6,7 +6,7 @@ const node = (id: string): CwcNode => ({
   id,
   position: { x: 0, y: 0 },
   exportedSlug: null,
-  agent: { name: id, description: '', color: 'blue' },
+  agent: { name: id, description: '', completionCriteria: '', color: 'blue' },
 })
 
 const edge = (from: string, to: string | null, id?: string): CwcEdge => ({

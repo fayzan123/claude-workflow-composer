@@ -10,6 +10,7 @@ const baseNode: CwcNode = {
   agent: {
     name: 'Backend Architect',
     description: 'Designs the API',
+    completionCriteria: '',
     color: 'blue',
     model: 'inherit',
     tools: ['Read', 'Write'],
@@ -60,6 +61,17 @@ describe('buildAgentFileContent', () => {
     const content = buildAgentFileContent(baseNode, skills, 'wf-uuid')
     expect(content).toContain('Use the `unknown-skill` skill.')
     expect(content).not.toContain('Use the `unknown-skill` skill. (')
+  })
+
+  it('injects completion criteria block when completionCriteria is non-empty', () => {
+    const node = { ...baseNode, agent: { ...baseNode.agent, completionCriteria: 'All tests pass.' } }
+    const content = buildAgentFileContent(node, [], 'wf-uuid')
+    expect(content).toContain('## Completion Criteria\n\nBefore returning, verify: All tests pass.')
+  })
+
+  it('omits completion criteria block when completionCriteria is empty', () => {
+    const content = buildAgentFileContent(baseNode, [], 'wf-uuid')
+    expect(content).not.toContain('## Completion Criteria')
   })
 
   it('omits model field when not set', () => {

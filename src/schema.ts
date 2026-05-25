@@ -1,4 +1,11 @@
 export type TerminalType = 'complete' | 'escalated' | 'aborted'
+export type ArtifactType = 'file' | 'text' | 'json'
+
+export interface CwcArtifact {
+  name: string
+  type: ArtifactType
+  path?: string  // required when type === 'file'
+}
 
 export interface CwcMeta {
   id: string
@@ -12,6 +19,7 @@ export interface CwcMeta {
 export interface CwcAgent {
   name: string
   description: string
+  completionCriteria: string
   color?: string
   model?: string
   tools?: string[]
@@ -33,7 +41,7 @@ export interface CwcEdge {
   to: string | null
   label?: string
   trigger: string
-  context?: string[]
+  context?: CwcArtifact[]
   terminalType?: TerminalType
 }
 
