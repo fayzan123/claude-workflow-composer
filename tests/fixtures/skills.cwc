@@ -1,0 +1,9 @@
+{
+  "meta": { "id": "skills-uuid", "name": "Skills Demo", "description": "Single agent demonstrating skill injection", "version": 1, "created": "2026-05-25T00:00:00Z", "updated": "2026-05-25T00:00:00Z" },
+  "nodes": [
+    { "id": "node-1", "position": { "x": 0, "y": 0 }, "exportedSlug": null, "startTrigger": "to start", "agent": { "name": "Full Stack Dev", "description": "Builds the feature", "color": "blue", "skills": ["brainstorming", "superpowers:writing-plans", "nonexistent-skill"], "systemPrompt": "You are a full stack developer." } }
+  ],
+  "edges": [
+    { "id": "e1", "from": "node-1", "to": null, "label": "Done", "trigger": "When done, the workflow is complete.", "terminalType": "complete", "context": [] }
+  ]
+}

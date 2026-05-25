@@ -1,0 +1,13 @@
+{
+  "meta": { "id": "linear-uuid", "name": "Linear Pipeline", "description": "A sequential A to B to C workflow", "version": 1, "created": "2026-05-25T00:00:00Z", "updated": "2026-05-25T00:00:00Z" },
+  "nodes": [
+    { "id": "node-a", "position": { "x": 0, "y": 0 }, "exportedSlug": null, "startTrigger": "to plan the architecture", "agent": { "name": "Architect", "description": "Plans the system", "color": "blue", "tools": ["Read"] } },
+    { "id": "node-b", "position": { "x": 300, "y": 0 }, "exportedSlug": null, "agent": { "name": "Developer", "description": "Builds the feature", "color": "green", "tools": ["Read", "Write", "Edit"] } },
+    { "id": "node-c", "position": { "x": 600, "y": 0 }, "exportedSlug": null, "agent": { "name": "Reviewer", "description": "Reviews the code", "color": "orange", "tools": ["Read"] } }
+  ],
+  "edges": [
+    { "id": "e1", "from": "node-a", "to": "node-b", "label": "Plan ready", "trigger": "When Architect has delivered the plan, activate Developer.", "context": ["plan"] },
+    { "id": "e2", "from": "node-b", "to": "node-c", "label": "Build done", "trigger": "When Developer has completed the implementation, activate Reviewer.", "context": [] },
+    { "id": "e3", "from": "node-c", "to": null, "label": "Done", "trigger": "When Reviewer approves, the workflow is complete.", "terminalType": "complete", "context": [] }
+  ]
+}

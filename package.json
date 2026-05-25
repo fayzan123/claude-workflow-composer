@@ -1,0 +1,21 @@
+{
+  "name": "claude-workflow-composer",
+  "version": "0.1.0",
+  "description": "Visual composer for Claude Code multi-agent workflows",
+  "type": "module",
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "build": "tsc",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.4.0",
+    "vitest": "^1.6.0"
+  },
+  "dependencies": {
+    "gray-matter": "^4.0.3",
+    "uuid": "^9.0.0"
+  }
+}
