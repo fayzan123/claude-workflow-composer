@@ -102,7 +102,17 @@ export async function exportWorkflow(
   const skillContent = buildWorkflowSkillContent(workflowSlug, cwc.meta.description, orchestratorBody, workflowId)
   const skillDir = path.join(opts.skillsDir, workflowSlug)
   await ensureDir(skillDir)
-  await fs.writeFile(path.join(skillDir, 'SKILL.md'), skillContent, 'utf-8')
+  const skillFilePath = path.join(skillDir, 'SKILL.md')
+  const existingSkill = await safeReadFile(skillFilePath)
+  if (existingSkill !== null) {
+    const status = detectConflict(existingSkill, WORKFLOW_OWNERSHIP_REGEX, workflowId)
+    if (status === 'foreign') {
+      warnings.push(`Workflow skill at ${skillFilePath} belongs to a different workflow — overwriting`)
+    } else if (status === 'absent') {
+      warnings.push(`Workflow skill at ${skillFilePath} was not created by this workflow — overwriting`)
+    }
+  }
+  await fs.writeFile(skillFilePath, skillContent, 'utf-8')
 
   const updatedCwc: CwcFile = {
     ...cwc,

@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import * as fs from 'node:fs/promises'
 import * as path from 'node:path'
 import { randomUUID } from 'node:crypto'
@@ -195,6 +195,17 @@ describe('exportWorkflow — skills.cwc', () => {
     )
     expect(content).toContain('\n\n---\n## Workflow Skills\n\n')
     expect(content).toContain('Use the `brainstorming` skill. (Explores requirements)')
+  })
+
+  it('emits warnings for skills that cannot be resolved', async () => {
+    const cwc = await loadFixture('skills.cwc')
+    const target: ExportTarget = { type: 'project', projectDir: tmpDir }
+    // No userSkillsDir — all 3 skills will fail resolution (no real ~/.claude/skills in test env)
+    const result = await exportWorkflow(cwc, target, { skillsDir: path.join(tmpDir, 'skills') })
+    // The skills.cwc fixture has 3 skills: brainstorming, superpowers:writing-plans, nonexistent-skill
+    // All will be unresolved in isolation — at least 1 warning expected
+    expect(result.warnings.length).toBeGreaterThan(0)
+    expect(result.warnings.some(w => w.includes('nonexistent-skill'))).toBe(true)
   })
 
   it('ownership comment immediately follows last skill line — no blank line', async () => {
