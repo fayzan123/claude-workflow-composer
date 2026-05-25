@@ -3,7 +3,9 @@
   "version": "0.1.0",
   "description": "Visual composer for Claude Code multi-agent workflows",
   "type": "module",
-  "bin": { "cwc": "./dist/bin/cwc.js" },
+  "bin": {
+    "cwc": "./dist/bin/cwc.js"
+  },
   "scripts": {
     "test": "vitest run",
     "test:watch": "vitest",
@@ -22,6 +24,7 @@
     "@types/open": "^6.1.0",
     "@types/react": "^19.2.15",
     "@types/react-dom": "^19.2.3",
+    "@types/uuid": "^10.0.0",
     "@types/ws": "^8.18.1",
     "@vitejs/plugin-react": "^4.7.0",
     "typescript": "^5.4.0",
