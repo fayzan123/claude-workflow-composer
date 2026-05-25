@@ -9,6 +9,8 @@ import { Canvas } from './components/Canvas.tsx'
 import { Sidebar } from './components/Sidebar.tsx'
 import { NodePanel } from './components/panels/NodePanel.tsx'
 import { EdgePanel } from './components/panels/EdgePanel.tsx'
+import { TopBar } from './components/TopBar.tsx'
+import { ExportFlow } from './components/ExportFlow.tsx'
 import './App.css'
 
 type Screen = 'home' | 'editor'
@@ -17,12 +19,13 @@ export default function App() {
   const [screen, setScreen] = useState<Screen>('home')
   const [workflow, setWorkflow] = useState<CwcFile | null>(null)
   const [workflowPath, setWorkflowPath] = useState<string | null>(null)
+  const [showExport, setShowExport] = useState(false)
 
   const { workflow: editorWorkflow, dispatch } = useWorkflow(workflow ?? undefined)
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null)
   const validation = validateWorkflow(editorWorkflow)
-  useAutoSave(editorWorkflow, workflowPath)
+  const { isSaving } = useAutoSave(editorWorkflow, workflowPath)
 
   function openWorkflow(cwc: CwcFile, path: string) {
     setWorkflow(cwc)
@@ -55,29 +58,47 @@ export default function App() {
 
   return (
     <div className="app app--editor">
-      <Sidebar projectDir={projectDir} />
-      <Canvas
+      <TopBar
         workflow={editorWorkflow}
-        dispatch={dispatch}
         validation={validation}
-        onSelectNode={setSelectedNodeId}
-        onSelectEdge={setSelectedEdgeId}
-        selectedNodeId={selectedNodeId}
-        selectedEdgeId={selectedEdgeId}
+        isSaving={isSaving}
+        dispatch={dispatch}
+        onExport={() => setShowExport(true)}
+        onHome={() => setScreen('home')}
       />
-      {selectedNode && (
-        <NodePanel
-          node={selectedNode}
-          isEntryNode={isEntryNode}
+      <div className="app__editor-body">
+        <Sidebar projectDir={projectDir} />
+        <Canvas
+          workflow={editorWorkflow}
           dispatch={dispatch}
-          onClose={() => setSelectedNodeId(null)}
+          validation={validation}
+          onSelectNode={setSelectedNodeId}
+          onSelectEdge={setSelectedEdgeId}
+          selectedNodeId={selectedNodeId}
+          selectedEdgeId={selectedEdgeId}
         />
-      )}
-      {selectedEdge && (
-        <EdgePanel
-          edge={selectedEdge}
+        {selectedNode && (
+          <NodePanel
+            node={selectedNode}
+            isEntryNode={isEntryNode}
+            dispatch={dispatch}
+            onClose={() => setSelectedNodeId(null)}
+          />
+        )}
+        {selectedEdge && (
+          <EdgePanel
+            edge={selectedEdge}
+            dispatch={dispatch}
+            onClose={() => setSelectedEdgeId(null)}
+          />
+        )}
+      </div>
+      {showExport && (
+        <ExportFlow
+          workflow={editorWorkflow}
           dispatch={dispatch}
-          onClose={() => setSelectedEdgeId(null)}
+          onClose={() => setShowExport(false)}
+          projectDir={projectDir}
         />
       )}
     </div>

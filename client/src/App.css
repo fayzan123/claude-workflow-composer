@@ -5,5 +5,12 @@
 }
 
 .app--editor {
+  flex-direction: column;
+}
+
+.app__editor-body {
+  display: flex;
   flex-direction: row;
+  flex: 1;
+  min-height: 0;
 }
