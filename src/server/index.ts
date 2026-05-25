@@ -6,6 +6,7 @@ import * as os from 'node:os'
 import { healthRouter } from './api/health.js'
 import { claudeCheckRouter } from './api/claude-check.js'
 import { workflowsRouter } from './api/workflows.js'
+import { agentsRouter } from './api/agents.js'
 
 export interface AppOptions {
   staticDir: string | null
@@ -24,6 +25,9 @@ export function createApp(opts: AppOptions): express.Express {
 
   const wfDir = opts.workflowsDir ?? path.join(os.homedir(), '.cwc', 'workflows')
   app.use('/api/workflows', workflowsRouter(wfDir))
+
+  const homeDir = opts.userHomeDir ?? os.homedir()
+  app.use('/api/agents', agentsRouter(homeDir))
 
   if (opts.staticDir && fs.existsSync(opts.staticDir)) {
     app.use(express.static(opts.staticDir))
