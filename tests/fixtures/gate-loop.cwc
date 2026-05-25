@@ -1,0 +1,12 @@
+{
+  "meta": { "id": "gate-loop-uuid", "name": "Gate Loop", "description": "Gate Loop — conditional review workflow with re-trigger", "version": 1, "created": "2026-05-25T00:00:00Z", "updated": "2026-05-25T00:00:00Z" },
+  "nodes": [
+    { "id": "node-developer", "position": { "x": 0, "y": 0 }, "exportedSlug": null, "startTrigger": "to implement the feature", "agent": { "name": "Developer", "description": "Implements features", "color": "green" } },
+    { "id": "node-reviewer", "position": { "x": 300, "y": 0 }, "exportedSlug": null, "agent": { "name": "Reviewer", "description": "Reviews implementation", "color": "orange" } }
+  ],
+  "edges": [
+    { "id": "edge-1", "from": "node-developer", "to": "node-reviewer", "label": "Ready for review", "trigger": "When implementation is complete, activate Reviewer to evaluate the work.", "context": [] },
+    { "id": "edge-2", "from": "node-reviewer", "to": null, "label": "Pass", "trigger": "If the review passes, the workflow is complete.", "terminalType": "complete", "context": [] },
+    { "id": "edge-3", "from": "node-reviewer", "to": "node-developer", "label": "Fail — loop back", "trigger": "If the review fails, return to Developer with the reviewer's feedback and repeat from step 1.", "context": ["reviewer feedback"] }
+  ]
+}
