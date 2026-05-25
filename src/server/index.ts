@@ -8,6 +8,8 @@ import { claudeCheckRouter } from './api/claude-check.js'
 import { workflowsRouter } from './api/workflows.js'
 import { agentsRouter } from './api/agents.js'
 import { recentsRouter } from './api/recents.js'
+import { exportRouter } from './api/export.js'
+import { skillsRouter } from './api/skills.js'
 
 export interface AppOptions {
   staticDir: string | null
@@ -32,6 +34,9 @@ export function createApp(opts: AppOptions): express.Express {
 
   const recPath = opts.recentsPath ?? path.join(os.homedir(), '.cwc', 'recents.json')
   app.use('/api/recents', recentsRouter(recPath))
+
+  app.use('/api/export', exportRouter())
+  app.use('/api/skills', skillsRouter(homeDir))
 
   if (opts.staticDir && fs.existsSync(opts.staticDir)) {
     app.use(express.static(opts.staticDir))
