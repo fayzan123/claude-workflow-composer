@@ -10,7 +10,7 @@
 
 Claude Workflow Composer is a local web UI launched via `npx cwc`. Users drag agents onto a canvas, wire handoffs between them, attach skills, and export a working workflow — a slash-command entry point backed by a skill orchestrator and a set of specialized subagents — directly into their Claude installation.
 
-The architecture is a Node.js server (handles all file system operations against `~/.claude/` and `.claude/`) paired with a browser-based SPA. Nothing leaves the machine. `npx cwc` starts the server and opens the UI in the user's default browser. No installation, no code signing, no Gatekeeper friction.
+The architecture is a Node.js server (handles all file system operations against `~/.claude/` and `.claude/`) paired with a browser-based SPA. Nothing leaves the machine. `npx cwc` spawns the server as a detached background process, writes its PID to `~/.cwc/server.pid`, and opens the UI in the user's default browser. The terminal can be closed immediately — the server keeps running. A subsequent `npx cwc` call reuses the running server if the PID file indicates it's alive. `npx cwc stop` kills the background process. No installation, no code signing, no Gatekeeper friction.
 
 The product is a no-code GUI. UX clarity is a first-class constraint throughout: abstractions must make sense to a user who has never read a YAML file, errors must be plain-English modals with obvious actions, and technical implementation details (slugs, file paths, frontmatter) must be invisible unless directly relevant to a decision the user is making.
 
@@ -100,7 +100,8 @@ Each node represents one agent on the canvas:
     "model": "inherit",
     "tools": ["Read", "Write", "WebSearch"],
     "skills": ["brainstorming", "writing-plans"],
-    "systemPrompt": "You are a senior backend architect..."
+    "systemPrompt": "You are a senior backend architect...",
+    "completionCriteria": "A design document has been written to docs/design/<slug>-design.md covering data model, API endpoints, and architectural decisions."
   }
 }
 ```
@@ -109,6 +110,7 @@ Each node represents one agent on the canvas:
 - `position` — canvas layout coordinates, always required, never null. Initial positions (templates, future import) are assigned by the BFS layout algorithm: nodes placed left-to-right per BFS level with 300px horizontal spacing and 200px vertical spacing between levels. The canvas derives the slug from `agent.name` and displays it live as the user types — the derived slug is shown in the UI to make file naming transparent without exposing path syntax.
 - `startTrigger` — optional user-authored phrase for entry nodes (nodes with no incoming edges). Emitted as step 1 of the orchestrator skill: `"Start with **{Name}** {startTrigger}."`. If absent or empty on an entry node, the exporter emits `"Start with **{Name}**."` with no additional text. On non-entry nodes, `startTrigger` is ignored. The canvas shows this field only when the node has no incoming edges and labels it "What does this agent do first?" to keep the abstraction non-technical.
 - `exportedSlug` — the slug written to disk on the most recent export. Null if the node has never been exported. On export, if the current derived slug differs from `exportedSlug`, the exporter detects a rename: deletes the old file (after ownership check), writes the new file, and updates `exportedSlug`. If the old file does not exist on disk (deleted externally), the delete step is skipped and the exporter proceeds to write the new file. If the old file exists but fails the ownership check, the exporter surfaces an error rather than leaving the stale file.
+- `completionCriteria` — optional plain-English description of what "done" looks like for this agent. When non-empty, the exporter injects a `## Completion Criteria` block into the agent's system prompt (see Agent Files section). In the canvas, labeled "How will you know this agent succeeded?" — templates pre-populate it with sensible defaults. Directly addresses the reliability gap identified by the CCW creator: agents need explicit acceptance criteria before they start.
 - `tools` — array of Claude Code tool names; exported as comma-separated `tools:` frontmatter
 - `skills` — array of skill slugs (non-namespaced or `plugin:slug` namespaced); exported as behavioral instruction block injected into the agent's system prompt
 - `model` — optional; defaults to `"inherit"` if omitted
@@ -123,16 +125,114 @@ Each edge represents a handoff between two agents:
   "from": "node-1",
   "to": "node-2",
   "label": "Architecture approved",
-  "trigger": "When the architect has delivered a schema and API spec, activate Backend Developer.",
-  "context": ["schema", "api-spec"]
+  "trigger": "When the architect has delivered the design document and API spec, activate Backend Developer.",
+  "context": [
+    { "name": "Design Document", "type": "file", "path": "docs/design/backend-design.md" },
+    { "name": "API Spec", "type": "file", "path": "docs/api/openapi.yaml" }
+  ]
 }
 ```
 
 **Field notes:**
 - `trigger` — prose authored by the user in the composer; emitted as one numbered line in the orchestrator skill body, with agent names bold-formatted. The exporter's only transformation is: numbering, bold-wrapping substrings that exactly match any node's `agent.name`. The `trigger` field is always emitted verbatim for all edges, including terminal edges — the `terminalType` field does not replace or modify the trigger text.
-- `context` — optional free-text list of named outputs to pass forward. If present and non-empty, the exporter appends "Pass the `<items>` forward." to the trigger line. Items are joined Oxford-comma style: `["schema"]` → `"schema"`; `["schema", "api-spec"]` → `"schema and api-spec"`; `["a", "b", "c"]` → `"a, b, and c"`. If omitted or empty, no "Pass the..." clause is emitted.
+- `context` — optional array of typed artifact objects representing outputs passed to the next agent. Each artifact has:
+  - `name` — display label shown on the canvas edge and emitted in handoff prose
+  - `type` — `"file"` | `"text"` | `"json"`. File artifacts have a concrete path; text and json are in-memory outputs with no path.
+  - `path` — required for `type: "file"`. The file path (relative to project root) where the artifact is written. Shown in the canvas as a path hint and emitted in handoff prose. For `type: "text"` or `"json"`, `path` is omitted.
+
+  The exporter emits artifact prose appended to the trigger line:
+  - Single file artifact: `Pass the Design Document (\`docs/design/backend-design.md\`) forward.`
+  - Multiple artifacts: Oxford-comma joined — `Pass the Design Document (\`docs/design/backend-design.md\`) and API Spec (\`docs/api/openapi.yaml\`) forward.`
+  - Non-file artifact (text/json): `Pass the [name] forward.` (no path)
+  - If `context` is omitted or empty, no "Pass the..." clause is emitted.
+
+  In the canvas, artifacts are added to edges by dragging from the Skills/Artifacts sidebar or via a `+` button on the edge. Each artifact renders as a chip on the canvas arrow showing its name and type icon. This directly surfaces context flow in the visual graph — making it clear which outputs one agent produces and which the next agent consumes.
+
 - `label` — short display label shown on the canvas arrow; not emitted to the skill body
 - `terminalType` — present only on edges with `"to": null` (terminal edges). Values: `"complete"` | `"escalated"` | `"aborted"`. Default: `"complete"`. Used by the canvas UI to categorize the terminal outcome and display plain-English options ("Workflow complete", "Escalate to human review", "Abort workflow") when authoring the trigger text. The `terminalType` value is NOT emitted to the skill body — the `trigger` field is the sole source of terminal step prose.
+
+---
+
+## Canvas UX
+
+### Auto-Save and File Storage
+
+The `.cwc` file is written to disk on every meaningful canvas change (node moved, edge added, field edited) with a 500ms debounce. There is no "unsaved changes" state — the file is always current. Closing the browser or terminal loses nothing.
+
+Users save `.cwc` files anywhere via a standard file save dialog — inside a project repo for team sharing, in `~/.cwc/workflows/` for personal use, or anywhere else. The composer maintains a **recent workflows list** at `~/.cwc/recents.json` tracking the last 10 opened `.cwc` paths regardless of location. On launch, the composer shows recent workflows for quick access.
+
+### Canvas Validation
+
+The canvas runs continuous lightweight validation and surfaces warnings on structurally suspect patterns — not hard blocks, since there may be intentional patterns we haven't anticipated:
+
+| Pattern | Warning |
+|---|---|
+| Node with no outgoing edges and no terminal edge | "This agent has no handoff — add an arrow or mark it as a workflow end" |
+| Disconnected node (no edges at all) | "This agent isn't connected to the workflow" |
+| Node with empty `agent.name` | "Agent needs a name before export" |
+
+Warnings appear as subtle yellow indicators on affected nodes. Export is hard-blocked only for: empty workflow (zero nodes) and any node with an empty `agent.name`. All other warnings are ignorable.
+
+### Template-First Entry Point
+
+The empty canvas is never the first thing a user sees. On first launch (and on "New Workflow"), the user is presented with the template picker: a grid of built-in workflow cards. Selecting one creates a copy of the template's `.cwc` and opens it on the canvas. The canvas is a secondary power mode for users who want to build from scratch or heavily modify a template.
+
+Templates function as **structural skeletons with explicit configuration slots** — each node has sensible default `systemPrompt`, `completionCriteria`, and `skills` values that users fill in or tweak rather than author from scratch. This is the primary mechanism for reliability: proven workflow shapes, user-customized context.
+
+### Sidebar Structure
+
+The canvas has two sidebar panels:
+
+**Agents panel (left sidebar)**
+
+- **Library tab** — curated built-in agents (~20–30, covering common coding workflow roles: requirement analyzer, technical designer, task executor, code reviewer, security reviewer, etc.) plus community agents when the community library ships. Each agent card shows its name and description.
+- **My Agents tab** — agents scanned from `~/.claude/agents/` and `.claude/agents/` in the currently open project directory at launch. Read-only source: the composer parses `name` and `description` from frontmatter and displays them. Agents are grouped by source directory and searchable by name — search is the primary navigation since users typically know the agent names they've already built. Dragging a My Agents card onto the canvas copies its full definition (name, description, systemPrompt, tools, model) into a new node. If the source file later changes, the node is not automatically updated — it's a copy at drag time.
+- **+ Create button** — expands inline with two options:
+  - *Describe it* — user types one sentence; the composer calls the Claude API to generate `systemPrompt`, `description`, and `completionCriteria`. Requires a Claude API key configured in composer settings.
+  - *Build it* — opens a structured form (name, description, system prompt, completion criteria, tools, skills). For power users and users without an API key.
+
+**Skills panel (left sidebar, second tab)**
+
+- Shows all skills available in `~/.claude/skills/` and plugin caches, organized by source (user skills / plugin skills)
+- Drag a skill onto an existing canvas node → skill is added to that node's `skills` array and appears as a removable chip on the node card
+- Drag a skill onto empty canvas → tooltip: "Drop onto an agent to attach this skill"
+
+### Node Interaction
+
+- Click a node → right config panel opens showing: agent name (editable), description, system prompt, completion criteria ("How will you know this agent succeeded?"), tools, attached skills (as removable chips), and the derived file slug
+- `startTrigger` field appears only on entry nodes (no incoming edges), labeled "What does this agent do first?"
+- Derived slug shown live as the agent name is typed — displayed as "Will export as: `backend-architect`"
+- Slug collision shown as an inline error on the conflicting node immediately
+
+### Edge Interaction
+
+- Draw an edge by dragging from a node's output handle to another node's input handle
+- Click an edge → right config panel opens showing: trigger text (prose field), artifacts (typed context), terminal type (if `to` is null), and the display label
+- Artifacts on edges render as chips on the arrow showing name and type icon (file/text/json)
+- Add an artifact via `+` button on the edge panel or by dragging from a future Artifacts sidebar
+
+---
+
+## Agent Library
+
+The composer ships a built-in agent library bundled in the package. These agents are based on the [claude-code-workflows](https://github.com/shinpr/claude-code-workflows) reference implementation's proven agent set, adapted for the composer's node schema (adding `completionCriteria` to each).
+
+**v1 built-in agents (representative set):**
+
+| Agent | Role |
+|---|---|
+| Requirement Analyzer | Determines scale, affected files, and constraints from a user requirement |
+| Technical Designer | Produces a design document from requirements and codebase analysis |
+| Task Executor | Implements a scoped task from a work plan |
+| Code Reviewer | Reviews implementation against design and coding standards |
+| Quality Fixer | Runs tests, lint, and build; fixes failures |
+| Security Reviewer | Audits implementation for security issues |
+| Codebase Analyzer | Maps the existing codebase structure relevant to a task |
+| Document Reviewer | Reviews a document for completeness and quality |
+
+Each bundled agent has pre-authored `systemPrompt`, `description`, and `completionCriteria`. Users can edit any field after dragging onto the canvas.
+
+The community agent library (v2) extends this sidebar with user-submitted agents, pulling from the same community infrastructure as the workflow library.
 
 ---
 
@@ -179,7 +279,7 @@ The preview pane also surfaces any warnings (e.g. skills not found in the cache)
 
 ### Agent Files
 
-One `.md` per node, written to the selected export target. The full emitted file:
+One `.md` per node, written to the selected export target. The full emitted file (with both `completionCriteria` and skills present):
 
 ```markdown
 ---
@@ -192,6 +292,10 @@ tools: Read, Write, WebSearch
 
 You are a senior backend architect...
 
+## Completion Criteria
+
+Before returning, verify: A design document has been written to docs/design/backend-design.md covering data model, API endpoints, and architectural decisions.
+
 ---
 ## Workflow Skills
 
@@ -199,6 +303,8 @@ Use the `brainstorming` skill. (Explores user intent, requirements and design be
 Use the `writing-plans` skill. (Creates structured implementation plans)
 <!-- cwc:node:node-1:workflow:uuid-v4 -->
 ```
+
+**Completion criteria block:** When `completionCriteria` is non-empty, the exporter injects a `## Completion Criteria` section immediately after the system prompt body, separated by `\n\n`. The block is: `## Completion Criteria\n\nBefore returning, verify: <completionCriteria text>\n`. This block appears before the skills block separator. When `completionCriteria` is empty or absent, no `## Completion Criteria` section is emitted.
 
 The ownership comment on the last line identifies this file as generated by a specific node within a specific workflow. The exporter always ensures this comment is the final non-blank line of the emitted file.
 
@@ -414,21 +520,44 @@ Behavioral verification (does Claude follow the flow correctly?) is done by the 
 
 - **MCP wiring** — no project-level MCP config format exists in Claude Code today
 - **Parallel convergence** — multiple edges feeding one downstream node; deferred to v2
-- **Import from existing `.claude/`** — parsing agent files and skills back into a graph; deferred to v2
 - **Stopping points on nodes** — no canvas UI for marking `[Stop]` gates; deferred to v2
-- **Structured handoff contracts** — typed JSON input/output contracts between agents; v1 uses user-authored prose only
 - **Zip export** — bundled export for sharing; deferred to v2
 - **Community library** — workflow upload/fork/discover; built after core composer ships
 - **Live execution visualization** — runtime agent state display is out of scope
+- **Observability / run history** — requires runtime integration; see v1.5 roadmap below
+
+---
+
+## v1.5 Roadmap: Observability
+
+Observability is the key differentiator of the product and the immediate post-v1 priority. It is not in v1 because it requires runtime integration that doesn't exist today — but the architecture is clear and buildable without any Anthropic API changes.
+
+### Architecture
+
+`npx cwc` already runs a local Node.js server. In v1.5, this server also exposes a **local MCP server** on a separate port. When the composer exports a workflow, it injects the MCP server configuration into the orchestrator skill. The skill calls the MCP server to log events — workflow started, agent invoked, artifact produced, workflow completed.
+
+**Fire-and-forget:** MCP logging calls in the orchestrator skill are non-blocking. If the composer is not running when the workflow is invoked, the MCP calls fail silently and the workflow continues normally. Observability is opt-in by nature: run `npx cwc` alongside Claude Code to get logs.
+
+### What Observability Unlocks
+
+- **Real-time run dashboard** — see which step the workflow is on as it executes
+- **Agent invocation log** — which agents were called, when, and how long they ran
+- **Artifact trace** — which artifacts were produced, at which paths, by which agents
+- **Context visibility** — directly addresses the CCW creator's insight: see which context affected which outputs
+- **Run history** — compare across multiple invocations; identify which steps succeed or fail consistently
+
+### Schema Impact
+
+The orchestrator skill gains a `mcpServers` section when the composer exports with observability enabled (v1.5 feature flag). The `.cwc` schema gains a `"observability": { "enabled": boolean }` field in `meta`. No v1 schema changes required — this is purely additive.
 
 ---
 
 ## Open Questions
 
-None blocking v1. Items to revisit in v2:
-- Agent Teams (experimental in Claude Code) may become the right substrate for deterministic sequential handoffs once stabilized; monitor Anthropic's roadmap
-- Structured handoff contracts (typed JSON per agent) would significantly increase reliability; requires a contract editor in the canvas
-- Convergence node type for parallel splits that rejoin
-- Schema version migration strategy (v1 → v2+ readers); v1 readers surface a clear error on unknown versions
-- Import direction (`.claude/` + `~/.claude/skills/` → `.cwc`) becomes tractable once the schema is stable
-- Stopping points as a first-class canvas concept; requires `stopBefore: boolean` on nodes and conditional skill body generation
+None blocking v1. Items to revisit:
+- **Agent Teams** (experimental in Claude Code) may become the right substrate for deterministic sequential handoffs once stabilized; monitor Anthropic's roadmap
+- **Convergence node type** for parallel splits that rejoin; deferred to v2
+- **Schema version migration** (v1 → v2+ readers); v1 readers surface a clear error on unknown versions
+- **Reverse import** (`.claude/` + `~/.claude/skills/` → `.cwc`) becomes tractable once the schema is stable and well-adopted
+- **Stopping points** as a first-class canvas concept; requires `stopBefore: boolean` on nodes and conditional skill body generation
+- **AI-assisted agent generation** requires a Claude API key UX in composer settings; design TBD
