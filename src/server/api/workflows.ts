@@ -15,12 +15,16 @@ export function workflowsRouter(workflowsDir: string) {
           .filter((f) => f.endsWith('.cwc'))
           .map(async (f) => {
             const fullPath = path.join(workflowsDir, f)
-            const raw = await fs.readFile(fullPath, 'utf-8')
-            const cwc: CwcFile = JSON.parse(raw)
-            return { path: fullPath, name: cwc.meta.name, updated: cwc.meta.updated }
+            try {
+              const raw = await fs.readFile(fullPath, 'utf-8')
+              const cwc: CwcFile = JSON.parse(raw)
+              return { path: fullPath, name: cwc.meta.name, updated: cwc.meta.updated }
+            } catch {
+              return null
+            }
           })
       )
-      res.json(items)
+      res.json(items.filter(Boolean))
     } catch (err) {
       res.status(500).json({ error: String(err) })
     }
