@@ -30,9 +30,18 @@ export function createApp(opts: AppOptions): express.Express {
   return app
 }
 
-export async function startServer(port: number, staticDir: string | null): Promise<void> {
+export function startServer(port: number, staticDir: string | null): Promise<void> {
   const app = createApp({ staticDir })
-  app.listen(port, () => {
-    console.log(`CWC server running on http://localhost:${port}`)
+  return new Promise((resolve, reject) => {
+    const server = app.listen(port, () => {
+      console.log(`CWC server running on http://localhost:${port}`)
+      resolve()
+    })
+    server.on('error', (err: NodeJS.ErrnoException) => {
+      if (err.code === 'EADDRINUSE') {
+        console.error(`Port ${port} is already in use. Run 'cwc stop' to kill the existing server.`)
+      }
+      reject(err)
+    })
   })
 }
