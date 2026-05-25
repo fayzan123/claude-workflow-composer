@@ -2,8 +2,10 @@ import express from 'express'
 import cors from 'cors'
 import * as path from 'node:path'
 import * as fs from 'node:fs'
+import * as os from 'node:os'
 import { healthRouter } from './api/health.js'
 import { claudeCheckRouter } from './api/claude-check.js'
+import { workflowsRouter } from './api/workflows.js'
 
 export interface AppOptions {
   staticDir: string | null
@@ -19,6 +21,9 @@ export function createApp(opts: AppOptions): express.Express {
 
   app.use('/api/health', healthRouter())
   app.use('/api/claude-check', claudeCheckRouter())
+
+  const wfDir = opts.workflowsDir ?? path.join(os.homedir(), '.cwc', 'workflows')
+  app.use('/api/workflows', workflowsRouter(wfDir))
 
   if (opts.staticDir && fs.existsSync(opts.staticDir)) {
     app.use(express.static(opts.staticDir))
