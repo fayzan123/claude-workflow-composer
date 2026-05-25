@@ -6,6 +6,8 @@ import { useWorkflow } from './hooks/useWorkflow.ts'
 import { useAutoSave } from './hooks/useAutoSave.ts'
 import { validateWorkflow } from './lib/validation.ts'
 import { Canvas } from './components/Canvas.tsx'
+import { NodePanel } from './components/panels/NodePanel.tsx'
+import { EdgePanel } from './components/panels/EdgePanel.tsx'
 import './App.css'
 
 type Screen = 'home' | 'editor'
@@ -45,6 +47,10 @@ export default function App() {
     )
   }
 
+  const selectedNode = selectedNodeId ? editorWorkflow.nodes.find((n) => n.id === selectedNodeId) ?? null : null
+  const selectedEdge = selectedEdgeId ? editorWorkflow.edges.find((e) => e.id === selectedEdgeId) ?? null : null
+  const isEntryNode = selectedNode ? !editorWorkflow.edges.some((e) => e.to === selectedNode.id) : false
+
   return (
     <div className="app app--editor">
       <Canvas
@@ -56,6 +62,21 @@ export default function App() {
         selectedNodeId={selectedNodeId}
         selectedEdgeId={selectedEdgeId}
       />
+      {selectedNode && (
+        <NodePanel
+          node={selectedNode}
+          isEntryNode={isEntryNode}
+          dispatch={dispatch}
+          onClose={() => setSelectedNodeId(null)}
+        />
+      )}
+      {selectedEdge && (
+        <EdgePanel
+          edge={selectedEdge}
+          dispatch={dispatch}
+          onClose={() => setSelectedEdgeId(null)}
+        />
+      )}
     </div>
   )
 }
