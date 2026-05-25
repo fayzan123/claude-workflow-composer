@@ -2,6 +2,10 @@ import React, { useState } from 'react'
 import type { CwcFile } from './types.ts'
 import { api } from './lib/api.ts'
 import { TemplatePicker } from './components/TemplatePicker.tsx'
+import { useWorkflow } from './hooks/useWorkflow.ts'
+import { useAutoSave } from './hooks/useAutoSave.ts'
+import { validateWorkflow } from './lib/validation.ts'
+import { Canvas } from './components/Canvas.tsx'
 import './App.css'
 
 type Screen = 'home' | 'editor'
@@ -10,6 +14,12 @@ export default function App() {
   const [screen, setScreen] = useState<Screen>('home')
   const [workflow, setWorkflow] = useState<CwcFile | null>(null)
   const [workflowPath, setWorkflowPath] = useState<string | null>(null)
+
+  const { workflow: editorWorkflow, dispatch } = useWorkflow(workflow ?? undefined)
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
+  const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null)
+  const validation = validateWorkflow(editorWorkflow)
+  useAutoSave(editorWorkflow, workflowPath)
 
   function openWorkflow(cwc: CwcFile, path: string) {
     setWorkflow(cwc)
@@ -36,9 +46,16 @@ export default function App() {
   }
 
   return (
-    <div className="app">
-      {/* WorkflowEditor rendered here in Task 15+ */}
-      <p>Editor for: {workflow?.meta.name}</p>
+    <div className="app app--editor">
+      <Canvas
+        workflow={editorWorkflow}
+        dispatch={dispatch}
+        validation={validation}
+        onSelectNode={setSelectedNodeId}
+        onSelectEdge={setSelectedEdgeId}
+        selectedNodeId={selectedNodeId}
+        selectedEdgeId={selectedEdgeId}
+      />
     </div>
   )
 }
