@@ -55,7 +55,11 @@ async function startServer(): Promise<void> {
   })
   child.unref()
 
-  const pid = child.pid!
+  if (child.pid === undefined) {
+    console.error('Failed to spawn CWC server process.')
+    process.exit(1)
+  }
+  const pid = child.pid
   await writePid(pid)
   console.log(`CWC server started (PID ${pid}) at http://localhost:${PORT}`)
 
