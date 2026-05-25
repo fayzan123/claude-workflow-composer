@@ -34,7 +34,6 @@ export function ExportFlow({ workflow, dispatch, onClose, projectDir }: Props) {
       setStep('result')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Export failed')
-      setStep('target-select')
     }
   }
 
@@ -96,8 +95,25 @@ export function ExportFlow({ workflow, dispatch, onClose, projectDir }: Props) {
 
         {step === 'exporting' && (
           <div className="export-flow-step export-flow-step--centered">
-            <div className="export-flow-spinner" aria-hidden="true" />
-            <p className="export-flow-modal__subtitle">Exporting…</p>
+            {error ? (
+              <>
+                <div className="export-flow-error">
+                  <span>{error}</span>
+                </div>
+                <button
+                  className="export-flow-back-btn"
+                  onClick={() => { setError(null); setStep('target-select') }}
+                  type="button"
+                >
+                  Back
+                </button>
+              </>
+            ) : (
+              <>
+                <div className="export-flow-spinner" aria-hidden="true" />
+                <p className="export-flow-modal__subtitle">Exporting…</p>
+              </>
+            )}
           </div>
         )}
 
