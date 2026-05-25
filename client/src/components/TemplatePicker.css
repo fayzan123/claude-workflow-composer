@@ -163,3 +163,8 @@
   padding: 0.1rem 0.35rem;
   font-size: 0.9em;
 }
+
+.template-picker__error {
+  color: #c0392b;
+  margin: 0.5rem 0;
+}

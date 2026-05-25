@@ -18,9 +18,13 @@ export default function App() {
   }
 
   async function handleOpenRecent(path: string) {
-    const cwc = await api.workflows.read(path)
-    await api.recents.add(path)
-    openWorkflow(cwc, path)
+    try {
+      const cwc = await api.workflows.read(path)
+      await api.recents.add(path)
+      openWorkflow(cwc, path)
+    } catch {
+      // file may have been deleted; silently ignore (recents list will refresh on next load)
+    }
   }
 
   if (screen === 'home') {

@@ -12,40 +12,46 @@ interface Props {
 export function TemplatePicker({ onSelect, onOpenRecent }: Props) {
   const [recents, setRecents] = useState<string[]>([])
   const [notInstalled, setNotInstalled] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    api.claudeCheck().then((r) => { if (!r.installed) setNotInstalled(true) })
+    api.claudeCheck().then((r) => { if (!r.installed) setNotInstalled(true) }).catch(() => {})
     api.recents.list().then(setRecents).catch(() => {})
   }, [])
 
   async function handleTemplate(slug: string) {
-    if (slug === 'blank') {
-      const cwc: CwcFile = {
-        meta: {
-          id: crypto.randomUUID(),
-          name: 'Untitled Workflow',
-          description: '',
-          version: 1,
-          created: new Date().toISOString(),
-          updated: new Date().toISOString(),
-        },
-        nodes: [],
-        edges: [],
+    setError(null)
+    try {
+      if (slug === 'blank') {
+        const cwc: CwcFile = {
+          meta: {
+            id: crypto.randomUUID(),
+            name: 'Untitled Workflow',
+            description: '',
+            version: 1,
+            created: new Date().toISOString(),
+            updated: new Date().toISOString(),
+          },
+          nodes: [],
+          edges: [],
+        }
+        const pathRes = await fetch(`/api/workflows/default-path?name=${encodeURIComponent(cwc.meta.name)}`)
+        const { path: resolvedPath } = await pathRes.json() as { path: string }
+        await api.workflows.save(resolvedPath, cwc)
+        await api.recents.add(resolvedPath)
+        onSelect(cwc, resolvedPath)
+        return
       }
+      const template = TEMPLATES.find((t) => t.slug === slug)!
+      const cwc = instantiateTemplate(template)
       const pathRes = await fetch(`/api/workflows/default-path?name=${encodeURIComponent(cwc.meta.name)}`)
       const { path: resolvedPath } = await pathRes.json() as { path: string }
       await api.workflows.save(resolvedPath, cwc)
       await api.recents.add(resolvedPath)
       onSelect(cwc, resolvedPath)
-      return
+    } catch {
+      setError('Failed to create workflow. Is the server running?')
     }
-    const template = TEMPLATES.find((t) => t.slug === slug)!
-    const cwc = instantiateTemplate(template)
-    const pathRes = await fetch(`/api/workflows/default-path?name=${encodeURIComponent(cwc.meta.name)}`)
-    const { path: resolvedPath } = await pathRes.json() as { path: string }
-    await api.workflows.save(resolvedPath, cwc)
-    await api.recents.add(resolvedPath)
-    onSelect(cwc, resolvedPath)
   }
 
   if (notInstalled) {
@@ -63,6 +69,8 @@ export function TemplatePicker({ onSelect, onOpenRecent }: Props) {
         <h1>Claude Workflow Composer</h1>
         <p>Start from a template or open an existing workflow</p>
       </header>
+
+      {error && <p className="template-picker__error">{error}</p>}
 
       <section className="template-picker__section">
         <h2>New workflow</h2>
