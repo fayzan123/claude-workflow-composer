@@ -6,6 +6,7 @@ import { useWorkflow } from './hooks/useWorkflow.ts'
 import { useAutoSave } from './hooks/useAutoSave.ts'
 import { validateWorkflow } from './lib/validation.ts'
 import { Canvas } from './components/Canvas.tsx'
+import { Sidebar } from './components/Sidebar.tsx'
 import { NodePanel } from './components/panels/NodePanel.tsx'
 import { EdgePanel } from './components/panels/EdgePanel.tsx'
 import './App.css'
@@ -53,6 +54,7 @@ export default function App() {
 
   return (
     <div className="app app--editor">
+      <Sidebar />
       <Canvas
         workflow={editorWorkflow}
         dispatch={dispatch}

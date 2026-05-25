@@ -79,16 +79,34 @@ export function Canvas({ workflow, dispatch, validation, onSelectNode, onSelectE
 
   const onDrop = useCallback((event: React.DragEvent) => {
     event.preventDefault()
+
     const agentData = event.dataTransfer.getData('application/cwc-agent')
-    if (!agentData) return
-    const agent: CwcAgent = JSON.parse(agentData)
-    const canvasEl = (event.currentTarget as HTMLElement)
-    const rect = canvasEl.getBoundingClientRect()
-    dispatch({
-      type: 'ADD_NODE',
-      payload: { agent, position: { x: event.clientX - rect.left - 75, y: event.clientY - rect.top - 40 } },
-    })
-  }, [dispatch])
+    if (agentData) {
+      const agent: CwcAgent = JSON.parse(agentData)
+      const canvasEl = (event.currentTarget as HTMLElement)
+      const rect = canvasEl.getBoundingClientRect()
+      dispatch({
+        type: 'ADD_NODE',
+        payload: { agent, position: { x: event.clientX - rect.left - 75, y: event.clientY - rect.top - 40 } },
+      })
+      return
+    }
+
+    const skillData = event.dataTransfer.getData('application/cwc-skill')
+    if (skillData && selectedNodeId) {
+      const { namespacedSlug } = JSON.parse(skillData) as { namespacedSlug: string }
+      const currentNode = workflow.nodes.find((n) => n.id === selectedNodeId)
+      if (currentNode) {
+        const currentSkills = currentNode.agent.skills ?? []
+        if (!currentSkills.includes(namespacedSlug)) {
+          dispatch({
+            type: 'UPDATE_NODE',
+            payload: { nodeId: selectedNodeId, agent: { skills: [...currentSkills, namespacedSlug] } },
+          })
+        }
+      }
+    }
+  }, [dispatch, selectedNodeId, workflow.nodes])
 
   return (
     <div className="canvas-wrapper" onDrop={onDrop} onDragOver={(e) => e.preventDefault()}>
