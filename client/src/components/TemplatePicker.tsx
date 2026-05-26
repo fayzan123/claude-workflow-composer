@@ -19,6 +19,17 @@ export function TemplatePicker({ onSelect, onOpenRecent }: Props) {
     api.recents.list().then(setRecents).catch(() => {})
   }, [])
 
+  async function handleDelete(path: string) {
+    try {
+      await api.workflows.delete(path)
+      await api.recents.remove(path)
+      setRecents((r) => r.filter((p) => p !== path))
+    } catch {
+      // file may already be gone; still remove from recents list locally
+      setRecents((r) => r.filter((p) => p !== path))
+    }
+  }
+
   async function handleTemplate(slug: string) {
     setError(null)
     try {
@@ -94,8 +105,9 @@ export function TemplatePicker({ onSelect, onOpenRecent }: Props) {
           <h2>Recent workflows</h2>
           <ul className="recent-list">
             {recents.map((path) => (
-              <li key={path}>
-                <button onClick={() => onOpenRecent(path)}>{path}</button>
+              <li key={path} className="recent-item">
+                <button className="recent-item__open" onClick={() => onOpenRecent(path)}>{path}</button>
+                <button className="recent-item__delete" onClick={() => handleDelete(path)} aria-label="Delete workflow">×</button>
               </li>
             ))}
           </ul>

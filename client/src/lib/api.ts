@@ -32,6 +32,7 @@ export const api = {
   recents: {
     list: () => req<string[]>('GET', '/recents'),
     add: (filePath: string) => req<string[]>('POST', '/recents', { path: filePath }),
+    remove: (filePath: string) => req<string[]>('DELETE', `/recents?path=${encodeURIComponent(filePath)}`),
   },
 
   skills: () => req<SkillEntry[]>('GET', '/skills'),

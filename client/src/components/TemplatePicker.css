@@ -113,6 +113,35 @@
   gap: 0.35rem;
 }
 
+.recent-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.recent-item__open {
+  flex: 1;
+  min-width: 0;
+}
+
+.recent-item__delete {
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 16px;
+  color: #94a3b8;
+  padding: 2px 6px;
+  border-radius: 4px;
+  line-height: 1;
+  transition: color 0.15s, background 0.15s;
+}
+
+.recent-item__delete:hover {
+  color: #ef4444;
+  background: #fee2e2;
+}
+
 .recent-list li button {
   background: none;
   border: none;

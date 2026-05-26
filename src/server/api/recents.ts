@@ -18,6 +18,16 @@ export function recentsRouter(recentsPath: string) {
     res.json(await readRecents())
   })
 
+  router.delete('/', async (req, res) => {
+    const filePath = req.query['path'] as string
+    if (!filePath) return void res.status(400).json({ error: 'path required' })
+    const existing = await readRecents()
+    const updated = existing.filter((p) => p !== filePath)
+    await fs.mkdir(path.dirname(recentsPath), { recursive: true })
+    await fs.writeFile(recentsPath, JSON.stringify(updated, null, 2), 'utf-8')
+    res.json(updated)
+  })
+
   router.post('/', async (req, res) => {
     const { path: filePath } = req.body as { path: string }
     if (!filePath) return void res.status(400).json({ error: 'path required' })
