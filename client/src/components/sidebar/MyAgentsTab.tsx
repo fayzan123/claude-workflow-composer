@@ -4,11 +4,7 @@ import type { AgentEntry } from '../../../../src/server/api/agents.ts'
 import { MarkdownViewer } from '../MarkdownViewer.tsx'
 import './MyAgentsTab.css'
 
-interface Props {
-  projectDir?: string
-}
-
-export function MyAgentsTab({ projectDir }: Props) {
+export function MyAgentsTab() {
   const [agents, setAgents] = useState<AgentEntry[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -17,7 +13,7 @@ export function MyAgentsTab({ projectDir }: Props) {
   const isDragging = useRef(false)
 
   useEffect(() => {
-    api.agents(projectDir)
+    api.agents()
       .then(setAgents)
       .catch((err: unknown) => setError(err instanceof Error ? err.message : 'Failed to load agents'))
       .finally(() => setLoading(false))

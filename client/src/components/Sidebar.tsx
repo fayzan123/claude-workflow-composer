@@ -5,11 +5,7 @@ import './Sidebar.css'
 
 type Tab = 'my-agents' | 'skills'
 
-interface Props {
-  projectDir?: string
-}
-
-export function Sidebar({ projectDir }: Props) {
+export function Sidebar() {
   const [activeTab, setActiveTab] = useState<Tab>('my-agents')
 
   return (
@@ -29,7 +25,7 @@ export function Sidebar({ projectDir }: Props) {
         </button>
       </div>
       <div className="sidebar__content">
-        {activeTab === 'my-agents' && <MyAgentsTab projectDir={projectDir} />}
+        {activeTab === 'my-agents' && <MyAgentsTab />}
         {activeTab === 'skills' && <SkillsPanel />}
       </div>
     </div>
