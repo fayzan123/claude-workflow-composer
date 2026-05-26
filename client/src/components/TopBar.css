@@ -1,0 +1,115 @@
+.top-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 16px;
+  height: 48px;
+  background: var(--color-surface, #fff);
+  border-bottom: 1px solid var(--color-border, #e5e7eb);
+  flex-shrink: 0;
+  z-index: 10;
+}
+
+.top-bar__home-btn {
+  flex-shrink: 0;
+  padding: 6px 12px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--color-text-secondary, #6b7280);
+  background: transparent;
+  border: 1px solid var(--color-border, #e5e7eb);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.top-bar__home-btn:hover {
+  background: var(--color-surface-hover, #f3f4f6);
+  color: var(--color-text, #111827);
+}
+
+.top-bar__name-input {
+  flex: 1;
+  min-width: 0;
+  padding: 6px 10px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-text, #111827);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  outline: none;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.top-bar__name-input:hover {
+  border-color: var(--color-border, #e5e7eb);
+}
+
+.top-bar__name-input:focus {
+  border-color: var(--color-primary, #6366f1);
+  background: var(--color-surface-hover, #f9fafb);
+}
+
+.top-bar__status {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.top-bar__save-indicator {
+  font-size: 12px;
+  font-weight: 500;
+  transition: color 0.2s;
+}
+
+.top-bar__save-indicator--saving {
+  color: var(--color-text-secondary, #6b7280);
+}
+
+.top-bar__save-indicator--saved {
+  color: var(--color-success, #10b981);
+}
+
+.top-bar__badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  font-size: 12px;
+  font-weight: 500;
+  border-radius: 12px;
+  cursor: default;
+}
+
+.top-bar__badge--warning {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.top-bar__badge--error {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.top-bar__export-btn {
+  padding: 6px 16px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #fff;
+  background: var(--color-primary, #6366f1);
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.15s, opacity 0.15s;
+}
+
+.top-bar__export-btn:hover:not(:disabled) {
+  background: var(--color-primary-hover, #4f46e5);
+}
+
+.top-bar__export-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}

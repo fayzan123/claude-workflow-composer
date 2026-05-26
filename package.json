@@ -3,19 +3,42 @@
   "version": "0.1.0",
   "description": "Visual composer for Claude Code multi-agent workflows",
   "type": "module",
+  "bin": {
+    "cwc": "./dist/bin/cwc.js"
+  },
   "scripts": {
     "test": "vitest run",
     "test:watch": "vitest",
-    "build": "tsc",
-    "typecheck": "tsc --noEmit"
+    "build": "npm run build:server && npm run build:client",
+    "build:server": "tsc",
+    "build:client": "vite build --config client/vite.config.ts",
+    "dev:server": "tsc --watch",
+    "dev:client": "vite --config client/vite.config.ts",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p client/tsconfig.json",
+    "start": "node dist/bin/cwc.js"
   },
   "devDependencies": {
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.6",
     "@types/node": "^20.0.0",
+    "@types/open": "^6.1.0",
+    "@types/react": "^19.2.15",
+    "@types/react-dom": "^19.2.3",
+    "@types/uuid": "^10.0.0",
+    "@types/ws": "^8.18.1",
+    "@vitejs/plugin-react": "^4.7.0",
     "typescript": "^5.4.0",
     "vitest": "^1.6.0"
   },
   "dependencies": {
+    "@xyflow/react": "^12.10.2",
+    "cors": "^2.8.6",
+    "express": "^5.2.1",
     "gray-matter": "^4.0.3",
-    "uuid": "^9.0.0"
+    "open": "^11.0.0",
+    "react": "^19.2.6",
+    "react-dom": "^19.2.6",
+    "uuid": "^9.0.0",
+    "ws": "^8.21.0"
   }
 }
