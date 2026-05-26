@@ -65,7 +65,7 @@ export default function App() {
         isSaving={isSaving}
         dispatch={dispatch}
         onExport={() => setShowExport(true)}
-        onHome={() => setScreen('home')}
+        onHome={() => { setScreen('home'); setWorkflow(null); setWorkflowPath(null) }}
       />
       <div className="app__editor-body">
         <Sidebar projectDir={projectDir} />
