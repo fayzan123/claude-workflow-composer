@@ -9,6 +9,7 @@ export interface SkillEntry {
   description: string
   source: 'user' | 'plugin'
   namespacedSlug: string   // 'pluginName:slug' for plugins, plain slug for user skills
+  filePath: string
 }
 
 export function skillsRouter(userHomeDir: string) {
@@ -27,7 +28,7 @@ export function skillsRouter(userHomeDir: string) {
         const skillFile = path.join(userSkillsDir, slug, 'SKILL.md')
         try {
           const { data } = matter(await fs.readFile(skillFile, 'utf-8'))
-          skills.push({ slug, name: String(data['name'] ?? slug), description: String(data['description'] ?? ''), source: 'user', namespacedSlug: slug })
+          skills.push({ slug, name: String(data['name'] ?? slug), description: String(data['description'] ?? ''), source: 'user', namespacedSlug: slug, filePath: skillFile })
         } catch { /* skip */ }
       }
     } catch { /* dir missing */ }
@@ -47,7 +48,7 @@ export function skillsRouter(userHomeDir: string) {
             const skillFile = path.join(skillsDir, slug, 'SKILL.md')
             try {
               const { data } = matter(await fs.readFile(skillFile, 'utf-8'))
-              skills.push({ slug, name: String(data['name'] ?? slug), description: String(data['description'] ?? ''), source: 'plugin', namespacedSlug: `${pluginName}:${slug}` })
+              skills.push({ slug, name: String(data['name'] ?? slug), description: String(data['description'] ?? ''), source: 'plugin', namespacedSlug: `${pluginName}:${slug}`, filePath: skillFile })
             } catch { /* skip */ }
           }
         }
