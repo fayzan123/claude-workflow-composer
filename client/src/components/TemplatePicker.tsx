@@ -9,10 +9,13 @@ interface Props {
   onOpenRecent: (path: string) => void
 }
 
+type Tab = 'new' | 'recent'
+
 export function TemplatePicker({ onSelect, onOpenRecent }: Props) {
   const [recents, setRecents] = useState<string[]>([])
   const [notInstalled, setNotInstalled] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [activeTab, setActiveTab] = useState<Tab>('new')
 
   useEffect(() => {
     api.claudeCheck().then((r) => { if (!r.installed) setNotInstalled(true) }).catch(() => {})
@@ -81,36 +84,56 @@ export function TemplatePicker({ onSelect, onOpenRecent }: Props) {
         <p>Start from a template or open an existing workflow</p>
       </header>
 
+      <div className="template-picker__tabs">
+        <button
+          className={`template-picker__tab${activeTab === 'new' ? ' template-picker__tab--active' : ''}`}
+          onClick={() => setActiveTab('new')}
+        >
+          New Workflow
+        </button>
+        <button
+          className={`template-picker__tab${activeTab === 'recent' ? ' template-picker__tab--active' : ''}`}
+          onClick={() => setActiveTab('recent')}
+        >
+          Recent
+          {recents.length > 0 && <span className="template-picker__tab-badge">{recents.length}</span>}
+        </button>
+      </div>
+
       {error && <p className="template-picker__error">{error}</p>}
 
-      <section className="template-picker__section">
-        <h2>New workflow</h2>
-        <div className="template-picker__grid">
-          {TEMPLATES.map((t) => (
-            <button key={t.slug} className="template-card" onClick={() => handleTemplate(t.slug)}>
-              <h3>{t.name}</h3>
-              <p className="template-card__pattern">{t.pattern}</p>
-              <p className="template-card__desc">{t.description}</p>
-            </button>
-          ))}
-          <button className="template-card template-card--blank" onClick={() => handleTemplate('blank')}>
-            <h3>Blank canvas</h3>
-            <p className="template-card__desc">Start from scratch</p>
-          </button>
-        </div>
-      </section>
-
-      {recents.length > 0 && (
+      {activeTab === 'new' && (
         <section className="template-picker__section">
-          <h2>Recent workflows</h2>
-          <ul className="recent-list">
-            {recents.map((path) => (
-              <li key={path} className="recent-item">
-                <button className="recent-item__open" onClick={() => onOpenRecent(path)}>{path}</button>
-                <button className="recent-item__delete" onClick={() => handleDelete(path)} aria-label="Delete workflow">×</button>
-              </li>
+          <div className="template-picker__grid">
+            {TEMPLATES.map((t) => (
+              <button key={t.slug} className="template-card" onClick={() => handleTemplate(t.slug)}>
+                <h3>{t.name}</h3>
+                <p className="template-card__pattern">{t.pattern}</p>
+                <p className="template-card__desc">{t.description}</p>
+              </button>
             ))}
-          </ul>
+            <button className="template-card template-card--blank" onClick={() => handleTemplate('blank')}>
+              <h3>Blank canvas</h3>
+              <p className="template-card__desc">Start from scratch</p>
+            </button>
+          </div>
+        </section>
+      )}
+
+      {activeTab === 'recent' && (
+        <section className="template-picker__section">
+          {recents.length === 0 ? (
+            <p className="template-picker__empty">No recent workflows yet.</p>
+          ) : (
+            <ul className="recent-list">
+              {recents.map((path) => (
+                <li key={path} className="recent-item">
+                  <button className="recent-item__open" onClick={() => onOpenRecent(path)}>{path}</button>
+                  <button className="recent-item__delete" onClick={() => handleDelete(path)} aria-label="Delete workflow">×</button>
+                </li>
+              ))}
+            </ul>
+          )}
         </section>
       )}
     </div>

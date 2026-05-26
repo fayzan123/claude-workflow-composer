@@ -102,6 +102,60 @@
   background-color: #fafafe;
 }
 
+/* Tabs */
+
+.template-picker__tabs {
+  display: flex;
+  gap: 0;
+  border-bottom: 2px solid #e8e8e8;
+  margin-bottom: 1.75rem;
+}
+
+.template-picker__tab {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -2px;
+  padding: 0.6rem 1.25rem;
+  font-size: 0.925rem;
+  font-weight: 500;
+  color: #888;
+  cursor: pointer;
+  font-family: inherit;
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+
+.template-picker__tab:hover {
+  color: #1a1a1a;
+}
+
+.template-picker__tab--active {
+  color: #6c47ff;
+  border-bottom-color: #6c47ff;
+}
+
+.template-picker__tab-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: #ede9fe;
+  color: #6c47ff;
+  font-size: 0.7rem;
+  font-weight: 600;
+  border-radius: 10px;
+  padding: 0.1rem 0.45rem;
+  min-width: 1.4em;
+}
+
+.template-picker__empty {
+  color: #999;
+  font-size: 0.9rem;
+  margin: 1rem 0;
+}
+
 /* Recent workflows */
 
 .recent-list {
