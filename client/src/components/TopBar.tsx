@@ -42,14 +42,18 @@ export function TopBar({ workflow, validation, isSaving, dispatch, onExport, onH
         </span>
 
         {hasErrors && (
-          <span className="top-bar__badge top-bar__badge--error" title={validation.errors.map((e) => e.message).join('\n')}>
-            ✕ {validation.errors.length} {validation.errors.length === 1 ? 'error' : 'errors'}
+          <span className="top-bar__badge top-bar__badge--error">
+            ✕ {validation.errors.length === 1
+              ? validation.errors[0].message
+              : `${validation.errors.length} errors: ${validation.errors.map((e) => e.message).join(' · ')}`}
           </span>
         )}
 
         {!hasErrors && hasWarnings && (
-          <span className="top-bar__badge top-bar__badge--warning" title={validation.warnings.map((w) => w.message).join('\n')}>
-            ⚠ {validation.warnings.length} {validation.warnings.length === 1 ? 'warning' : 'warnings'}
+          <span className="top-bar__badge top-bar__badge--warning">
+            ⚠ {validation.warnings.length === 1
+              ? validation.warnings[0].message
+              : `${validation.warnings.length} warnings`}
           </span>
         )}
 

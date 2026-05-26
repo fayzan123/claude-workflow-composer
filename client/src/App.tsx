@@ -31,6 +31,7 @@ export default function App() {
   function openWorkflow(cwc: CwcFile, path: string) {
     setWorkflow(cwc)
     setWorkflowPath(path)
+    dispatch({ type: 'LOAD', payload: cwc })
     setScreen('editor')
   }
 
