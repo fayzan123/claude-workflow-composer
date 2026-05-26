@@ -42,4 +42,10 @@ export const api = {
 
   exportPreview: (cwcFile: CwcFile, target: ExportTarget) =>
     req<{ files: { path: string; content: string }[]; warnings: string[] }>('POST', '/export/preview', { cwcFile, target }),
+
+  fileContent: (filePath: string) =>
+    req<{ content: string }>('GET', `/file-content?path=${encodeURIComponent(filePath)}`),
+
+  openFile: (filePath: string) =>
+    req<{ opened: boolean }>('POST', '/open-file', { path: filePath }),
 }
