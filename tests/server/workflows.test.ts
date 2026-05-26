@@ -81,6 +81,23 @@ it('GET /api/workflows/list returns .cwc files in workflowsDir', async () => {
   expect(items.some((i) => i.path === filePath && i.name === 'Test Workflow')).toBe(true)
 })
 
+it('GET /api/workflows/list includes nodeCount', async () => {
+  const filePath = path.join(tmpDir, 'counted.cwc')
+  const cwc: CwcFile = {
+    ...FIXTURE_CWC,
+    nodes: [
+      { id: 'n1', position: { x: 0, y: 0 }, exportedSlug: null, agent: { name: 'A', description: '', completionCriteria: '' } },
+      { id: 'n2', position: { x: 0, y: 0 }, exportedSlug: null, agent: { name: 'B', description: '', completionCriteria: '' } },
+    ],
+  }
+  await fs.writeFile(filePath, JSON.stringify(cwc), 'utf-8')
+  const { status, body } = await httpGet('/api/workflows/list')
+  expect(status).toBe(200)
+  const items = body as { path: string; nodeCount: number }[]
+  const item = items.find((i) => i.path === filePath)
+  expect(item?.nodeCount).toBe(2)
+})
+
 it('GET /api/workflows?path returns 404 for missing file', async () => {
   const { status } = await httpGet(`/api/workflows?path=${encodeURIComponent('/tmp/does-not-exist.cwc')}`)
   expect(status).toBe(404)

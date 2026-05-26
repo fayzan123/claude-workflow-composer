@@ -31,12 +31,12 @@ export function createApp(opts: AppOptions): express.Express {
   app.use('/api/claude-check', claudeCheckRouter())
 
   const wfDir = opts.workflowsDir ?? path.join(os.homedir(), '.cwc', 'workflows')
-  app.use('/api/workflows', workflowsRouter(wfDir))
+  const recPath = opts.recentsPath ?? path.join(os.homedir(), '.cwc', 'recents.json')
+  app.use('/api/workflows', workflowsRouter(wfDir, recPath))
 
   const homeDir = opts.userHomeDir ?? os.homedir()
   app.use('/api/agents', agentsRouter(homeDir))
 
-  const recPath = opts.recentsPath ?? path.join(os.homedir(), '.cwc', 'recents.json')
   app.use('/api/recents', recentsRouter(recPath))
 
   app.use('/api/export/preview', exportPreviewRouter())

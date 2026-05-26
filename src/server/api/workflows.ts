@@ -3,13 +3,14 @@ import * as fs from 'node:fs/promises'
 import * as path from 'node:path'
 import * as os from 'node:os'
 import type { CwcFile } from '../../schema.js'
+import { slugify } from '../../slugify.js'
 
-export function workflowsRouter(workflowsDir: string) {
+export function workflowsRouter(workflowsDir: string, recentsPath: string) {
   const router = createRouter()
 
   router.get('/default-path', (req, res) => {
     const name = (req.query['name'] as string) || 'untitled'
-    const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 64) || 'untitled'
+    const slug = slugify(name) || 'untitled'
     res.json({ path: path.join(os.homedir(), '.cwc', 'workflows', `${slug}.cwc`) })
   })
 
@@ -25,7 +26,7 @@ export function workflowsRouter(workflowsDir: string) {
             try {
               const raw = await fs.readFile(fullPath, 'utf-8')
               const cwc: CwcFile = JSON.parse(raw)
-              return { path: fullPath, name: cwc.meta.name, updated: cwc.meta.updated }
+              return { path: fullPath, name: cwc.meta.name, updated: cwc.meta.updated, nodeCount: cwc.nodes.length }
             } catch {
               return null
             }
