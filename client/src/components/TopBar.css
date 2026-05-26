@@ -301,3 +301,44 @@
   background: var(--color-surface-active);
   color: var(--color-text);
 }
+
+.top-bar__save-indicator--error {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--color-error, #e53e3e);
+  font-size: inherit;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0;
+}
+.top-bar__save-indicator--error .top-bar__save-dot {
+  background: var(--color-error, #e53e3e);
+}
+.top-bar__rename-error {
+  font-size: 11px;
+  color: var(--color-error, #e53e3e);
+  margin-top: 2px;
+}
+.top-bar__leave-msg {
+  font-size: 13px;
+  color: var(--color-text-secondary);
+}
+.top-bar__leave-btn {
+  font-size: 12px;
+  padding: 4px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  border: 1px solid transparent;
+}
+.top-bar__leave-btn--confirm {
+  background: var(--color-error, #e53e3e);
+  color: #fff;
+  border-color: var(--color-error, #e53e3e);
+}
+.top-bar__leave-btn--cancel {
+  background: transparent;
+  color: var(--color-text-secondary);
+  border-color: var(--color-border);
+}
