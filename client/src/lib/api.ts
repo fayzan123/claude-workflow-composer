@@ -38,4 +38,7 @@ export const api = {
 
   export: (cwcFile: CwcFile, target: ExportTarget) =>
     req<ExportResult>('POST', '/export', { cwcFile, target }),
+
+  exportPreview: (cwcFile: CwcFile, target: ExportTarget) =>
+    req<{ files: { path: string; content: string }[]; warnings: string[] }>('POST', '/export/preview', { cwcFile, target }),
 }

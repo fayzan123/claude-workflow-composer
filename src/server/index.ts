@@ -9,6 +9,7 @@ import { workflowsRouter } from './api/workflows.js'
 import { agentsRouter } from './api/agents.js'
 import { recentsRouter } from './api/recents.js'
 import { exportRouter } from './api/export.js'
+import { exportPreviewRouter } from './api/export-preview.js'
 import { skillsRouter } from './api/skills.js'
 
 export interface AppOptions {
@@ -35,6 +36,7 @@ export function createApp(opts: AppOptions): express.Express {
   const recPath = opts.recentsPath ?? path.join(os.homedir(), '.cwc', 'recents.json')
   app.use('/api/recents', recentsRouter(recPath))
 
+  app.use('/api/export/preview', exportPreviewRouter())
   app.use('/api/export', exportRouter())
   app.use('/api/skills', skillsRouter(homeDir))
 
