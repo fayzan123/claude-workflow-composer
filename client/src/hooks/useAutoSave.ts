@@ -1,16 +1,60 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { CwcFile } from '../types.ts'
 import { api } from '../lib/api.ts'
 
-export function useAutoSave(workflow: CwcFile, filePath: string | null, onError?: (err: Error) => void): { isSaving: boolean } {
+interface UseAutoSaveOptions {
+  onError?: (err: Error) => void
+  onSuccess?: () => void
+}
+
+export function useAutoSave(
+  workflow: CwcFile,
+  filePath: string | null,
+  options?: UseAutoSaveOptions,
+): { isSaving: boolean; isDirty: boolean; flush: () => Promise<void> } {
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const prevRef = useRef<string>('')
-  const onErrorRef = useRef(onError)
-  const [isSaving, setIsSaving] = useState(false)
+  const onErrorRef = useRef(options?.onError)
+  const onSuccessRef = useRef(options?.onSuccess)
+  const workflowRef = useRef(workflow)
+  const filePathRef = useRef(filePath)
 
+  const [isSaving, setIsSaving] = useState(false)
+  const [hasPendingTimer, setHasPendingTimer] = useState(false)
+
+  // Keep refs in sync with latest values (avoids stale closures in flush/callbacks)
   useEffect(() => {
-    onErrorRef.current = onError
+    onErrorRef.current = options?.onError
+    onSuccessRef.current = options?.onSuccess
+    workflowRef.current = workflow
+    filePathRef.current = filePath
   })
+
+  const runSave = useCallback(async () => {
+    const fp = filePathRef.current
+    const wf = workflowRef.current
+    if (!fp) return
+    setIsSaving(true)
+    let succeeded = false
+    try {
+      await api.workflows.save(fp, wf)
+      succeeded = true
+    } catch (err) {
+      onErrorRef.current?.(err as Error)
+    } finally {
+      setIsSaving(false)
+      setHasPendingTimer(false)
+    }
+    if (succeeded) onSuccessRef.current?.()
+  }, []) // stable — reads everything via refs
+
+  const flush = useCallback(async () => {
+    if (timerRef.current) {
+      clearTimeout(timerRef.current)
+      timerRef.current = null
+    }
+    await runSave()
+  }, [runSave])
 
   useEffect(() => {
     if (!filePath) return
@@ -18,27 +62,24 @@ export function useAutoSave(workflow: CwcFile, filePath: string | null, onError?
     if (serialized === prevRef.current) return
     prevRef.current = serialized
 
+    // Cancel any existing pending timer (don't clear dirty state — will be cleared in finally)
     if (timerRef.current) clearTimeout(timerRef.current)
-    setIsSaving(true)
-    timerRef.current = setTimeout(async () => {
-      try {
-        await api.workflows.save(filePath, workflow)
-      } catch (err) {
-        // prevRef already advanced — failed saves are not retried; caller is notified via onError
-        onErrorRef.current?.(err as Error)
-      } finally {
-        setIsSaving(false)
-      }
+
+    setHasPendingTimer(true)
+    timerRef.current = setTimeout(() => {
+      timerRef.current = null
+      runSave()
     }, 500)
 
+    // Cleanup: cancel timer only. Do NOT reset isSaving or hasPendingTimer here —
+    // this cleanup runs on every keystroke and would cause dirty state to flicker.
     return () => {
       if (timerRef.current) {
         clearTimeout(timerRef.current)
         timerRef.current = null
-        setIsSaving(false)
       }
     }
-  }, [workflow, filePath])  // onError NOT in deps — read via ref instead
+  }, [workflow, filePath, runSave])
 
-  return { isSaving }
+  return { isSaving, isDirty: hasPendingTimer || isSaving, flush }
 }
