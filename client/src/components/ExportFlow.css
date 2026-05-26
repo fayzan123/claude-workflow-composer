@@ -208,3 +208,21 @@
 .export-flow-close-btn:hover {
   background: var(--color-primary-hover, #4f46e5);
 }
+
+.export-flow-back-btn {
+  align-self: flex-start;
+  padding: 8px 20px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text, #111827);
+  background: var(--color-surface-hover, #f3f4f6);
+  border: 1px solid var(--color-border, #e5e7eb);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.export-flow-back-btn:hover {
+  background: var(--color-border, #e5e7eb);
+  border-color: var(--color-text-secondary, #6b7280);
+}

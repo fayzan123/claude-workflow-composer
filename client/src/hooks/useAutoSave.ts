@@ -31,7 +31,13 @@ export function useAutoSave(workflow: CwcFile, filePath: string | null, onError?
       }
     }, 500)
 
-    return () => { if (timerRef.current) clearTimeout(timerRef.current) }
+    return () => {
+      if (timerRef.current) {
+        clearTimeout(timerRef.current)
+        timerRef.current = null
+        setIsSaving(false)
+      }
+    }
   }, [workflow, filePath])  // onError NOT in deps — read via ref instead
 
   return { isSaving }
