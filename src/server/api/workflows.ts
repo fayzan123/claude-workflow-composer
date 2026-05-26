@@ -1,10 +1,17 @@
 import { Router as createRouter } from 'express'
 import * as fs from 'node:fs/promises'
 import * as path from 'node:path'
+import * as os from 'node:os'
 import type { CwcFile } from '../../schema.js'
 
 export function workflowsRouter(workflowsDir: string) {
   const router = createRouter()
+
+  router.get('/default-path', (req, res) => {
+    const name = (req.query['name'] as string) || 'untitled'
+    const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 64) || 'untitled'
+    res.json({ path: path.join(os.homedir(), '.cwc', 'workflows', `${slug}.cwc`) })
+  })
 
   router.get('/list', async (_req, res) => {
     try {
