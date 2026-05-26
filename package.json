@@ -1,8 +1,14 @@
 {
   "name": "claude-workflow-composer",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Visual composer for Claude Code multi-agent workflows",
   "type": "module",
+  "engines": {
+    "node": ">=18"
+  },
+  "files": [
+    "dist/"
+  ],
   "bin": {
     "cwc": "./dist/bin/cwc.js"
   },
