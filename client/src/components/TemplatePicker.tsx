@@ -1,5 +1,4 @@
-import React, { useEffect, useState } from 'react'
-import { TEMPLATES, instantiateTemplate } from '../lib/templates.ts'
+import { useEffect, useState } from 'react'
 import { api } from '../lib/api.ts'
 import type { CwcFile } from '../types.ts'
 import './TemplatePicker.css'
@@ -33,31 +32,21 @@ export function TemplatePicker({ onSelect, onOpenRecent }: Props) {
     }
   }
 
-  async function handleTemplate(slug: string) {
+  async function handleNewWorkflow() {
     setError(null)
     try {
-      if (slug === 'blank') {
-        const cwc: CwcFile = {
-          meta: {
-            id: crypto.randomUUID(),
-            name: 'Untitled Workflow',
-            description: '',
-            version: 1,
-            created: new Date().toISOString(),
-            updated: new Date().toISOString(),
-          },
-          nodes: [],
-          edges: [],
-        }
-        const pathRes = await fetch(`/api/workflows/default-path?name=${encodeURIComponent(cwc.meta.name)}`)
-        const { path: resolvedPath } = await pathRes.json() as { path: string }
-        await api.workflows.save(resolvedPath, cwc)
-        await api.recents.add(resolvedPath)
-        onSelect(cwc, resolvedPath)
-        return
+      const cwc: CwcFile = {
+        meta: {
+          id: crypto.randomUUID(),
+          name: 'Untitled Workflow',
+          description: '',
+          version: 1,
+          created: new Date().toISOString(),
+          updated: new Date().toISOString(),
+        },
+        nodes: [],
+        edges: [],
       }
-      const template = TEMPLATES.find((t) => t.slug === slug)!
-      const cwc = instantiateTemplate(template)
       const pathRes = await fetch(`/api/workflows/default-path?name=${encodeURIComponent(cwc.meta.name)}`)
       const { path: resolvedPath } = await pathRes.json() as { path: string }
       await api.workflows.save(resolvedPath, cwc)
@@ -81,7 +70,7 @@ export function TemplatePicker({ onSelect, onOpenRecent }: Props) {
     <div className="template-picker">
       <header className="template-picker__header">
         <h1>Claude Workflow Composer</h1>
-        <p>Start from a template or open an existing workflow</p>
+        <p>Start a new workflow or open an existing one</p>
       </header>
 
       <div className="template-picker__tabs">
@@ -105,16 +94,9 @@ export function TemplatePicker({ onSelect, onOpenRecent }: Props) {
       {activeTab === 'new' && (
         <section className="template-picker__section">
           <div className="template-picker__grid">
-            {TEMPLATES.map((t) => (
-              <button key={t.slug} className="template-card" onClick={() => handleTemplate(t.slug)}>
-                <h3>{t.name}</h3>
-                <p className="template-card__pattern">{t.pattern}</p>
-                <p className="template-card__desc">{t.description}</p>
-              </button>
-            ))}
-            <button className="template-card template-card--blank" onClick={() => handleTemplate('blank')}>
+            <button className="template-card template-card--blank" onClick={handleNewWorkflow}>
               <h3>Blank canvas</h3>
-              <p className="template-card__desc">Start from scratch</p>
+              <p className="template-card__desc">Start from scratch with your own agents and skills</p>
             </button>
           </div>
         </section>
