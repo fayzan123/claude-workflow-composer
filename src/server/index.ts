@@ -11,6 +11,8 @@ import { recentsRouter } from './api/recents.js'
 import { exportRouter } from './api/export.js'
 import { exportPreviewRouter } from './api/export-preview.js'
 import { skillsRouter } from './api/skills.js'
+import { fileContentRouter } from './api/file-content.js'
+import { openFileRouter } from './api/open-file.js'
 
 export interface AppOptions {
   staticDir: string | null
@@ -39,6 +41,8 @@ export function createApp(opts: AppOptions): express.Express {
   app.use('/api/export/preview', exportPreviewRouter())
   app.use('/api/export', exportRouter())
   app.use('/api/skills', skillsRouter(homeDir))
+  app.use('/api/file-content', fileContentRouter())
+  app.use('/api/open-file', openFileRouter())
 
   if (opts.staticDir && fs.existsSync(opts.staticDir)) {
     app.use(express.static(opts.staticDir))
