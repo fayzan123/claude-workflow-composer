@@ -1,46 +1,77 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { api } from '../lib/api.ts'
 import type { CwcFile } from '../types.ts'
 import './TemplatePicker.css'
 
+type WorkflowListItem = { path: string; name: string; nodeCount: number; updated: string }
+
 interface Props {
   onSelect: (cwc: CwcFile, path: string) => void
-  onOpenRecent: (path: string) => void
+  onOpenRecent: (path: string) => Promise<void>
 }
 
-type Tab = 'new' | 'recent'
+type Tab = 'new' | 'workflows'
 
-function formatPath(path: string): { name: string; dir: string } {
-  const parts = path.replace(/\.cwc$/, '').split('/')
-  const name = parts[parts.length - 1]
-  const dir = path.replace(/^\/Users\/[^/]+/, '~').replace(/\/[^/]*\.cwc$/, '')
-  return { name: name || 'Untitled', dir }
+export function relativeTime(isoString: string, now = Date.now()): string {
+  const diff = now - new Date(isoString).getTime()
+  const sec = Math.floor(diff / 1000)
+  if (sec < 60) return 'just now'
+  const min = Math.floor(sec / 60)
+  if (min < 60) return `${min} min ago`
+  const hr = Math.floor(min / 60)
+  if (hr < 24) return `${hr} hr ago`
+  const days = Math.floor(hr / 24)
+  return `${days} days ago`
+}
+
+function shortenPath(p: string): string {
+  return p.replace(/^\/Users\/[^/]+/, '~').replace(/^\/home\/[^/]+/, '~')
 }
 
 export function TemplatePicker({ onSelect, onOpenRecent }: Props) {
-  const [recents, setRecents] = useState<string[]>([])
+  const [workflows, setWorkflows] = useState<WorkflowListItem[]>([])
   const [notInstalled, setNotInstalled] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState<Tab>('new')
   const [creating, setCreating] = useState(false)
+  const [deletingPath, setDeletingPath] = useState<string | null>(null)
+  const confirmRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     api.claudeCheck().then((r) => { if (!r.installed) setNotInstalled(true) }).catch(() => {})
-    api.recents.list().then(setRecents).catch(() => {})
+    api.workflows.list().then((items) => {
+      setWorkflows(items.slice().sort((a, b) => b.updated.localeCompare(a.updated)))
+    }).catch(() => {})
   }, [])
+
+  useEffect(() => {
+    if (!deletingPath) return
+    function handleKey(e: KeyboardEvent) { if (e.key === 'Escape') setDeletingPath(null) }
+    function handleClick(e: MouseEvent) {
+      if (!confirmRef.current?.contains(e.target as Node)) setDeletingPath(null)
+    }
+    document.addEventListener('keydown', handleKey)
+    document.addEventListener('mousedown', handleClick)
+    return () => {
+      document.removeEventListener('keydown', handleKey)
+      document.removeEventListener('mousedown', handleClick)
+    }
+  }, [deletingPath])
 
   async function handleDelete(path: string) {
     try {
-      let cwcFile
+      let cwcFile: CwcFile | undefined
       try { cwcFile = await api.workflows.read(path) } catch { /* corrupted or missing */ }
       if (cwcFile) {
         try { await api.deleteExport(cwcFile, { type: 'user' }) } catch { /* best-effort */ }
       }
       await api.workflows.delete(path)
       await api.recents.remove(path)
-      setRecents((r) => r.filter((p) => p !== path))
+      setWorkflows((ws) => ws.filter((w) => w.path !== path))
     } catch {
-      setRecents((r) => r.filter((p) => p !== path))
+      setWorkflows((ws) => ws.filter((w) => w.path !== path))
+    } finally {
+      setDeletingPath(null)
     }
   }
 
@@ -77,15 +108,11 @@ export function TemplatePicker({ onSelect, onOpenRecent }: Props) {
         <div className="template-picker__notice">
           <div className="template-picker__notice-icon">
             <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="var(--color-primary)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="12" cy="12" r="10" />
-              <path d="M12 8v4" />
-              <path d="M12 16h.01" />
+              <circle cx="12" cy="12" r="10" /><path d="M12 8v4" /><path d="M12 16h.01" />
             </svg>
           </div>
           <h2 className="template-picker__notice-title">Claude Code not found</h2>
-          <p className="template-picker__notice-desc">
-            Install Claude Code first, then relaunch <code>npx cwc</code>.
-          </p>
+          <p className="template-picker__notice-desc">Install Claude Code first, then relaunch <code>npx cwc</code>.</p>
         </div>
       </div>
     )
@@ -96,9 +123,7 @@ export function TemplatePicker({ onSelect, onOpenRecent }: Props) {
       <header className="template-picker__header">
         <div className="template-picker__logo">
           <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="var(--color-primary)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M12 2L2 7l10 5 10-5-10-5z" />
-            <path d="M2 17l10 5 10-5" />
-            <path d="M2 12l10 5 10-5" />
+            <path d="M12 2L2 7l10 5 10-5-10-5z" /><path d="M2 17l10 5 10-5" /><path d="M2 12l10 5 10-5" />
           </svg>
         </div>
         <h1 className="template-picker__title">Workflow Composer</h1>
@@ -120,16 +145,16 @@ export function TemplatePicker({ onSelect, onOpenRecent }: Props) {
           New Workflow
         </button>
         <button
-          className={`template-picker__tab${activeTab === 'recent' ? ' template-picker__tab--active' : ''}`}
-          onClick={() => setActiveTab('recent')}
+          className={`template-picker__tab${activeTab === 'workflows' ? ' template-picker__tab--active' : ''}`}
+          onClick={() => setActiveTab('workflows')}
           type="button"
         >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <circle cx="12" cy="12" r="10" />
-            <polyline points="12 6 12 12 16 14" />
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+            <polyline points="14 2 14 8 20 8" />
           </svg>
-          Recent
-          {recents.length > 0 && <span className="template-picker__tab-badge">{recents.length}</span>}
+          Workflows
+          {workflows.length > 0 && <span className="template-picker__tab-badge">{workflows.length}</span>}
         </button>
       </div>
 
@@ -161,48 +186,78 @@ export function TemplatePicker({ onSelect, onOpenRecent }: Props) {
         </section>
       )}
 
-      {activeTab === 'recent' && (
+      {activeTab === 'workflows' && (
         <section className="template-picker__section">
-          {recents.length === 0 ? (
+          {workflows.length === 0 ? (
             <div className="template-picker__empty-state">
               <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-tertiary)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
                 <polyline points="14 2 14 8 20 8" />
-                <line x1="12" y1="18" x2="12" y2="12" />
-                <line x1="9" y1="15" x2="15" y2="15" />
+                <line x1="12" y1="18" x2="12" y2="12" /><line x1="9" y1="15" x2="15" y2="15" />
               </svg>
-              <p className="template-picker__empty-text">No recent workflows yet.</p>
+              <p className="template-picker__empty-text">No workflows yet.</p>
               <p className="template-picker__empty-hint">Create a new workflow to get started.</p>
             </div>
           ) : (
             <div className="template-picker__recent-list">
-              {recents.map((path) => {
-                const { name, dir } = formatPath(path)
+              {workflows.map((item) => {
+                const dir = shortenPath(item.path).replace(/\/[^/]*\.cwc$/, '')
+                const isConfirming = deletingPath === item.path
                 return (
-                  <div key={path} className="template-picker__recent-item">
+                  <div key={item.path} className={`template-picker__recent-item${isConfirming ? ' template-picker__recent-item--confirming' : ''}`}>
                     <button
                       className="template-picker__recent-link"
-                      onClick={() => onOpenRecent(path)}
+                      onClick={() => {
+                        onOpenRecent(item.path).catch(() => {
+                          setWorkflows((ws) => ws.filter((w) => w.path !== item.path))
+                          setError('That workflow was deleted or moved.')
+                        })
+                      }}
                       type="button"
                     >
                       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                         <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
                         <polyline points="14 2 14 8 20 8" />
                       </svg>
-                      <span className="template-picker__recent-name">{name}</span>
-                      <span className="template-picker__recent-dir">{dir}</span>
+                      <div className="template-picker__recent-info">
+                        <span className="template-picker__recent-name">{item.name}</span>
+                        <span className="template-picker__recent-meta">
+                          {item.nodeCount} agent{item.nodeCount !== 1 ? 's' : ''} · {relativeTime(item.updated)}
+                        </span>
+                        <span className="template-picker__recent-dir">{dir}</span>
+                      </div>
                     </button>
-                    <button
-                      className="template-picker__recent-delete"
-                      onClick={() => handleDelete(path)}
-                      aria-label="Delete workflow"
-                      type="button"
-                    >
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <polyline points="3 6 5 6 21 6" />
-                        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-                      </svg>
-                    </button>
+                    {isConfirming ? (
+                      <div ref={confirmRef} className="template-picker__confirm-delete">
+                        <span className="template-picker__confirm-msg">Delete?</span>
+                        <button
+                          className="template-picker__confirm-btn template-picker__confirm-btn--yes"
+                          onClick={() => handleDelete(item.path)}
+                          type="button"
+                        >
+                          Delete
+                        </button>
+                        <button
+                          className="template-picker__confirm-btn template-picker__confirm-btn--no"
+                          onClick={() => setDeletingPath(null)}
+                          type="button"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        className="template-picker__recent-delete"
+                        onClick={() => setDeletingPath(item.path)}
+                        aria-label="Delete workflow"
+                        type="button"
+                      >
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <polyline points="3 6 5 6 21 6" />
+                          <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                        </svg>
+                      </button>
+                    )}
                   </div>
                 )
               })}

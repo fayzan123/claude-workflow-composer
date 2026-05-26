@@ -372,3 +372,46 @@
   font-size: 0.85em;
   font-family: var(--font-mono);
 }
+
+.template-picker__recent-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+.template-picker__recent-meta {
+  font-size: 11px;
+  color: var(--color-text-tertiary);
+}
+.template-picker__recent-item--confirming {
+  background: var(--color-surface-raised, #f9f9f9);
+}
+.template-picker__confirm-delete {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 8px;
+  flex-shrink: 0;
+}
+.template-picker__confirm-msg {
+  font-size: 12px;
+  color: var(--color-text-secondary);
+}
+.template-picker__confirm-btn {
+  font-size: 12px;
+  padding: 3px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  border: 1px solid transparent;
+}
+.template-picker__confirm-btn--yes {
+  background: var(--color-error, #e53e3e);
+  color: #fff;
+  border-color: var(--color-error, #e53e3e);
+}
+.template-picker__confirm-btn--no {
+  background: transparent;
+  color: var(--color-text-secondary);
+  border-color: var(--color-border);
+}
