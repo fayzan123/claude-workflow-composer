@@ -1,6 +1,7 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { api } from '../../lib/api.ts'
 import type { AgentEntry } from '../../../../src/server/api/agents.ts'
+import { MarkdownViewer } from '../MarkdownViewer.tsx'
 import './MyAgentsTab.css'
 
 interface Props {
@@ -12,6 +13,8 @@ export function MyAgentsTab({ projectDir }: Props) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [search, setSearch] = useState('')
+  const [viewing, setViewing] = useState<{ filePath: string; title: string } | null>(null)
+  const isDragging = useRef(false)
 
   useEffect(() => {
     api.agents(projectDir)
@@ -60,7 +63,8 @@ export function MyAgentsTab({ projectDir }: Props) {
                 key={agent.filePath}
                 className="my-agents__card"
                 draggable
-                onDragStart={(e) =>
+                onDragStart={(e) => {
+                  isDragging.current = true
                   e.dataTransfer.setData(
                     'application/cwc-agent',
                     JSON.stringify({
@@ -73,7 +77,13 @@ export function MyAgentsTab({ projectDir }: Props) {
                       model: 'inherit',
                     })
                   )
-                }
+                }}
+                onDragEnd={() => {
+                  isDragging.current = false
+                }}
+                onClick={() => {
+                  if (!isDragging.current) setViewing({ filePath: agent.filePath, title: agent.name })
+                }}
               >
                 <strong className="my-agents__name">{agent.name}</strong>
                 {agent.description && <p className="my-agents__desc">{agent.description}</p>}
@@ -83,6 +93,13 @@ export function MyAgentsTab({ projectDir }: Props) {
           </div>
         ))}
       </div>
+      {viewing && (
+        <MarkdownViewer
+          filePath={viewing.filePath}
+          title={viewing.title}
+          onClose={() => setViewing(null)}
+        />
+      )}
     </div>
   )
 }

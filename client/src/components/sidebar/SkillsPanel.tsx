@@ -1,12 +1,15 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { api } from '../../lib/api.ts'
 import type { SkillEntry } from '../../../../src/server/api/skills.ts'
+import { MarkdownViewer } from '../MarkdownViewer.tsx'
 import './SkillsPanel.css'
 
 export function SkillsPanel() {
   const [skills, setSkills] = useState<SkillEntry[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [viewing, setViewing] = useState<{ filePath: string; title: string } | null>(null)
+  const isDragging = useRef(false)
 
   useEffect(() => {
     api.skills()
@@ -43,9 +46,16 @@ export function SkillsPanel() {
               key={skill.namespacedSlug}
               className="skills-panel__card"
               draggable
-              onDragStart={(e) =>
+              onDragStart={(e) => {
+                isDragging.current = true
                 e.dataTransfer.setData('application/cwc-skill', JSON.stringify({ namespacedSlug: skill.namespacedSlug }))
-              }
+              }}
+              onDragEnd={() => {
+                isDragging.current = false
+              }}
+              onClick={() => {
+                if (!isDragging.current) setViewing({ filePath: skill.filePath, title: skill.name })
+              }}
             >
               <strong className="skills-panel__name">{skill.name}</strong>
               {skill.description && <p className="skills-panel__desc">{skill.description}</p>}
@@ -54,6 +64,13 @@ export function SkillsPanel() {
           ))}
         </div>
       ))}
+      {viewing && (
+        <MarkdownViewer
+          filePath={viewing.filePath}
+          title={viewing.title}
+          onClose={() => setViewing(null)}
+        />
+      )}
     </div>
   )
 }
