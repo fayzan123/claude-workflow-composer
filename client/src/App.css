@@ -4,6 +4,37 @@
   flex-direction: column;
   background: var(--color-surface);
   animation: app-fade-in 0.4s var(--ease-out-expo) both;
+  position: relative;
+}
+
+.app__home-help-btn {
+  position: fixed;
+  bottom: var(--space-xl);
+  right: var(--space-xl);
+  width: 36px;
+  height: 36px;
+  font-size: var(--text-md);
+  font-weight: 700;
+  font-family: var(--font-display);
+  color: var(--color-text-secondary);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 50%;
+  cursor: pointer;
+  box-shadow: var(--shadow-md);
+  transition: background var(--transition-fast), color var(--transition-fast), border-color var(--transition-fast), box-shadow var(--transition-fast);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  z-index: 50;
+}
+
+.app__home-help-btn:hover {
+  background: var(--color-primary-lighter);
+  color: var(--color-primary);
+  border-color: var(--color-primary-light);
+  box-shadow: var(--shadow-lg);
 }
 
 .app--editor {

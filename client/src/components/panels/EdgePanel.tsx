@@ -1,18 +1,20 @@
 import React from 'react'
-import type { CwcEdge, CwcArtifact, ArtifactType, TerminalType } from '../../../../src/schema.ts'
+import type { CwcEdge, CwcNode, CwcArtifact, ArtifactType, TerminalType } from '../../../../src/schema.ts'
 import type { WorkflowAction } from '../../hooks/useWorkflow.ts'
 import './EdgePanel.css'
 
 interface Props {
   edge: CwcEdge
+  nodes: CwcNode[]
   dispatch: React.Dispatch<WorkflowAction>
   onClose: () => void
+  onDelete: () => void
 }
 
 const TERMINAL_TYPES: TerminalType[] = ['complete', 'escalated', 'aborted']
 const ARTIFACT_TYPES: ArtifactType[] = ['file', 'text', 'json']
 
-export function EdgePanel({ edge, dispatch, onClose }: Props) {
+export function EdgePanel({ edge, nodes, dispatch, onClose, onDelete }: Props) {
   function updateEdge(partial: Partial<Omit<CwcEdge, 'id'>>) {
     dispatch({ type: 'UPDATE_EDGE', payload: { edgeId: edge.id, ...partial } })
   }
@@ -27,6 +29,15 @@ export function EdgePanel({ edge, dispatch, onClose }: Props) {
 
   function handleTerminalTypeChange(e: React.ChangeEvent<HTMLSelectElement>) {
     updateEdge({ terminalType: e.target.value as TerminalType })
+  }
+
+  function handleFromChange(e: React.ChangeEvent<HTMLSelectElement>) {
+    updateEdge({ from: e.target.value })
+  }
+
+  function handleToChange(e: React.ChangeEvent<HTMLSelectElement>) {
+    const val = e.target.value
+    updateEdge({ to: val === '__terminal__' ? null : val })
   }
 
   function handleAddArtifact() {
@@ -61,10 +72,32 @@ export function EdgePanel({ edge, dispatch, onClose }: Props) {
     <aside className="edge-panel">
       <div className="edge-panel__header">
         <span className="edge-panel__title">Edge Editor</span>
-        <button className="edge-panel__close" onClick={onClose} aria-label="Close panel">×</button>
+        <div className="edge-panel__header-actions">
+          <button className="edge-panel__delete" onClick={onDelete} aria-label="Delete edge">Delete</button>
+          <button className="edge-panel__close" onClick={onClose} aria-label="Close panel">×</button>
+        </div>
       </div>
 
       <div className="edge-panel__body">
+        <div className="edge-panel__field">
+          <label className="edge-panel__label">Source Node</label>
+          <select className="edge-panel__select" value={edge.from} onChange={handleFromChange}>
+            {nodes.map((n) => (
+              <option key={n.id} value={n.id}>{n.agent.name?.trim() || 'Untitled agent'}</option>
+            ))}
+          </select>
+        </div>
+
+        <div className="edge-panel__field">
+          <label className="edge-panel__label">Target Node</label>
+          <select className="edge-panel__select" value={edge.to ?? '__terminal__'} onChange={handleToChange}>
+            <option value="__terminal__">— Terminal —</option>
+            {nodes.map((n) => (
+              <option key={n.id} value={n.id}>{n.agent.name?.trim() || 'Untitled agent'}</option>
+            ))}
+          </select>
+        </div>
+
         <div className="edge-panel__field">
           <label className="edge-panel__label edge-panel__label--required">Trigger *</label>
           <textarea

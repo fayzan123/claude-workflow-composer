@@ -41,6 +41,7 @@ export function useAutoSave(
       succeeded = true
     } catch (err) {
       onErrorRef.current?.(err as Error)
+      throw err
     } finally {
       setIsSaving(false)
       setHasPendingTimer(false)
@@ -68,7 +69,7 @@ export function useAutoSave(
     setHasPendingTimer(true)
     timerRef.current = setTimeout(() => {
       timerRef.current = null
-      runSave()
+      runSave().catch(() => {}) // error already surfaced via onError
     }, 500)
 
     // Cleanup: cancel timer only. Do NOT reset isSaving or hasPendingTimer here —

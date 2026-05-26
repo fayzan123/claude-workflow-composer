@@ -31,6 +31,29 @@
   font-size: var(--text-md);
 }
 
+.edge-panel__header-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+}
+
+.edge-panel__delete {
+  padding: 4px 10px;
+  background: none;
+  border: 1px solid var(--color-error, #e53e3e);
+  color: var(--color-error, #e53e3e);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-xs);
+  font-weight: 500;
+  cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+
+.edge-panel__delete:hover {
+  background: var(--color-error, #e53e3e);
+  color: #fff;
+}
+
 .edge-panel__close {
   display: flex;
   align-items: center;

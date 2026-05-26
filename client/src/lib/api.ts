@@ -3,6 +3,7 @@ import type { AgentEntry } from '../../../src/server/api/agents.ts'
 import type { SkillEntry } from '../../../src/server/api/skills.ts'
 import type { ExportTarget, ExportResult } from '../../../src/exporter.ts'
 import type { DeleteExportResult } from '../../../src/server/api/export-delete.ts'
+import type { ExportedWorkflowEntry } from '../../../src/server/api/exported-workflows.ts'
 
 const BASE = '/api'
 
@@ -48,6 +49,11 @@ export const api = {
 
   deleteExport: (cwcFile: CwcFile, target: ExportTarget) =>
     req<DeleteExportResult>('POST', '/export/delete', { cwcFile, target }),
+
+  exportedWorkflows: {
+    list: () => req<ExportedWorkflowEntry[]>('GET', '/exported-workflows'),
+    delete: (slug: string) => req<{ deleted: string }>('DELETE', `/exported-workflows?slug=${encodeURIComponent(slug)}`),
+  },
 
   fileContent: (filePath: string) =>
     req<{ content: string }>('GET', `/file-content?path=${encodeURIComponent(filePath)}`),

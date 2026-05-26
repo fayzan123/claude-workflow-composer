@@ -12,6 +12,7 @@ import { NodePanel } from './components/panels/NodePanel.tsx'
 import { EdgePanel } from './components/panels/EdgePanel.tsx'
 import { TopBar } from './components/TopBar.tsx'
 import { ExportFlow } from './components/ExportFlow.tsx'
+import { HelpModal } from './components/HelpModal.tsx'
 import './App.css'
 
 type Screen = 'home' | 'editor'
@@ -29,6 +30,7 @@ export default function App() {
   const [workflow, setWorkflow] = useState<CwcFile | null>(null)
   const [workflowPath, setWorkflowPath] = useState<string | null>(null)
   const [showExport, setShowExport] = useState(false)
+  const [showHelp, setShowHelp] = useState(false)
   const [saveError, setSaveError] = useState<Error | null>(null)
   const [renameError, setRenameError] = useState<string | null>(null)
   const [showLeaveConfirm, setShowLeaveConfirm] = useState(false)
@@ -102,6 +104,16 @@ export default function App() {
     return (
       <div className="app">
         <TemplatePicker onSelect={openWorkflow} onOpenRecent={handleOpenRecent} />
+        <button
+          className="app__home-help-btn"
+          onClick={() => setShowHelp(true)}
+          type="button"
+          aria-label="Help"
+          title="Help"
+        >
+          ?
+        </button>
+        {showHelp && <HelpModal onClose={() => setShowHelp(false)} />}
       </div>
     )
   }
@@ -122,6 +134,7 @@ export default function App() {
         showLeaveConfirm={showLeaveConfirm}
         dispatch={dispatch}
         onExport={() => setShowExport(true)}
+        onHelp={() => setShowHelp(true)}
         onHome={handleHomeClick}
         onRename={handleRename}
         onLeaveConfirm={goHome}
@@ -157,8 +170,13 @@ export default function App() {
         {selectedEdge && (
           <EdgePanel
             edge={selectedEdge}
+            nodes={editorWorkflow.nodes}
             dispatch={dispatch}
             onClose={() => handleSelectEdge(null)}
+            onDelete={() => {
+              dispatch({ type: 'REMOVE_EDGE', payload: { edgeId: selectedEdge.id } })
+              handleSelectEdge(null)
+            }}
           />
         )}
       </div>
@@ -169,6 +187,7 @@ export default function App() {
           onClose={() => setShowExport(false)}
         />
       )}
+      {showHelp && <HelpModal onClose={() => setShowHelp(false)} />}
     </div>
   )
 }

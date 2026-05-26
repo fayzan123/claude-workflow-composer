@@ -123,6 +123,29 @@
   -webkit-box-orient: vertical;
 }
 
+.workflow-node__skills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+
+.workflow-node__skill-chip {
+  display: inline-block;
+  font-size: 0.5625rem;
+  font-family: var(--font-mono);
+  font-weight: 500;
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--node-accent, var(--color-primary)) 12%, transparent);
+  color: var(--node-accent, var(--color-primary));
+  border: 1px solid color-mix(in srgb, var(--node-accent, var(--color-primary)) 25%, transparent);
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .workflow-node__footer {
   display: flex;
   align-items: center;

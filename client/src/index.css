@@ -1,21 +1,21 @@
 :root {
-  --color-primary: oklch(0.51 0.21 271);
-  --color-primary-hover: oklch(0.42 0.22 271);
-  --color-primary-light: oklch(0.92 0.05 271);
-  --color-primary-lighter: oklch(0.96 0.03 271);
-  --color-primary-ring: oklch(0.51 0.21 271 / 0.25);
+  --color-primary: oklch(0.47 0.20 255);
+  --color-primary-hover: oklch(0.40 0.21 255);
+  --color-primary-light: oklch(0.92 0.05 255);
+  --color-primary-lighter: oklch(0.96 0.03 255);
+  --color-primary-ring: oklch(0.47 0.20 255 / 0.25);
 
   --color-surface: oklch(1 0 0);
-  --color-surface-hover: oklch(0.975 0.005 271);
-  --color-surface-active: oklch(0.96 0.008 271);
-  --color-surface-secondary: oklch(0.972 0.004 271);
+  --color-surface-hover: oklch(0.975 0.005 255);
+  --color-surface-active: oklch(0.96 0.008 255);
+  --color-surface-secondary: oklch(0.972 0.004 255);
 
-  --color-border: oklch(0.91 0.006 271);
-  --color-border-hover: oklch(0.85 0.008 271);
+  --color-border: oklch(0.91 0.006 255);
+  --color-border-hover: oklch(0.85 0.008 255);
 
-  --color-text: oklch(0.15 0.01 271);
-  --color-text-secondary: oklch(0.45 0.02 271);
-  --color-text-tertiary: oklch(0.62 0.015 271);
+  --color-text: oklch(0.15 0.01 255);
+  --color-text-secondary: oklch(0.45 0.02 255);
+  --color-text-tertiary: oklch(0.62 0.015 255);
   --color-text-inverse: oklch(0.98 0 0);
 
   --color-success: oklch(0.65 0.18 160);

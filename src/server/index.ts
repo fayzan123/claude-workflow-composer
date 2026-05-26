@@ -14,6 +14,7 @@ import { exportDeleteRouter } from './api/export-delete.js'
 import { skillsRouter } from './api/skills.js'
 import { fileContentRouter } from './api/file-content.js'
 import { openFileRouter } from './api/open-file.js'
+import { exportedWorkflowsRouter } from './api/exported-workflows.js'
 
 export interface AppOptions {
   staticDir: string | null
@@ -45,6 +46,7 @@ export function createApp(opts: AppOptions): express.Express {
   app.use('/api/skills', skillsRouter(homeDir))
   app.use('/api/file-content', fileContentRouter())
   app.use('/api/open-file', openFileRouter())
+  app.use('/api/exported-workflows', exportedWorkflowsRouter(homeDir))
 
   if (opts.staticDir && fs.existsSync(opts.staticDir)) {
     app.use(express.static(opts.staticDir))

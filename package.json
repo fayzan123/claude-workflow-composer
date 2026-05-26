@@ -1,5 +1,5 @@
 {
-  "name": "claude-workflow-composer",
+  "name": "claude-cwc",
   "version": "0.2.0",
   "description": "Visual composer for Claude Code multi-agent workflows",
   "type": "module",
@@ -21,7 +21,8 @@
     "dev:server": "tsc --watch",
     "dev:client": "vite --config client/vite.config.ts",
     "typecheck": "tsc --noEmit && tsc --noEmit -p client/tsconfig.json",
-    "start": "node dist/bin/cwc.js"
+    "start": "node dist/bin/cwc.js",
+    "prepublishOnly": "npm run build"
   },
   "devDependencies": {
     "@types/cors": "^2.8.19",

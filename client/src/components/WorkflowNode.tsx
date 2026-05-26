@@ -14,6 +14,7 @@ export interface WorkflowNodeData {
     completionCriteria: string
     color?: string
     model?: string
+    skills?: string[]
   }
   agentRef?: string
   startTrigger?: string
@@ -26,7 +27,7 @@ export function WorkflowNode({ data }: NodeProps) {
   const nodeData = data as unknown as WorkflowNodeData
   const hasIssues = nodeData.warnings.length > 0 || nodeData.errors.length > 0
   const hasErrors = nodeData.errors.length > 0
-  const accentColor = nodeData.agent.color ?? '#6366f1'
+  const accentColor = nodeData.agent.color ?? 'oklch(0.47 0.20 255)'
   const isRef = !!nodeData.agentRef
 
   return (
@@ -46,6 +47,15 @@ export function WorkflowNode({ data }: NodeProps) {
       </div>
       {nodeData.agent.description && (
         <div className="workflow-node__desc">{nodeData.agent.description}</div>
+      )}
+      {nodeData.agent.skills && nodeData.agent.skills.length > 0 && (
+        <div className="workflow-node__skills">
+          {nodeData.agent.skills.map((s) => (
+            <span key={s} className="workflow-node__skill-chip" title={s}>
+              {s.includes(':') ? s.split(':').pop() : s}
+            </span>
+          ))}
+        </div>
       )}
       <div className="workflow-node__footer">
         <span className="workflow-node__slug">{isRef ? nodeData.agentRef : (nodeData.agent.name ? slugify(nodeData.agent.name) : '...')}</span>

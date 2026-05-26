@@ -11,8 +11,8 @@
 }
 
 .markdown-viewer {
-  background: oklch(0.15 0.02 271);
-  border: 1px solid oklch(0.25 0.02 271);
+  background: oklch(0.14 0.015 255);
+  border: 1px solid oklch(0.22 0.015 255);
   border-radius: var(--radius-2xl);
   width: min(720px, 90vw);
   max-height: 80vh;
@@ -28,7 +28,7 @@
   align-items: center;
   justify-content: space-between;
   padding: 12px 16px;
-  border-bottom: 1px solid oklch(0.25 0.02 271);
+  border-bottom: 1px solid oklch(0.22 0.015 255);
   flex-shrink: 0;
 }
 
@@ -36,7 +36,7 @@
   font-family: var(--font-display);
   font-size: var(--text-base);
   font-weight: 600;
-  color: oklch(0.85 0.01 271);
+  color: oklch(0.88 0.01 255);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -75,14 +75,14 @@
   height: 26px;
   background: none;
   border: none;
-  color: oklch(0.6 0.01 271);
+  color: oklch(0.6 0.01 255);
   cursor: pointer;
   border-radius: var(--radius-sm);
   transition: color var(--transition-fast), background var(--transition-fast);
 }
 
 .markdown-viewer__close-btn:hover {
-  color: oklch(0.85 0.01 271);
+  color: oklch(0.88 0.01 255);
   background: oklch(1 0 0 / 0.08);
 }
 
@@ -98,7 +98,7 @@
   font-family: var(--font-mono);
   font-size: var(--text-sm);
   line-height: 1.6;
-  color: oklch(0.85 0.01 271);
+  color: oklch(0.88 0.01 255);
   white-space: pre-wrap;
   word-break: break-word;
 }
@@ -107,7 +107,7 @@
 .markdown-viewer__error {
   padding: 24px 16px;
   font-size: var(--text-sm);
-  color: oklch(0.6 0.01 271);
+  color: oklch(0.6 0.01 255);
   text-align: center;
 }
 

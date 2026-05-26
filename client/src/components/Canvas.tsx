@@ -11,6 +11,7 @@ import {
   type EdgeMouseHandler,
   type NodeChange,
   type Node,
+  type Edge,
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import type { CwcFile, CwcAgent } from '../types.ts'
@@ -101,17 +102,29 @@ export function Canvas({ workflow, dispatch, validation, onSelectNode, onSelectE
     onSelectEdge(null)
   }, [onSelectNode, onSelectEdge])
 
-  const onKeyDown = useCallback((e: React.KeyboardEvent) => {
-    if (e.key !== 'Delete' && e.key !== 'Backspace') return
-    if ((e.target as HTMLElement).tagName === 'INPUT' || (e.target as HTMLElement).tagName === 'TEXTAREA') return
-    if (selectedNodeId) {
-      dispatch({ type: 'REMOVE_NODE', payload: { nodeId: selectedNodeId } })
-      onSelectNode(null)
-    } else if (selectedEdgeId) {
-      dispatch({ type: 'REMOVE_EDGE', payload: { edgeId: selectedEdgeId } })
-      onSelectEdge(null)
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key !== 'Delete' && e.key !== 'Backspace') return
+      const tag = (e.target as HTMLElement).tagName
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || (e.target as HTMLElement).isContentEditable) return
+      if (selectedNodeId) {
+        dispatch({ type: 'REMOVE_NODE', payload: { nodeId: selectedNodeId } })
+        onSelectNode(null)
+      } else if (selectedEdgeId) {
+        dispatch({ type: 'REMOVE_EDGE', payload: { edgeId: selectedEdgeId } })
+        onSelectEdge(null)
+      }
     }
+    document.addEventListener('keydown', handleKeyDown)
+    return () => document.removeEventListener('keydown', handleKeyDown)
   }, [dispatch, selectedNodeId, selectedEdgeId, onSelectNode, onSelectEdge])
+
+  const onReconnect = useCallback((oldEdge: Edge, newConnection: Connection) => {
+    dispatch({
+      type: 'UPDATE_EDGE',
+      payload: { edgeId: oldEdge.id, from: newConnection.source, to: newConnection.target },
+    })
+  }, [dispatch])
 
   const onDrop = useCallback((event: React.DragEvent) => {
     event.preventDefault()
@@ -159,8 +172,7 @@ export function Canvas({ workflow, dispatch, validation, onSelectNode, onSelectE
     }
 
     const skillData = event.dataTransfer.getData('application/cwc-skill')
-    // Skill drop requires a node to be selected; silently ignore if none is
-    if (skillData && selectedNodeId) {
+    if (skillData) {
       let parsed: { namespacedSlug: string }
       try {
         parsed = JSON.parse(skillData) as { namespacedSlug: string }
@@ -169,13 +181,16 @@ export function Canvas({ workflow, dispatch, validation, onSelectNode, onSelectE
         return
       }
       const { namespacedSlug } = parsed
-      const currentNode = workflow.nodes.find((n) => n.id === selectedNodeId)
+      const droppedOnNodeEl = (event.target as HTMLElement).closest<HTMLElement>('[data-id]')
+      const targetNodeId = droppedOnNodeEl?.dataset.id ?? selectedNodeId
+      if (!targetNodeId) return
+      const currentNode = workflow.nodes.find((n) => n.id === targetNodeId)
       if (currentNode) {
         const currentSkills = currentNode.agent.skills ?? []
         if (!currentSkills.includes(namespacedSlug)) {
           dispatch({
             type: 'UPDATE_NODE',
-            payload: { nodeId: selectedNodeId, agent: { skills: [...currentSkills, namespacedSlug] } },
+            payload: { nodeId: targetNodeId, agent: { skills: [...currentSkills, namespacedSlug] } },
           })
         }
       }
@@ -183,7 +198,7 @@ export function Canvas({ workflow, dispatch, validation, onSelectNode, onSelectE
   }, [dispatch, selectedNodeId, workflow.nodes, screenToFlowPosition])
 
   return (
-    <div className="canvas-wrapper" onDrop={onDrop} onDragOver={(e) => e.preventDefault()} onKeyDown={onKeyDown} tabIndex={0}>
+    <div className="canvas-wrapper" onDrop={onDrop} onDragOver={(e) => e.preventDefault()} tabIndex={0}>
       <ReactFlow
         nodes={nodes}
         edges={rfEdges}
@@ -195,6 +210,7 @@ export function Canvas({ workflow, dispatch, validation, onSelectNode, onSelectE
         onNodeClick={onNodeClick}
         onEdgeClick={onEdgeClick}
         onPaneClick={onPaneClick}
+        onReconnect={onReconnect}
         fitView
       >
         <Background />

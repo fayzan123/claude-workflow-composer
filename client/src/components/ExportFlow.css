@@ -387,7 +387,7 @@
 }
 
 .export-flow-target-btn--danger:hover:not(:disabled) .export-flow-target-btn__icon--danger {
-  background: var(--color-error-dark, oklch(0.45 0.2 25)) !important;
+  background: var(--color-error-dark, oklch(0.4 0.16 30)) !important;
 }
 
 .export-flow-success-icon--neutral {

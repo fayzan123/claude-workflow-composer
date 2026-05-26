@@ -41,9 +41,9 @@ async function stopServer(): Promise<void> {
 async function startServer(): Promise<void> {
   const existingPid = await readPid()
   if (existingPid && await isRunning(existingPid)) {
-    console.log(`CWC server already running (PID ${existingPid})`)
-    await open(`http://localhost:${PORT}`)
-    return
+    process.kill(existingPid, 'SIGTERM')
+    try { await fs.unlink(PID_FILE) } catch { /* already gone */ }
+    await new Promise((r) => setTimeout(r, 300))
   }
 
   // dist/src/server/start.js — relative to dist/bin/cwc.js

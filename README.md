@@ -5,7 +5,7 @@ A visual desktop app for composing multi-agent coding workflows for [Claude Code
 ## Quick Start
 
 ```bash
-npm run build && npm start
+npx claude-cwc
 ```
 
 Opens a browser at `http://localhost:3579`. Create a workflow by dragging agents from the sidebar onto the canvas, connecting them, and exporting.
@@ -126,8 +126,8 @@ npm run build               # Production build (server + client)
 ### CLI
 
 ```bash
-npx cwc                    # Start server and open browser
-npx cwc stop               # Stop server
+npx claude-cwc             # Start server and open browser
+npx claude-cwc stop        # Stop server
 ```
 
 ## Tests

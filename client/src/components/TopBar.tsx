@@ -14,6 +14,7 @@ interface Props {
   dispatch: React.Dispatch<WorkflowAction>
   onExport: () => void
   onHome: () => void
+  onHelp: () => void
   onRename: (newName: string) => void
   onLeaveConfirm: () => void
   onLeaveCancel: () => void
@@ -22,7 +23,7 @@ interface Props {
 
 export function TopBar({
   workflow, validation, isSaving, saveError, renameError, showLeaveConfirm,
-  dispatch, onExport, onHome, onRename, onLeaveConfirm, onLeaveCancel, onDismissSaveError,
+  dispatch, onExport, onHome, onHelp, onRename, onLeaveConfirm, onLeaveCancel, onDismissSaveError,
 }: Props) {
   const [errorsOpen, setErrorsOpen] = useState(false)
   const [warningsOpen, setWarningsOpen] = useState(false)
@@ -206,6 +207,16 @@ export function TopBar({
             )}
           </div>
         )}
+
+        <button
+          className="top-bar__help-btn"
+          onClick={onHelp}
+          type="button"
+          title="Help"
+          aria-label="Help"
+        >
+          ?
+        </button>
 
         <button
           className="top-bar__export-btn"

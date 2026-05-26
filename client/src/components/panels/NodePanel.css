@@ -186,10 +186,10 @@
   gap: 4px;
   padding: 3px 10px;
   background: var(--color-primary-light);
-  border: 1px solid oklch(0.82 0.08 271);
+  border: 1px solid oklch(0.78 0.08 255);
   border-radius: 20px;
   font-size: var(--text-sm);
-  color: oklch(0.35 0.18 271);
+  color: oklch(0.35 0.16 255);
 }
 
 .node-panel__chip-remove {
@@ -287,7 +287,7 @@
   font-size: var(--text-xs);
   color: var(--color-primary);
   background: var(--color-primary-light);
-  border: 1px solid oklch(0.82 0.08 271);
+  border: 1px solid oklch(0.78 0.08 255);
   border-radius: var(--radius-md);
   padding: 8px 10px;
   line-height: 1.4;
@@ -296,7 +296,7 @@
 .node-panel__ref-badge code {
   font-family: var(--font-mono);
   font-size: 0.625rem;
-  background: oklch(0.88 0.06 271);
+  background: oklch(0.88 0.05 255);
   padding: 1px 5px;
   border-radius: var(--radius-sm);
 }

@@ -133,6 +133,30 @@
   color: var(--color-error-dark);
 }
 
+.top-bar__help-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  font-size: var(--text-sm);
+  font-weight: 700;
+  font-family: var(--font-display);
+  color: var(--color-text-secondary);
+  background: transparent;
+  border: 1px solid var(--color-border);
+  border-radius: 50%;
+  cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast), border-color var(--transition-fast);
+  line-height: 1;
+}
+
+.top-bar__help-btn:hover {
+  background: var(--color-surface-hover);
+  color: var(--color-text);
+  border-color: var(--color-border-hover);
+}
+
 .top-bar__export-btn {
   display: flex;
   align-items: center;
