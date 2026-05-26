@@ -5,7 +5,7 @@ import { v4 as uuidv4 } from 'uuid'
 export type WorkflowAction =
   | { type: 'LOAD'; payload: CwcFile }
   | { type: 'SET_META'; payload: Partial<CwcFile['meta']> }
-  | { type: 'ADD_NODE'; payload: { agent: CwcAgent; position: { x: number; y: number } } }
+  | { type: 'ADD_NODE'; payload: { agent: CwcAgent; position: { x: number; y: number }; agentRef?: string } }
   | { type: 'UPDATE_NODE'; payload: { nodeId: string; agent: Partial<CwcAgent>; startTrigger?: string } }
   | { type: 'MOVE_NODE'; payload: { nodeId: string; position: { x: number; y: number } } }
   | { type: 'REMOVE_NODE'; payload: { nodeId: string } }
@@ -25,6 +25,7 @@ function reducer(state: CwcFile, action: WorkflowAction): CwcFile {
         position: action.payload.position,
         exportedSlug: null,
         agent: action.payload.agent,
+        agentRef: action.payload.agentRef,
       }
       return { ...state, nodes: [...state.nodes, node], meta: { ...state.meta, updated: now } }
     }

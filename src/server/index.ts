@@ -10,6 +10,7 @@ import { agentsRouter } from './api/agents.js'
 import { recentsRouter } from './api/recents.js'
 import { exportRouter } from './api/export.js'
 import { exportPreviewRouter } from './api/export-preview.js'
+import { exportDeleteRouter } from './api/export-delete.js'
 import { skillsRouter } from './api/skills.js'
 import { fileContentRouter } from './api/file-content.js'
 import { openFileRouter } from './api/open-file.js'
@@ -39,6 +40,7 @@ export function createApp(opts: AppOptions): express.Express {
   app.use('/api/recents', recentsRouter(recPath))
 
   app.use('/api/export/preview', exportPreviewRouter())
+  app.use('/api/export/delete', exportDeleteRouter())
   app.use('/api/export', exportRouter())
   app.use('/api/skills', skillsRouter(homeDir))
   app.use('/api/file-content', fileContentRouter())

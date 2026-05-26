@@ -20,10 +20,11 @@ function makeMinimalCwc(overrides: { nodes: CwcNode[]; edges: CwcEdge[] }): CwcF
 }
 
 describe('validateWorkflow', () => {
-  it('returns error for empty workflow (zero nodes)', () => {
+  it('returns canExport: false for empty workflow (zero nodes) with no error badge', () => {
     const cwc = makeMinimalCwc({ nodes: [], edges: [] })
-    const { errors } = validateWorkflow(cwc)
-    expect(errors).toContainEqual(expect.objectContaining({ type: 'empty-workflow' }))
+    const { errors, canExport } = validateWorkflow(cwc)
+    expect(errors).toHaveLength(0)
+    expect(canExport).toBe(false)
   })
 
   it('returns error for node with empty agent.name', () => {
@@ -32,13 +33,22 @@ describe('validateWorkflow', () => {
     expect(errors).toContainEqual(expect.objectContaining({ type: 'missing-name', nodeId: 'node-1' }))
   })
 
-  it('warns on disconnected node (no edges)', () => {
+  it('warns on disconnected node when other edges exist', () => {
+    const cwc = makeMinimalCwc({
+      nodes: [makeNode({ id: 'n1', name: 'A' }), makeNode({ id: 'n2', name: 'B' }), makeNode({ id: 'n3', name: 'C' })],
+      edges: [{ id: 'e1', from: 'n1', to: 'n2', trigger: '', context: [] }],
+    })
+    const { warnings } = validateWorkflow(cwc)
+    expect(warnings.some((w) => w.type === 'disconnected-node' && w.nodeId === 'n3')).toBe(true)
+  })
+
+  it('does not warn on disconnected nodes when no edges exist yet', () => {
     const cwc = makeMinimalCwc({
       nodes: [makeNode({ id: 'n1', name: 'A' }), makeNode({ id: 'n2', name: 'B' })],
       edges: [],
     })
     const { warnings } = validateWorkflow(cwc)
-    expect(warnings.some((w) => w.type === 'disconnected-node')).toBe(true)
+    expect(warnings.some((w) => w.type === 'disconnected-node')).toBe(false)
   })
 
   it('warns on duplicate slug', () => {

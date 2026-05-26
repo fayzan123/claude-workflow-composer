@@ -33,6 +33,7 @@ export interface CwcNode {
   exportedSlug: string | null
   startTrigger?: string
   agent: CwcAgent
+  agentRef?: string
 }
 
 export interface CwcEdge {

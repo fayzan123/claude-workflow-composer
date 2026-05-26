@@ -66,15 +66,11 @@ export function MyAgentsTab({ projectDir }: Props) {
                 onDragStart={(e) => {
                   isDragging.current = true
                   e.dataTransfer.setData(
-                    'application/cwc-agent',
+                    'application/cwc-agent-ref',
                     JSON.stringify({
+                      agentRef: agent.slug,
                       name: agent.name,
                       description: agent.description,
-                      systemPrompt: '',
-                      completionCriteria: '',
-                      tools: [],
-                      skills: [agent.slug],
-                      model: 'inherit',
                     })
                   )
                 }}

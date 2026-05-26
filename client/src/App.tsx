@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useCallback } from 'react'
 import type { CwcFile } from './types.ts'
 import { api } from './lib/api.ts'
 import { TemplatePicker } from './components/TemplatePicker.tsx'
@@ -16,6 +16,14 @@ import './App.css'
 
 type Screen = 'home' | 'editor'
 
+function viewTransition(fn: () => void) {
+  if (document.startViewTransition) {
+    document.startViewTransition(fn)
+  } else {
+    fn()
+  }
+}
+
 export default function App() {
   const [screen, setScreen] = useState<Screen>('home')
   const [workflow, setWorkflow] = useState<CwcFile | null>(null)
@@ -27,6 +35,20 @@ export default function App() {
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null)
   const validation = validateWorkflow(editorWorkflow)
   const { isSaving } = useAutoSave(editorWorkflow, workflowPath)
+
+  const handleSelectNode = useCallback((id: string | null) => {
+    viewTransition(() => {
+      setSelectedNodeId(id)
+      if (id) setSelectedEdgeId(null)
+    })
+  }, [])
+
+  const handleSelectEdge = useCallback((id: string | null) => {
+    viewTransition(() => {
+      setSelectedEdgeId(id)
+      if (id) setSelectedNodeId(null)
+    })
+  }, [])
 
   function openWorkflow(cwc: CwcFile, path: string) {
     setWorkflow(cwc)
@@ -56,6 +78,7 @@ export default function App() {
   const selectedNode = selectedNodeId ? editorWorkflow.nodes.find((n) => n.id === selectedNodeId) ?? null : null
   const selectedEdge = selectedEdgeId ? editorWorkflow.edges.find((e) => e.id === selectedEdgeId) ?? null : null
   const isEntryNode = selectedNode ? !editorWorkflow.edges.some((e) => e.to === selectedNode.id) : false
+  const terminalEdge = selectedNode ? (editorWorkflow.edges.find((e) => e.from === selectedNode.id && e.to === null) ?? null) : null
   const projectDir = workflowPath ? workflowPath.replace(/\/[^/]*$/, '') : undefined
 
   return (
@@ -75,8 +98,8 @@ export default function App() {
           workflow={editorWorkflow}
           dispatch={dispatch}
           validation={validation}
-          onSelectNode={setSelectedNodeId}
-          onSelectEdge={setSelectedEdgeId}
+          onSelectNode={handleSelectNode}
+          onSelectEdge={handleSelectEdge}
           selectedNodeId={selectedNodeId}
           selectedEdgeId={selectedEdgeId}
         />
@@ -85,11 +108,12 @@ export default function App() {
           <NodePanel
             node={selectedNode}
             isEntryNode={isEntryNode}
+            terminalEdge={terminalEdge}
             dispatch={dispatch}
-            onClose={() => setSelectedNodeId(null)}
+            onClose={() => handleSelectNode(null)}
             onDelete={() => {
               dispatch({ type: 'REMOVE_NODE', payload: { nodeId: selectedNode.id } })
-              setSelectedNodeId(null)
+              handleSelectNode(null)
             }}
           />
         )}
@@ -97,7 +121,7 @@ export default function App() {
           <EdgePanel
             edge={selectedEdge}
             dispatch={dispatch}
-            onClose={() => setSelectedEdgeId(null)}
+            onClose={() => handleSelectEdge(null)}
           />
         )}
       </div>

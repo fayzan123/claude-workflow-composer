@@ -6,94 +6,97 @@
 }
 
 .my-agents__search-wrap {
-  padding: 8px;
-  border-bottom: 1px solid #e2e8f0;
+  padding: var(--space-sm);
+  border-bottom: 1px solid var(--color-border);
 }
 
 .my-agents__search {
   width: 100%;
-  box-sizing: border-box;
-  padding: 6px 10px;
-  border: 1px solid #e2e8f0;
-  border-radius: 6px;
-  font-size: 13px;
+  padding: 7px 10px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm);
   outline: none;
-  background: #f8fafc;
-  color: #1e293b;
+  background: var(--color-surface-secondary);
+  color: var(--color-text);
+  transition: border-color var(--transition-fast), background var(--transition-fast);
 }
 
 .my-agents__search:focus {
-  border-color: #6366f1;
-  background: #fff;
+  border-color: var(--color-primary);
+  background: var(--color-surface);
 }
 
 .my-agents__list {
   overflow-y: auto;
   flex: 1;
-  padding: 8px;
+  padding: var(--space-sm);
   display: flex;
   flex-direction: column;
   gap: 4px;
 }
 
 .my-agents__status {
-  padding: 16px 8px;
-  font-size: 12px;
-  color: #94a3b8;
+  padding: var(--space-xl) var(--space-sm);
+  font-size: var(--text-sm);
+  color: var(--color-text-tertiary);
   text-align: center;
+  line-height: 1.5;
 }
 
 .my-agents__status--error {
-  color: #ef4444;
+  color: var(--color-error);
 }
 
 .my-agents__group {
   display: flex;
   flex-direction: column;
   gap: 4px;
-  margin-bottom: 8px;
+  margin-bottom: var(--space-sm);
 }
 
 .my-agents__group-label {
-  font-size: 10px;
+  font-size: 0.625rem;
   font-weight: 600;
-  color: #94a3b8;
+  color: var(--color-text-tertiary);
   text-transform: uppercase;
   letter-spacing: 0.06em;
   padding: 4px 2px 2px;
 }
 
 .my-agents__card {
-  background: #f8fafc;
-  border: 1px solid #e2e8f0;
-  border-radius: 8px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-xl);
   padding: 10px 12px;
   cursor: grab;
   user-select: none;
-  transition: background 0.15s, box-shadow 0.15s;
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast), background var(--transition-fast), transform 0.1s var(--ease-out);
 }
 
 .my-agents__card:hover {
-  background: #eff6ff;
-  border-color: #bfdbfe;
-  box-shadow: 0 2px 6px rgba(99, 102, 241, 0.12);
+  background: var(--color-primary-lighter);
+  border-color: var(--color-primary);
+  box-shadow: 0 2px 8px var(--color-primary-ring);
+  transform: translateY(-1px);
 }
 
 .my-agents__card:active {
   cursor: grabbing;
+  transform: scale(0.98);
 }
 
 .my-agents__name {
   display: block;
-  font-size: 13px;
+  font-size: var(--text-sm);
   font-weight: 600;
-  color: #1e293b;
+  color: var(--color-text);
   margin-bottom: 3px;
 }
 
 .my-agents__desc {
-  font-size: 11px;
-  color: #64748b;
+  font-size: var(--text-xs);
+  color: var(--color-text-secondary);
   margin: 0 0 4px 0;
   line-height: 1.4;
   overflow: hidden;
@@ -103,7 +106,7 @@
 }
 
 .my-agents__slug {
-  font-size: 10px;
-  color: #94a3b8;
-  font-family: monospace;
+  font-size: 0.625rem;
+  color: var(--color-text-tertiary);
+  font-family: var(--font-mono);
 }

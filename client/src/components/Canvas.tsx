@@ -1,13 +1,16 @@
-import React, { useCallback } from 'react'
+import React, { useCallback, useMemo, useState, useEffect } from 'react'
 import {
   ReactFlow,
   Background,
   Controls,
   MiniMap,
   useReactFlow,
+  applyNodeChanges,
   type Connection,
   type NodeMouseHandler,
   type EdgeMouseHandler,
+  type NodeChange,
+  type Node,
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import type { CwcFile, CwcAgent } from '../types.ts'
@@ -31,7 +34,7 @@ interface Props {
 export function Canvas({ workflow, dispatch, validation, onSelectNode, onSelectEdge, selectedNodeId, selectedEdgeId }: Props) {
   const { screenToFlowPosition } = useReactFlow()
 
-  const rfNodes = workflow.nodes.map((n) => ({
+  const rfNodes = useMemo(() => workflow.nodes.map((n) => ({
     id: n.id,
     type: 'workflowNode',
     position: n.position,
@@ -42,7 +45,13 @@ export function Canvas({ workflow, dispatch, validation, onSelectNode, onSelectE
       isSelected: n.id === selectedNodeId,
     },
     selected: n.id === selectedNodeId,
-  }))
+  })), [workflow.nodes, validation, selectedNodeId])
+
+  const [nodes, setNodes] = useState<Node[]>(rfNodes)
+
+  useEffect(() => {
+    setNodes(rfNodes)
+  }, [rfNodes])
 
   const rfEdges = workflow.edges
     .filter((e) => e.to !== null)
@@ -52,7 +61,12 @@ export function Canvas({ workflow, dispatch, validation, onSelectNode, onSelectE
       target: e.to!,
       label: e.label,
       selected: e.id === selectedEdgeId,
+      animated: true,
     }))
+
+  const onNodesChange = useCallback((changes: NodeChange[]) => {
+    setNodes((nds) => applyNodeChanges(changes, nds))
+  }, [])
 
   const onConnect = useCallback((connection: Connection) => {
     dispatch({
@@ -94,6 +108,31 @@ export function Canvas({ workflow, dispatch, validation, onSelectNode, onSelectE
 
   const onDrop = useCallback((event: React.DragEvent) => {
     event.preventDefault()
+
+    const agentRefData = event.dataTransfer.getData('application/cwc-agent-ref')
+    if (agentRefData) {
+      let parsed: { agentRef: string; name: string; description: string }
+      try {
+        parsed = JSON.parse(agentRefData) as { agentRef: string; name: string; description: string }
+      } catch {
+        console.error('cwc-agent-ref drag payload was not valid JSON')
+        return
+      }
+      const position = screenToFlowPosition({ x: event.clientX, y: event.clientY })
+      const agent: CwcAgent = {
+        name: parsed.name,
+        description: parsed.description,
+        completionCriteria: '',
+        systemPrompt: '',
+        tools: [],
+        skills: [],
+      }
+      dispatch({
+        type: 'ADD_NODE',
+        payload: { agent, position, agentRef: parsed.agentRef },
+      })
+      return
+    }
 
     const agentData = event.dataTransfer.getData('application/cwc-agent')
     if (agentData) {
@@ -139,9 +178,10 @@ export function Canvas({ workflow, dispatch, validation, onSelectNode, onSelectE
   return (
     <div className="canvas-wrapper" onDrop={onDrop} onDragOver={(e) => e.preventDefault()} onKeyDown={onKeyDown} tabIndex={0}>
       <ReactFlow
-        nodes={rfNodes}
+        nodes={nodes}
         edges={rfEdges}
         nodeTypes={nodeTypes}
+        onNodesChange={onNodesChange}
         onConnect={onConnect}
         onNodeDragStop={onNodeDragStop}
         onNodeClick={onNodeClick}

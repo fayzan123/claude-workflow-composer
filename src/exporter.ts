@@ -66,6 +66,23 @@ export async function exportWorkflow(
   const updatedNodes: CwcNode[] = []
 
   for (const node of cwc.nodes) {
+    if (node.agentRef) {
+      // Ref node — points to an existing agent; don't write a new file
+      const refSlug = node.agentRef
+      if (node.exportedSlug && node.exportedSlug !== refSlug) {
+        const oldPath = path.join(agentsDir, `${node.exportedSlug}.md`)
+        const oldContent = await safeReadFile(oldPath)
+        if (oldContent !== null) {
+          const status = detectConflict(oldContent, AGENT_OWNERSHIP_REGEX, workflowId)
+          if (status === 'owned') {
+            await fs.unlink(oldPath)
+          }
+        }
+      }
+      updatedNodes.push({ ...node, exportedSlug: refSlug })
+      continue
+    }
+
     const newSlug = slugify(node.agent.name)
     const agentPath = path.join(agentsDir, `${newSlug}.md`)
 

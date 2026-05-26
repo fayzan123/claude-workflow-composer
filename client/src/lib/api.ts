@@ -2,6 +2,7 @@ import type { CwcFile } from '../types.ts'
 import type { AgentEntry } from '../../../src/server/api/agents.ts'
 import type { SkillEntry } from '../../../src/server/api/skills.ts'
 import type { ExportTarget, ExportResult } from '../../../src/exporter.ts'
+import type { DeleteExportResult } from '../../../src/server/api/export-delete.ts'
 
 const BASE = '/api'
 
@@ -42,6 +43,9 @@ export const api = {
 
   exportPreview: (cwcFile: CwcFile, target: ExportTarget) =>
     req<{ files: { path: string; content: string }[]; warnings: string[] }>('POST', '/export/preview', { cwcFile, target }),
+
+  deleteExport: (cwcFile: CwcFile, target: ExportTarget) =>
+    req<DeleteExportResult>('POST', '/export/delete', { cwcFile, target }),
 
   fileContent: (filePath: string) =>
     req<{ content: string }>('GET', `/file-content?path=${encodeURIComponent(filePath)}`),

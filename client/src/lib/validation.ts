@@ -10,7 +10,7 @@ export function validateWorkflow(cwc: CwcFile): ValidationResult {
   const warnings: ValidationWarning[] = []
 
   if (cwc.nodes.length === 0) {
-    errors.push({ type: 'empty-workflow', message: 'Add at least one agent to export' })
+    return { errors, warnings, canExport: false }
   }
 
   const slugCounts = new Map<string, string[]>()
@@ -32,18 +32,20 @@ export function validateWorkflow(cwc: CwcFile): ValidationResult {
     }
   }
 
-  const nodesWithIncoming = new Set(cwc.edges.filter((e) => e.to).map((e) => e.to!))
-  const nodesWithOutgoing = new Set(cwc.edges.map((e) => e.from))
-  const hasTerminalEdge = new Set(cwc.edges.filter((e) => e.to === null).map((e) => e.from))
+  if (cwc.edges.length > 0) {
+    const nodesWithIncoming = new Set(cwc.edges.filter((e) => e.to).map((e) => e.to!))
+    const nodesWithOutgoing = new Set(cwc.edges.map((e) => e.from))
+    const hasTerminalEdge = new Set(cwc.edges.filter((e) => e.to === null).map((e) => e.from))
 
-  for (const node of cwc.nodes) {
-    const hasIn = nodesWithIncoming.has(node.id)
-    const hasOut = nodesWithOutgoing.has(node.id)
-    const isTerminal = hasTerminalEdge.has(node.id)
-    if (!hasIn && !hasOut) {
-      warnings.push({ type: 'disconnected-node', nodeId: node.id, message: "This agent isn't connected to the workflow" })
-    } else if (!hasOut && !isTerminal) {
-      warnings.push({ type: 'no-handoff', nodeId: node.id, message: 'This agent has no handoff — add an arrow or mark it as a workflow end' })
+    for (const node of cwc.nodes) {
+      const hasIn = nodesWithIncoming.has(node.id)
+      const hasOut = nodesWithOutgoing.has(node.id)
+      const isTerminal = hasTerminalEdge.has(node.id)
+      if (!hasIn && !hasOut) {
+        warnings.push({ type: 'disconnected-node', nodeId: node.id, message: "This agent isn't connected to the workflow" })
+      } else if (!hasOut && !isTerminal) {
+        warnings.push({ type: 'no-handoff', nodeId: node.id, message: 'This agent has no handoff — add an arrow or mark it as a workflow end' })
+      }
     }
   }
 

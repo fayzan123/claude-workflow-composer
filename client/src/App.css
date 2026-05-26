@@ -2,6 +2,8 @@
   height: 100vh;
   display: flex;
   flex-direction: column;
+  background: var(--color-surface);
+  animation: app-fade-in 0.4s var(--ease-out-expo) both;
 }
 
 .app--editor {
@@ -13,4 +15,78 @@
   flex-direction: row;
   flex: 1;
   min-height: 0;
+  position: relative;
+}
+
+@keyframes app-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes slide-in-right {
+  from {
+    opacity: 0;
+    transform: translateX(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes slide-in-left {
+  from {
+    opacity: 0;
+    transform: translateX(-12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes scale-in {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes fade-in-up {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes fade-out {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
+::view-transition-old(node-panel),
+::view-transition-old(edge-panel) {
+  animation: 0.15s var(--ease-out-expo) both fade-out;
+}
+
+::view-transition-new(node-panel),
+::view-transition-new(edge-panel) {
+  animation: 0.2s var(--ease-out-expo) 0.05s both fade-in;
 }
