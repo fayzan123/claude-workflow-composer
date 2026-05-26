@@ -80,6 +80,18 @@ export function Canvas({ workflow, dispatch, validation, onSelectNode, onSelectE
     onSelectEdge(null)
   }, [onSelectNode, onSelectEdge])
 
+  const onKeyDown = useCallback((e: React.KeyboardEvent) => {
+    if (e.key !== 'Delete' && e.key !== 'Backspace') return
+    if ((e.target as HTMLElement).tagName === 'INPUT' || (e.target as HTMLElement).tagName === 'TEXTAREA') return
+    if (selectedNodeId) {
+      dispatch({ type: 'REMOVE_NODE', payload: { nodeId: selectedNodeId } })
+      onSelectNode(null)
+    } else if (selectedEdgeId) {
+      dispatch({ type: 'REMOVE_EDGE', payload: { edgeId: selectedEdgeId } })
+      onSelectEdge(null)
+    }
+  }, [dispatch, selectedNodeId, selectedEdgeId, onSelectNode, onSelectEdge])
+
   const onDrop = useCallback((event: React.DragEvent) => {
     event.preventDefault()
 
@@ -125,7 +137,7 @@ export function Canvas({ workflow, dispatch, validation, onSelectNode, onSelectE
   }, [dispatch, selectedNodeId, workflow.nodes, screenToFlowPosition])
 
   return (
-    <div className="canvas-wrapper" onDrop={onDrop} onDragOver={(e) => e.preventDefault()}>
+    <div className="canvas-wrapper" onDrop={onDrop} onDragOver={(e) => e.preventDefault()} onKeyDown={onKeyDown} tabIndex={0}>
       <ReactFlow
         nodes={rfNodes}
         edges={rfEdges}

@@ -86,6 +86,10 @@ export default function App() {
             isEntryNode={isEntryNode}
             dispatch={dispatch}
             onClose={() => setSelectedNodeId(null)}
+            onDelete={() => {
+              dispatch({ type: 'REMOVE_NODE', payload: { nodeId: selectedNode.id } })
+              setSelectedNodeId(null)
+            }}
           />
         )}
         {selectedEdge && (

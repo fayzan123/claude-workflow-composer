@@ -11,9 +11,10 @@ interface Props {
   isEntryNode: boolean
   dispatch: React.Dispatch<WorkflowAction>
   onClose: () => void
+  onDelete: () => void
 }
 
-export function NodePanel({ node, isEntryNode, dispatch, onClose }: Props) {
+export function NodePanel({ node, isEntryNode, dispatch, onClose, onDelete }: Props) {
   const [promptExpanded, setPromptExpanded] = useState(false)
   const [newSkill, setNewSkill] = useState('')
 
@@ -76,6 +77,7 @@ export function NodePanel({ node, isEntryNode, dispatch, onClose }: Props) {
     <aside className="node-panel">
       <div className="node-panel__header">
         <span className="node-panel__title">Node Editor</span>
+        <button className="node-panel__delete" onClick={onDelete} aria-label="Delete node">Delete</button>
         <button className="node-panel__close" onClick={onClose} aria-label="Close panel">×</button>
       </div>
 

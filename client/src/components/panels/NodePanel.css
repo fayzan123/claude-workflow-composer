@@ -28,6 +28,23 @@
   font-size: 14px;
 }
 
+.node-panel__delete {
+  background: none;
+  border: 1px solid #fca5a5;
+  cursor: pointer;
+  font-size: 12px;
+  color: #ef4444;
+  padding: 2px 8px;
+  border-radius: 4px;
+  margin-right: 4px;
+  transition: background 0.15s, color 0.15s;
+}
+
+.node-panel__delete:hover {
+  background: #ef4444;
+  color: #fff;
+}
+
 .node-panel__close {
   background: none;
   border: none;
