@@ -17,11 +17,13 @@ async function safeReadFile(p: string): Promise<string | null> {
 export interface DeleteExportResult {
   deleted: string[]
   skipped: string[]
+  notFound: string[]
 }
 
 export async function deleteExport(cwc: CwcFile, target: ExportTarget): Promise<DeleteExportResult> {
   const workflowId = cwc.meta.id
-  const workflowSlug = slugify(cwc.meta.name)
+  const workflowSlug = 'cwc-' + slugify(cwc.meta.name)
+  const legacyWorkflowSlug = slugify(cwc.meta.name)
 
   const homeDir = os.homedir()
   const agentsDir =
@@ -36,13 +38,18 @@ export async function deleteExport(cwc: CwcFile, target: ExportTarget): Promise<
 
   const deleted: string[] = []
   const skipped: string[] = []
+  const notFound: string[] = []
 
   for (const node of cwc.nodes) {
+    if (node.agentRef) {
+      // Ref nodes point to pre-existing agent files — never delete them
+      continue
+    }
     const slug = node.exportedSlug ?? slugify(node.agent.name)
     const agentPath = path.join(agentsDir, `${slug}.md`)
     const content = await safeReadFile(agentPath)
     if (content === null) {
-      skipped.push(agentPath)
+      notFound.push(agentPath)
       continue
     }
     const status = detectConflict(content, AGENT_OWNERSHIP_REGEX, workflowId)
@@ -54,22 +61,23 @@ export async function deleteExport(cwc: CwcFile, target: ExportTarget): Promise<
     }
   }
 
-  const skillDir = path.join(skillsDir, workflowSlug)
-  const skillFilePath = path.join(skillDir, 'SKILL.md')
-  const skillContent = await safeReadFile(skillFilePath)
-  if (skillContent !== null) {
-    const status = detectConflict(skillContent, WORKFLOW_OWNERSHIP_REGEX, workflowId)
-    if (status === 'owned') {
-      await fs.rm(skillDir, { recursive: true, force: true })
-      deleted.push(skillDir)
-    } else {
-      skipped.push(skillFilePath)
+  for (const slug of [workflowSlug, legacyWorkflowSlug]) {
+    const skillDir = path.join(skillsDir, slug)
+    const skillFilePath = path.join(skillDir, 'SKILL.md')
+    const skillContent = await safeReadFile(skillFilePath)
+    if (skillContent !== null) {
+      const status = detectConflict(skillContent, WORKFLOW_OWNERSHIP_REGEX, workflowId)
+      if (status === 'owned') {
+        await fs.rm(skillDir, { recursive: true, force: true })
+        deleted.push(skillDir)
+      } else {
+        skipped.push(skillFilePath)
+      }
+      break  // found the skill dir (new or legacy), no need to check the other
     }
-  } else {
-    skipped.push(skillFilePath)
   }
 
-  return { deleted, skipped }
+  return { deleted, skipped, notFound }
 }
 
 export function exportDeleteRouter() {
@@ -78,6 +86,7 @@ export function exportDeleteRouter() {
   router.post('/', async (req, res) => {
     const { cwcFile, target } = req.body as { cwcFile: CwcFile; target: ExportTarget }
     if (!cwcFile || !target) return void res.status(400).json({ error: 'cwcFile and target required' })
+    if (target.type === 'project' && !target.projectDir) return void res.status(400).json({ error: 'projectDir required for project target' })
     try {
       const result = await deleteExport(cwcFile, target)
       res.json(result)

@@ -55,7 +55,7 @@ it('POST /api/export writes agent .md and skill .md, returns updatedCwc with exp
   expect(agentContent).toContain('## Completion Criteria')
 
   // Workflow skill written
-  const skillFile = path.join(tmpSkillsDir, 'export-test', 'SKILL.md')
+  const skillFile = path.join(tmpSkillsDir, 'cwc-export-test', 'SKILL.md')
   const skillContent = await fs.readFile(skillFile, 'utf-8')
   expect(skillContent).toContain('disable-model-invocation: true')
   expect(skillContent).toContain('<!-- cwc:workflow:export-uuid -->')

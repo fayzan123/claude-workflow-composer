@@ -73,13 +73,13 @@ describe('exportWorkflow — linear.cwc', () => {
     await exportWorkflow(cwc, target, { skillsDir })
 
     const skillContent = await fs.readFile(
-      path.join(skillsDir, 'linear-pipeline', 'SKILL.md'),
+      path.join(skillsDir, 'cwc-linear-pipeline', 'SKILL.md'),
       'utf-8',
     )
     const { data } = matter(skillContent)
     expect(data['disable-model-invocation']).toBe(true)
     expect(data.description).toBe('A sequential A to B to C workflow')
-    expect(data.name).toBe('linear-pipeline')
+    expect(data.name).toBe('Linear Pipeline')
   })
 
   it('workflow skill ownership comment is last non-blank line', async () => {
@@ -89,7 +89,7 @@ describe('exportWorkflow — linear.cwc', () => {
     await exportWorkflow(cwc, target, { skillsDir })
 
     const skillContent = await fs.readFile(
-      path.join(skillsDir, 'linear-pipeline', 'SKILL.md'),
+      path.join(skillsDir, 'cwc-linear-pipeline', 'SKILL.md'),
       'utf-8',
     )
     const lines = skillContent.split('\n').filter(l => l.trim().length > 0)
@@ -118,7 +118,7 @@ describe('exportWorkflow — parallel.cwc', () => {
     await exportWorkflow(cwc, target, { skillsDir })
 
     const skillContent = await fs.readFile(
-      path.join(skillsDir, 'parallel-split', 'SKILL.md'),
+      path.join(skillsDir, 'cwc-parallel-split', 'SKILL.md'),
       'utf-8',
     )
     expect(skillContent).toContain('**Frontend Dev** and **Backend Dev** in parallel')
@@ -136,7 +136,7 @@ describe('exportWorkflow — gate-loop.cwc', () => {
     await exportWorkflow(cwc, target, { skillsDir })
 
     const skillContent = await fs.readFile(
-      path.join(skillsDir, 'gate-loop', 'SKILL.md'),
+      path.join(skillsDir, 'cwc-gate-loop', 'SKILL.md'),
       'utf-8',
     )
     const passIdx = skillContent.indexOf('If the review passes')
@@ -152,7 +152,7 @@ describe('exportWorkflow — gate-loop.cwc', () => {
     await exportWorkflow(cwc, target, { skillsDir })
 
     const skillContent = await fs.readFile(
-      path.join(skillsDir, 'gate-loop', 'SKILL.md'),
+      path.join(skillsDir, 'cwc-gate-loop', 'SKILL.md'),
       'utf-8',
     )
     const matches = skillContent.match(/If the review fails/g) ?? []
@@ -166,10 +166,12 @@ describe('exportWorkflow — gate-loop.cwc', () => {
     await exportWorkflow(cwc, target, { skillsDir })
 
     const skillContent = await fs.readFile(
-      path.join(skillsDir, 'gate-loop', 'SKILL.md'),
+      path.join(skillsDir, 'cwc-gate-loop', 'SKILL.md'),
       'utf-8',
     )
-    expect(skillContent).toContain('1. Start with **Developer** to implement the feature.')
+    expect(skillContent).toContain('**Developer**')
+    expect(skillContent).toContain('subagent_type: "developer"')
+    expect(skillContent).toContain('to implement the feature')
   })
 })
 

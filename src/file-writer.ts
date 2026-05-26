@@ -55,14 +55,14 @@ export function buildAgentFileContent(
 }
 
 export function buildWorkflowSkillContent(
-  workflowSlug: string,
+  name: string,
   description: string,
   orchestratorBody: string,
   workflowId: string,
 ): string {
   const frontmatter = [
     '---',
-    `name: ${workflowSlug}`,
+    `name: ${name}`,
     `description: ${description}`,
     'disable-model-invocation: true',
     '---',

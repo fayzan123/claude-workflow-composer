@@ -31,6 +31,11 @@ export function TemplatePicker({ onSelect, onOpenRecent }: Props) {
 
   async function handleDelete(path: string) {
     try {
+      let cwcFile
+      try { cwcFile = await api.workflows.read(path) } catch { /* corrupted or missing */ }
+      if (cwcFile) {
+        try { await api.deleteExport(cwcFile, { type: 'user' }) } catch { /* best-effort */ }
+      }
       await api.workflows.delete(path)
       await api.recents.remove(path)
       setRecents((r) => r.filter((p) => p !== path))

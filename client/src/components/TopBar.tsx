@@ -14,19 +14,22 @@ interface Props {
 }
 
 export function TopBar({ workflow, validation, isSaving, dispatch, onExport, onHome }: Props) {
-  const [popoverOpen, setPopoverOpen] = useState(false)
-  const popoverRef = useRef<HTMLDivElement>(null)
-  const badgeRef = useRef<HTMLButtonElement>(null)
+  const [errorsOpen, setErrorsOpen] = useState(false)
+  const [warningsOpen, setWarningsOpen] = useState(false)
+  const errorsBadgeRef = useRef<HTMLButtonElement>(null)
+  const errorsPopoverRef = useRef<HTMLDivElement>(null)
+  const warningsBadgeRef = useRef<HTMLButtonElement>(null)
+  const warningsPopoverRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    if (!popoverOpen) return
+    if (!errorsOpen) return
     function handleClick(e: MouseEvent) {
-      if (!popoverRef.current?.contains(e.target as Node) && !badgeRef.current?.contains(e.target as Node)) {
-        setPopoverOpen(false)
+      if (!errorsPopoverRef.current?.contains(e.target as Node) && !errorsBadgeRef.current?.contains(e.target as Node)) {
+        setErrorsOpen(false)
       }
     }
     function handleKey(e: KeyboardEvent) {
-      if (e.key === 'Escape') setPopoverOpen(false)
+      if (e.key === 'Escape') setErrorsOpen(false)
     }
     document.addEventListener('mousedown', handleClick)
     document.addEventListener('keydown', handleKey)
@@ -34,7 +37,25 @@ export function TopBar({ workflow, validation, isSaving, dispatch, onExport, onH
       document.removeEventListener('mousedown', handleClick)
       document.removeEventListener('keydown', handleKey)
     }
-  }, [popoverOpen])
+  }, [errorsOpen])
+
+  useEffect(() => {
+    if (!warningsOpen) return
+    function handleClick(e: MouseEvent) {
+      if (!warningsPopoverRef.current?.contains(e.target as Node) && !warningsBadgeRef.current?.contains(e.target as Node)) {
+        setWarningsOpen(false)
+      }
+    }
+    function handleKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') setWarningsOpen(false)
+    }
+    document.addEventListener('mousedown', handleClick)
+    document.addEventListener('keydown', handleKey)
+    return () => {
+      document.removeEventListener('mousedown', handleClick)
+      document.removeEventListener('keydown', handleKey)
+    }
+  }, [warningsOpen])
 
   function handleNameChange(e: React.ChangeEvent<HTMLInputElement>) {
     dispatch({ type: 'SET_META', payload: { name: e.target.value } })
@@ -82,20 +103,20 @@ export function TopBar({ workflow, validation, isSaving, dispatch, onExport, onH
         {hasErrors && (
           <div className="top-bar__badge-wrap">
             <button
-              ref={badgeRef}
+              ref={errorsBadgeRef}
               className="top-bar__badge top-bar__badge--error"
-              onClick={() => setPopoverOpen((o) => !o)}
+              onClick={() => setErrorsOpen((o) => !o)}
               type="button"
-              aria-expanded={popoverOpen}
+              aria-expanded={errorsOpen}
             >
               {validation.errors.length} error{validation.errors.length !== 1 ? 's' : ''}
               <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ marginLeft: 4 }}>
-                <polyline points={popoverOpen ? '18 15 12 9 6 15' : '6 9 12 15 18 9'} />
+                <polyline points={errorsOpen ? '18 15 12 9 6 15' : '6 9 12 15 18 9'} />
               </svg>
             </button>
 
-            {popoverOpen && (
-              <div ref={popoverRef} className="top-bar__popover top-bar__popover--error" role="dialog" aria-label="Workflow errors">
+            {errorsOpen && (
+              <div ref={errorsPopoverRef} className="top-bar__popover top-bar__popover--error" role="dialog" aria-label="Workflow errors">
                 <p className="top-bar__popover-heading">Fix before exporting</p>
                 <ul className="top-bar__popover-list">
                   {validation.errors.map((err, i) => (
@@ -115,20 +136,20 @@ export function TopBar({ workflow, validation, isSaving, dispatch, onExport, onH
         {!hasErrors && hasWarnings && (
           <div className="top-bar__badge-wrap">
             <button
-              ref={badgeRef}
+              ref={warningsBadgeRef}
               className="top-bar__badge top-bar__badge--warning"
-              onClick={() => setPopoverOpen((o) => !o)}
+              onClick={() => setWarningsOpen((o) => !o)}
               type="button"
-              aria-expanded={popoverOpen}
+              aria-expanded={warningsOpen}
             >
               {validation.warnings.length} warning{validation.warnings.length !== 1 ? 's' : ''}
               <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ marginLeft: 4 }}>
-                <polyline points={popoverOpen ? '18 15 12 9 6 15' : '6 9 12 15 18 9'} />
+                <polyline points={warningsOpen ? '18 15 12 9 6 15' : '6 9 12 15 18 9'} />
               </svg>
             </button>
 
-            {popoverOpen && (
-              <div ref={popoverRef} className="top-bar__popover top-bar__popover--warning" role="dialog" aria-label="Workflow warnings">
+            {warningsOpen && (
+              <div ref={warningsPopoverRef} className="top-bar__popover top-bar__popover--warning" role="dialog" aria-label="Workflow warnings">
                 <p className="top-bar__popover-heading">Warnings</p>
                 <ul className="top-bar__popover-list">
                   {validation.warnings.map((w, i) => (

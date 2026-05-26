@@ -113,14 +113,19 @@ export function NodePanel({ node, isEntryNode, terminalEdge, dispatch, onClose, 
             className="node-panel__input"
             type="text"
             value={node.agent.name}
-            onChange={handleNameChange}
+            onChange={isRef ? undefined : handleNameChange}
+            readOnly={isRef}
             placeholder="Agent name"
           />
           <div className="node-panel__slug-preview">
-            Slug: <code>{isRef ? node.agentRef : slugPreview}</code>
+            {isRef
+              ? <>Agent file: <code>{node.agentRef}</code> — name is read-only</>
+              : <>Slug: <code>{slugPreview}</code></>
+            }
           </div>
         </div>
 
+        {!isRef && (
         <div className="node-panel__field">
           <label className="node-panel__label">Description</label>
           <textarea
@@ -131,19 +136,18 @@ export function NodePanel({ node, isEntryNode, terminalEdge, dispatch, onClose, 
             rows={3}
           />
         </div>
-
-        {!isRef && (
-          <div className="node-panel__field">
-            <label className="node-panel__label node-panel__label--required">Completion Criteria *</label>
-            <textarea
-              className="node-panel__textarea"
-              value={node.agent.completionCriteria}
-              onChange={handleCriteriaChange}
-              placeholder="When is this agent done?"
-              rows={3}
-            />
-          </div>
         )}
+
+        <div className="node-panel__field">
+          <label className="node-panel__label node-panel__label--required">Completion Criteria *</label>
+          <textarea
+            className="node-panel__textarea"
+            value={node.agent.completionCriteria}
+            onChange={handleCriteriaChange}
+            placeholder="When is this agent done?"
+            rows={3}
+          />
+        </div>
 
         {isEntryNode && (
           <div className="node-panel__field">
@@ -158,58 +162,54 @@ export function NodePanel({ node, isEntryNode, terminalEdge, dispatch, onClose, 
           </div>
         )}
 
-        {!isRef && (
-          <div className="node-panel__field">
-            <label className="node-panel__label">Tools</label>
-            <div className="node-panel__checkboxes">
-              {AVAILABLE_TOOLS.map((tool) => (
-                <label key={tool} className="node-panel__checkbox-label">
-                  <input
-                    type="checkbox"
-                    checked={(node.agent.tools ?? []).includes(tool)}
-                    onChange={() => handleToolToggle(tool)}
-                  />
-                  <span>{tool}</span>
-                </label>
-              ))}
-            </div>
+        <div className="node-panel__field">
+          <label className="node-panel__label">Tools</label>
+          <div className="node-panel__checkboxes">
+            {AVAILABLE_TOOLS.map((tool) => (
+              <label key={tool} className="node-panel__checkbox-label">
+                <input
+                  type="checkbox"
+                  checked={(node.agent.tools ?? []).includes(tool)}
+                  onChange={() => handleToolToggle(tool)}
+                />
+                <span>{tool}</span>
+              </label>
+            ))}
           </div>
-        )}
+        </div>
 
-        {!isRef && (
-          <div className="node-panel__field">
-            <label className="node-panel__label">Skills</label>
-            <div className="node-panel__chips">
-              {(node.agent.skills ?? []).map((skill) => (
-                <span key={skill} className="node-panel__chip">
-                  {skill}
-                  <button
-                    className="node-panel__chip-remove"
-                    onClick={() => handleRemoveSkill(skill)}
-                    aria-label={`Remove skill ${skill}`}
-                  >×</button>
-                </span>
-              ))}
-            </div>
-            <div className="node-panel__skill-add">
-              <input
-                className="node-panel__input"
-                type="text"
-                value={newSkill}
-                onChange={(e) => setNewSkill(e.target.value)}
-                onKeyDown={handleSkillKeyDown}
-                placeholder="Add skill..."
-              />
-              <button className="node-panel__btn" onClick={handleAddSkill}>Add</button>
-            </div>
+        <div className="node-panel__field">
+          <label className="node-panel__label">Skills</label>
+          <div className="node-panel__chips">
+            {(node.agent.skills ?? []).map((skill) => (
+              <span key={skill} className="node-panel__chip">
+                {skill}
+                <button
+                  className="node-panel__chip-remove"
+                  onClick={() => handleRemoveSkill(skill)}
+                  aria-label={`Remove skill ${skill}`}
+                >×</button>
+              </span>
+            ))}
           </div>
-        )}
+          <div className="node-panel__skill-add">
+            <input
+              className="node-panel__input"
+              type="text"
+              value={newSkill}
+              onChange={(e) => setNewSkill(e.target.value)}
+              onKeyDown={handleSkillKeyDown}
+              placeholder="Add skill..."
+            />
+            <button className="node-panel__btn" onClick={handleAddSkill}>Add</button>
+          </div>
+        </div>
 
         <div className="node-panel__field">
           <label className="node-panel__label">Terminal Type</label>
           <select
             className="node-panel__select"
-            value={terminalEdge?.terminalType ?? ''}
+            value={terminalEdge ? (terminalEdge.terminalType ?? 'complete') : ''}
             onChange={handleTerminalTypeChange}
           >
             <option value="">Not an end node</option>
@@ -219,25 +219,23 @@ export function NodePanel({ node, isEntryNode, terminalEdge, dispatch, onClose, 
           </select>
         </div>
 
-        {!isRef && (
-          <div className="node-panel__field">
-            <button
-              className="node-panel__collapsible"
-              onClick={() => setPromptExpanded((v) => !v)}
-            >
-              {promptExpanded ? '▼' : '▶'} System Prompt
-            </button>
-            {promptExpanded && (
-              <textarea
-                className="node-panel__textarea node-panel__textarea--mono"
-                value={node.agent.systemPrompt ?? ''}
-                onChange={handleSystemPromptChange}
-                placeholder="Optional system prompt..."
-                rows={6}
-              />
-            )}
-          </div>
-        )}
+        <div className="node-panel__field">
+          <button
+            className="node-panel__collapsible"
+            onClick={() => setPromptExpanded((v) => !v)}
+          >
+            {promptExpanded ? '▼' : '▶'} System Prompt
+          </button>
+          {promptExpanded && (
+            <textarea
+              className="node-panel__textarea node-panel__textarea--mono"
+              value={node.agent.systemPrompt ?? ''}
+              onChange={handleSystemPromptChange}
+              placeholder="Optional system prompt..."
+              rows={6}
+            />
+          )}
+        </div>
       </div>
     </aside>
   )

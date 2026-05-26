@@ -173,7 +173,7 @@ export function ExportFlow({ workflow, dispatch, onClose, projectDir }: Props) {
             <h2 className="export-flow-modal__title">Preview Export</h2>
             <p className="export-flow-modal__subtitle">
               {preview.files.length} file{preview.files.length !== 1 ? 's' : ''} will be written
-              to <code className="export-flow-dir">{shortenPath(preview.target.type === 'user' ? '~/.claude/' : '.claude/')}</code>
+              to <code className="export-flow-dir">{preview.target.type === 'user' ? '~/.claude/' : shortenPath(preview.target.projectDir + '/.claude/')}</code>
             </p>
 
             {error && (

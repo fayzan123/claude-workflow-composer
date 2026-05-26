@@ -3,7 +3,7 @@ import * as path from 'node:path'
 import matter from 'gray-matter'
 import type { CwcFile, CwcNode } from './schema.js'
 import { slugify } from './slugify.js'
-import { generateOrchestratorBody } from './prose-generator.js'
+import { generateOrchestratorBody, OverrideInfo } from './prose-generator.js'
 import { resolveSkill, SkillResolution } from './skill-resolver.js'
 import { buildAgentFileContent, buildWorkflowSkillContent } from './file-writer.js'
 import { detectConflict } from './conflict-detector.js'
@@ -54,7 +54,7 @@ export async function exportWorkflow(
 ): Promise<ExportResult> {
   const warnings: string[] = []
   const workflowId = cwc.meta.id
-  const workflowSlug = slugify(cwc.meta.name)
+  const workflowSlug = 'cwc-' + slugify(cwc.meta.name)
 
   const agentsDir =
     target.type === 'project'
@@ -64,6 +64,7 @@ export async function exportWorkflow(
   await ensureDir(agentsDir)
 
   const updatedNodes: CwcNode[] = []
+  const nodeOverrides: Record<string, OverrideInfo> = {}
 
   for (const node of cwc.nodes) {
     if (node.agentRef) {
@@ -79,6 +80,36 @@ export async function exportWorkflow(
           }
         }
       }
+
+      // Resolve ref node's skills for warnings
+      for (const skillSlug of node.agent.skills ?? []) {
+        const resolved = await resolveSkillWithOverride(skillSlug, opts.userSkillsDir)
+        if (!resolved.found) {
+          warnings.push(`Skill not found: ${skillSlug} — install it on the target machine`)
+        }
+      }
+
+      // Collect overrides for orchestrator annotation
+      const hasOverrides = (node.agent.skills ?? []).length > 0
+        || (node.agent.tools ?? []).length > 0
+        || (node.agent.systemPrompt ?? '').trim().length > 0
+        || (node.agent.completionCriteria ?? '').trim().length > 0
+      if (hasOverrides) {
+        nodeOverrides[node.id] = {
+          skills: node.agent.skills,
+          tools: node.agent.tools,
+          systemPrompt: node.agent.systemPrompt,
+          completionCriteria: node.agent.completionCriteria,
+        }
+      }
+
+      // Warn if the referenced agent file doesn't exist on the target machine
+      const refPath = path.join(agentsDir, `${refSlug}.md`)
+      const refContent = await safeReadFile(refPath)
+      if (refContent === null) {
+        warnings.push(`Referenced agent not found: ${refSlug} — install it on the target machine`)
+      }
+
       updatedNodes.push({ ...node, exportedSlug: refSlug })
       continue
     }
@@ -115,8 +146,8 @@ export async function exportWorkflow(
   }
 
   // Generate workflow skill
-  const orchestratorBody = generateOrchestratorBody(cwc.nodes, cwc.edges, cwc.meta.name)
-  const skillContent = buildWorkflowSkillContent(workflowSlug, cwc.meta.description, orchestratorBody, workflowId)
+  const orchestratorBody = generateOrchestratorBody(cwc.nodes, cwc.edges, cwc.meta.name, nodeOverrides)
+  const skillContent = buildWorkflowSkillContent(cwc.meta.name, cwc.meta.description, orchestratorBody, workflowId)
   const skillDir = path.join(opts.skillsDir, workflowSlug)
   await ensureDir(skillDir)
   const skillFilePath = path.join(skillDir, 'SKILL.md')

@@ -18,7 +18,10 @@ export function validateWorkflow(cwc: CwcFile): ValidationResult {
     if (!node.agent.name.trim()) {
       errors.push({ type: 'missing-name', nodeId: node.id, message: 'Agent needs a name before export' })
     } else {
-      const slug = slugify(node.agent.name)
+      if (!node.agentRef && !node.agent.completionCriteria?.trim()) {
+        warnings.push({ type: 'missing-completion-criteria', nodeId: node.id, message: 'Add completion criteria so the agent knows when to stop' })
+      }
+      const slug = node.agentRef ?? slugify(node.agent.name)
       const existing = slugCounts.get(slug) ?? []
       slugCounts.set(slug, [...existing, node.id])
     }

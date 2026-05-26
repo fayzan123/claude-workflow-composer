@@ -21,13 +21,17 @@ export function skillsRouter(userHomeDir: string) {
 
     const skills: SkillEntry[] = []
 
+    const CWC_WORKFLOW_MARKER = /<!-- cwc:workflow:[^:\s>]+ -->/
+
     // User skills — each subdir of userSkillsDir is a skill slug
     try {
       const dirs = await fs.readdir(userSkillsDir)
       for (const slug of dirs) {
         const skillFile = path.join(userSkillsDir, slug, 'SKILL.md')
         try {
-          const { data } = matter(await fs.readFile(skillFile, 'utf-8'))
+          const raw = await fs.readFile(skillFile, 'utf-8')
+          if (CWC_WORKFLOW_MARKER.test(raw)) continue  // skip workflow-exported skills
+          const { data } = matter(raw)
           skills.push({ slug, name: String(data['name'] ?? slug), description: String(data['description'] ?? ''), source: 'user', namespacedSlug: slug, filePath: skillFile })
         } catch { /* skip */ }
       }

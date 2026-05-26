@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { generateOrchestratorBody } from '../src/prose-generator.js'
+import { generateOrchestratorBody, OverrideInfo } from '../src/prose-generator.js'
 import type { CwcNode, CwcEdge, CwcArtifact } from '../src/schema.js'
 
 const node = (id: string, name: string, startTrigger?: string): CwcNode => ({
@@ -23,18 +23,21 @@ const edge = (from: string, to: string | null, trigger: string, context?: CwcArt
 })
 
 describe('generateOrchestratorBody', () => {
-  it('emits Start with for entry node with startTrigger', () => {
+  it('emits Invoke with subagent_type for entry node with startTrigger', () => {
     const nodes = [node('A', 'Architect', 'to design the schema')]
     const edges = [{ ...edge('A', null, 'Done.'), terminalType: 'complete' as const }]
     const body = generateOrchestratorBody(nodes, edges, 'My Workflow')
-    expect(body).toContain('1. Start with **Architect** to design the schema.')
+    expect(body).toContain('**Architect**')
+    expect(body).toContain('subagent_type: "architect"')
+    expect(body).toContain('to design the schema')
   })
 
-  it('emits Start with node name only when startTrigger absent', () => {
+  it('emits Invoke with subagent_type for entry node without startTrigger', () => {
     const nodes = [node('A', 'Architect')]
     const edges = [{ ...edge('A', null, 'Done.'), terminalType: 'complete' as const }]
     const body = generateOrchestratorBody(nodes, edges, 'My Workflow')
-    expect(body).toContain('1. Start with **Architect**.')
+    expect(body).toContain('**Architect**')
+    expect(body).toContain('subagent_type: "architect"')
   })
 
   it('bold-wraps agent names in trigger text', () => {
@@ -103,5 +106,89 @@ describe('generateOrchestratorBody', () => {
     const edges = [{ ...edge('A', null, 'Done.'), terminalType: 'complete' as const }]
     const body = generateOrchestratorBody(nodes, edges, 'TDD Pipeline')
     expect(body).toContain('**TDD Pipeline** workflow')
+  })
+
+  describe('node overrides', () => {
+    it('emits override annotation for entry node with skills', () => {
+      const nodes = [node('A', 'Frontend Dev', 'to build the UI')]
+      const edges = [{ ...edge('A', null, 'Done.'), terminalType: 'complete' as const }]
+      const overrides: Record<string, OverrideInfo> = { A: { skills: ['design-system', 'tailwind'] } }
+      const body = generateOrchestratorBody(nodes, edges, 'Test', overrides)
+      expect(body).toContain('Workflow-specific configuration: additional skills (design-system, tailwind).')
+    })
+
+    it('emits override annotation for entry node with tools', () => {
+      const nodes = [node('A', 'Dev')]
+      const edges = [{ ...edge('A', null, 'Done.'), terminalType: 'complete' as const }]
+      const overrides: Record<string, OverrideInfo> = { A: { tools: ['Read', 'Write', 'Edit'] } }
+      const body = generateOrchestratorBody(nodes, edges, 'Test', overrides)
+      expect(body).toContain('Workflow-specific configuration: tools (Read, Write, Edit).')
+    })
+
+    it('emits override annotation with skills + tools + prompt combined', () => {
+      const nodes = [node('A', 'Dev')]
+      const edges = [{ ...edge('A', null, 'Done.'), terminalType: 'complete' as const }]
+      const overrides: Record<string, OverrideInfo> = {
+        A: { skills: ['testing'], tools: ['Bash'], systemPrompt: 'You are a tester.' },
+      }
+      const body = generateOrchestratorBody(nodes, edges, 'Test', overrides)
+      expect(body).toContain('additional skills (testing)')
+      expect(body).toContain('tools (Bash)')
+      expect(body).toContain('prompt "You are a tester."')
+    })
+
+    it('emits no annotation when overrides are empty', () => {
+      const nodes = [node('A', 'Dev')]
+      const edges = [{ ...edge('A', null, 'Done.'), terminalType: 'complete' as const }]
+      const overrides: Record<string, OverrideInfo> = {}
+      const body = generateOrchestratorBody(nodes, edges, 'Test', overrides)
+      expect(body).not.toContain('Workflow-specific configuration')
+    })
+
+    it('emits override annotation for fan-out target nodes', () => {
+      const nodes = [node('A', 'Arch'), node('B', 'Frontend'), node('C', 'Backend')]
+      const edges = [edge('A', 'B', 'Activate Frontend.'), edge('A', 'C', 'Activate Backend.')]
+      const overrides: Record<string, OverrideInfo> = {
+        B: { skills: ['react'] },
+        C: { skills: ['api-design'] },
+      }
+      const body = generateOrchestratorBody(nodes, edges, 'Test', overrides)
+      expect(body).toContain('additional skills (react)')
+      expect(body).toContain('additional skills (api-design)')
+      // override annotation follows the fan-out sub-item
+      const lines = body.split('\n')
+      const reactLine = lines.findIndex(l => l.includes('additional skills (react)'))
+      const frontendLine = lines.findIndex(l => l.includes('**Frontend**'))
+      expect(reactLine).toBeGreaterThan(frontendLine)
+    })
+
+    it('emits override annotation for back-edge target node', () => {
+      const nodes = [node('A', 'Dev'), node('B', 'Review')]
+      const edges = [
+        edge('A', 'B', 'Activate Review.'),
+        { ...edge('B', 'A', 'If fail, return to Dev.'), context: [artifact('feedback')] },
+      ]
+      const overrides: Record<string, OverrideInfo> = { A: { skills: ['fix-code'] } }
+      const body = generateOrchestratorBody(nodes, edges, 'Test', overrides)
+      expect(body).toContain('Workflow-specific configuration: additional skills (fix-code).')
+    })
+
+    it('emits completion criteria in override annotation', () => {
+      const nodes = [node('A', 'Dev')]
+      const edges = [{ ...edge('A', null, 'Done.'), terminalType: 'complete' as const }]
+      const overrides: Record<string, OverrideInfo> = { A: { completionCriteria: 'All tests pass' } }
+      const body = generateOrchestratorBody(nodes, edges, 'Test', overrides)
+      expect(body).toContain('Workflow-specific configuration: completion "All tests pass".')
+    })
+
+    it('truncates long system prompt in override annotation', () => {
+      const longPrompt = 'x'.repeat(200)
+      const nodes = [node('A', 'Dev')]
+      const edges = [{ ...edge('A', null, 'Done.'), terminalType: 'complete' as const }]
+      const overrides: Record<string, OverrideInfo> = { A: { systemPrompt: longPrompt } }
+      const body = generateOrchestratorBody(nodes, edges, 'Test', overrides)
+      expect(body).toContain('"xxx')
+      expect(body).toContain('...')
+    })
   })
 })

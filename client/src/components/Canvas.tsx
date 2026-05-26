@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState, useEffect } from 'react'
+import React, { useCallback, useMemo, useState, useEffect, useRef } from 'react'
 import {
   ReactFlow,
   Background,
@@ -48,12 +48,14 @@ export function Canvas({ workflow, dispatch, validation, onSelectNode, onSelectE
   })), [workflow.nodes, validation, selectedNodeId])
 
   const [nodes, setNodes] = useState<Node[]>(rfNodes)
+  const isDragging = useRef(false)
 
   useEffect(() => {
+    if (isDragging.current) return
     setNodes(rfNodes)
   }, [rfNodes])
 
-  const rfEdges = workflow.edges
+  const rfEdges = useMemo(() => workflow.edges
     .filter((e) => e.to !== null)
     .map((e) => ({
       id: e.id,
@@ -62,7 +64,7 @@ export function Canvas({ workflow, dispatch, validation, onSelectNode, onSelectE
       label: e.label,
       selected: e.id === selectedEdgeId,
       animated: true,
-    }))
+    })), [workflow.edges, selectedEdgeId])
 
   const onNodesChange = useCallback((changes: NodeChange[]) => {
     setNodes((nds) => applyNodeChanges(changes, nds))
@@ -75,7 +77,12 @@ export function Canvas({ workflow, dispatch, validation, onSelectNode, onSelectE
     })
   }, [dispatch])
 
+  const onNodeDragStart = useCallback(() => {
+    isDragging.current = true
+  }, [])
+
   const onNodeDragStop = useCallback((_: React.MouseEvent, node: { id: string; position: { x: number; y: number } }) => {
+    isDragging.current = false
     dispatch({ type: 'MOVE_NODE', payload: { nodeId: node.id, position: node.position } })
   }, [dispatch])
 
@@ -183,6 +190,7 @@ export function Canvas({ workflow, dispatch, validation, onSelectNode, onSelectE
         nodeTypes={nodeTypes}
         onNodesChange={onNodesChange}
         onConnect={onConnect}
+        onNodeDragStart={onNodeDragStart}
         onNodeDragStop={onNodeDragStop}
         onNodeClick={onNodeClick}
         onEdgeClick={onEdgeClick}

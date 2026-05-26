@@ -3,7 +3,7 @@ import type { CwcFile } from '../../schema.js'
 import type { ExportTarget } from '../../exporter.js'
 import { slugify } from '../../slugify.js'
 import { buildAgentFileContent, buildWorkflowSkillContent } from '../../file-writer.js'
-import { generateOrchestratorBody } from '../../prose-generator.js'
+import { generateOrchestratorBody, OverrideInfo } from '../../prose-generator.js'
 import { resolveSkill } from '../../skill-resolver.js'
 import * as path from 'node:path'
 import * as os from 'node:os'
@@ -23,19 +23,41 @@ export function exportPreviewRouter() {
       const agentsDir = target.type === 'project'
         ? path.join(target.projectDir, '.claude', 'agents')
         : path.join(target.userDir ?? os.homedir(), '.claude', 'agents')
-      const workflowSlug = slugify(cwcFile.meta.name)
+      const workflowSlug = 'cwc-' + slugify(cwcFile.meta.name)
       const skillsDir = target.type === 'project'
         ? path.join(target.projectDir, '.claude', 'skills')
         : path.join(target.userDir ?? os.homedir(), '.claude', 'skills')
 
       const files: { path: string; content: string }[] = []
+      const nodeOverrides: Record<string, OverrideInfo> = {}
 
       for (const node of cwcFile.nodes) {
+        if (node.agentRef) {
+          // Ref node — don't generate an agent file; collect overrides for orchestrator
+          for (const skillSlug of node.agent.skills ?? []) {
+            const r = await resolveSkill(skillSlug)
+            if (!r.found) warnings.push(`Skill not found: ${skillSlug} — install it on the target machine`)
+          }
+          const hasOverrides = (node.agent.skills ?? []).length > 0
+            || (node.agent.tools ?? []).length > 0
+            || (node.agent.systemPrompt ?? '').trim().length > 0
+            || (node.agent.completionCriteria ?? '').trim().length > 0
+          if (hasOverrides) {
+            nodeOverrides[node.id] = {
+              skills: node.agent.skills,
+              tools: node.agent.tools,
+              systemPrompt: node.agent.systemPrompt,
+              completionCriteria: node.agent.completionCriteria,
+            }
+          }
+          continue
+        }
+
         const slug = slugify(node.agent.name)
         const resolvedSkills = await Promise.all(
           (node.agent.skills ?? []).map(async (s) => {
             const r = await resolveSkill(s)
-            if (!r.found) warnings.push(`Skill not found: ${s}`)
+            if (!r.found) warnings.push(`Skill not found: ${s} — install it on the target machine`)
             return r
           })
         )
@@ -43,8 +65,8 @@ export function exportPreviewRouter() {
         files.push({ path: path.join(agentsDir, `${slug}.md`), content })
       }
 
-      const orchestratorBody = generateOrchestratorBody(cwcFile.nodes, cwcFile.edges, cwcFile.meta.name)
-      const skillContent = buildWorkflowSkillContent(workflowSlug, cwcFile.meta.description, orchestratorBody, workflowId)
+      const orchestratorBody = generateOrchestratorBody(cwcFile.nodes, cwcFile.edges, cwcFile.meta.name, nodeOverrides)
+      const skillContent = buildWorkflowSkillContent(cwcFile.meta.name, cwcFile.meta.description, orchestratorBody, workflowId)
       files.push({ path: path.join(skillsDir, workflowSlug, 'SKILL.md'), content: skillContent })
 
       res.json({ files, warnings })
