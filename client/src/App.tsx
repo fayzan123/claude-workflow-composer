@@ -29,12 +29,18 @@ export default function App() {
   const [workflow, setWorkflow] = useState<CwcFile | null>(null)
   const [workflowPath, setWorkflowPath] = useState<string | null>(null)
   const [showExport, setShowExport] = useState(false)
+  const [saveError, setSaveError] = useState<Error | null>(null)
+  const [renameError, setRenameError] = useState<string | null>(null)
+  const [showLeaveConfirm, setShowLeaveConfirm] = useState(false)
 
   const { workflow: editorWorkflow, dispatch } = useWorkflow(workflow ?? undefined)
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null)
   const validation = validateWorkflow(editorWorkflow)
-  const { isSaving } = useAutoSave(editorWorkflow, workflowPath)
+  const { isSaving, isDirty, flush } = useAutoSave(editorWorkflow, workflowPath, {
+    onError: (err) => setSaveError(err),
+    onSuccess: () => setSaveError(null),
+  })
 
   const handleSelectNode = useCallback((id: string | null) => {
     viewTransition(() => {
@@ -57,14 +63,39 @@ export default function App() {
     setScreen('editor')
   }
 
-  async function handleOpenRecent(path: string) {
+  async function handleOpenRecent(path: string): Promise<void> {
+    const cwc = await api.workflows.read(path) // throws on 404 — caller handles it
+    try { await api.recents.add(path) } catch { /* non-critical */ }
+    openWorkflow(cwc, path)
+  }
+
+  async function handleRename(newName: string) {
+    if (!workflowPath) return
+    setRenameError(null)
     try {
-      const cwc = await api.workflows.read(path)
-      await api.recents.add(path)
-      openWorkflow(cwc, path)
-    } catch {
-      // file may have been deleted; silently ignore (recents list will refresh on next load)
+      await flush()
+      const result = await api.workflows.rename(workflowPath, newName)
+      if (result.renamed) setWorkflowPath(result.path)
+    } catch (err) {
+      setRenameError(err instanceof Error ? err.message : 'Rename failed')
     }
+  }
+
+  function handleHomeClick() {
+    if (isDirty) {
+      setShowLeaveConfirm(true)
+    } else {
+      goHome()
+    }
+  }
+
+  function goHome() {
+    setScreen('home')
+    setWorkflow(null)
+    setWorkflowPath(null)
+    setShowLeaveConfirm(false)
+    setSaveError(null)
+    setRenameError(null)
   }
 
   if (screen === 'home') {
@@ -79,7 +110,6 @@ export default function App() {
   const selectedEdge = selectedEdgeId ? editorWorkflow.edges.find((e) => e.id === selectedEdgeId) ?? null : null
   const isEntryNode = selectedNode ? !editorWorkflow.edges.some((e) => e.to === selectedNode.id) : false
   const terminalEdge = selectedNode ? (editorWorkflow.edges.find((e) => e.from === selectedNode.id && e.to === null) ?? null) : null
-  const projectDir = workflowPath ? workflowPath.replace(/\/[^/]*$/, '') : undefined
 
   return (
     <div className="app app--editor">
@@ -87,22 +117,29 @@ export default function App() {
         workflow={editorWorkflow}
         validation={validation}
         isSaving={isSaving}
+        saveError={saveError}
+        renameError={renameError}
+        showLeaveConfirm={showLeaveConfirm}
         dispatch={dispatch}
         onExport={() => setShowExport(true)}
-        onHome={() => { setScreen('home'); setWorkflow(null); setWorkflowPath(null) }}
+        onHome={handleHomeClick}
+        onRename={handleRename}
+        onLeaveConfirm={goHome}
+        onLeaveCancel={() => setShowLeaveConfirm(false)}
+        onDismissSaveError={() => setSaveError(null)}
       />
       <div className="app__editor-body">
-        <Sidebar projectDir={projectDir} />
+        <Sidebar />
         <ReactFlowProvider>
-        <Canvas
-          workflow={editorWorkflow}
-          dispatch={dispatch}
-          validation={validation}
-          onSelectNode={handleSelectNode}
-          onSelectEdge={handleSelectEdge}
-          selectedNodeId={selectedNodeId}
-          selectedEdgeId={selectedEdgeId}
-        />
+          <Canvas
+            workflow={editorWorkflow}
+            dispatch={dispatch}
+            validation={validation}
+            onSelectNode={handleSelectNode}
+            onSelectEdge={handleSelectEdge}
+            selectedNodeId={selectedNodeId}
+            selectedEdgeId={selectedEdgeId}
+          />
         </ReactFlowProvider>
         {selectedNode && (
           <NodePanel
@@ -130,7 +167,6 @@ export default function App() {
           workflow={editorWorkflow}
           dispatch={dispatch}
           onClose={() => setShowExport(false)}
-          projectDir={projectDir}
         />
       )}
     </div>
