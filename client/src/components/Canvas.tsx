@@ -4,6 +4,7 @@ import {
   Background,
   Controls,
   MiniMap,
+  useReactFlow,
   type Connection,
   type NodeMouseHandler,
   type EdgeMouseHandler,
@@ -28,6 +29,8 @@ interface Props {
 }
 
 export function Canvas({ workflow, dispatch, validation, onSelectNode, onSelectEdge, selectedNodeId, selectedEdgeId }: Props) {
+  const { screenToFlowPosition } = useReactFlow()
+
   const rfNodes = workflow.nodes.map((n) => ({
     id: n.id,
     type: 'workflowNode',
@@ -89,11 +92,10 @@ export function Canvas({ workflow, dispatch, validation, onSelectNode, onSelectE
         console.error('cwc-agent drag payload was not valid JSON')
         return
       }
-      const canvasEl = (event.currentTarget as HTMLElement)
-      const rect = canvasEl.getBoundingClientRect()
+      const position = screenToFlowPosition({ x: event.clientX, y: event.clientY })
       dispatch({
         type: 'ADD_NODE',
-        payload: { agent, position: { x: event.clientX - rect.left - 75, y: event.clientY - rect.top - 40 } },
+        payload: { agent, position },
       })
       return
     }
@@ -120,7 +122,7 @@ export function Canvas({ workflow, dispatch, validation, onSelectNode, onSelectE
         }
       }
     }
-  }, [dispatch, selectedNodeId, workflow.nodes])
+  }, [dispatch, selectedNodeId, workflow.nodes, screenToFlowPosition])
 
   return (
     <div className="canvas-wrapper" onDrop={onDrop} onDragOver={(e) => e.preventDefault()}>

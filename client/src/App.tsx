@@ -5,6 +5,7 @@ import { TemplatePicker } from './components/TemplatePicker.tsx'
 import { useWorkflow } from './hooks/useWorkflow.ts'
 import { useAutoSave } from './hooks/useAutoSave.ts'
 import { validateWorkflow } from './lib/validation.ts'
+import { ReactFlowProvider } from '@xyflow/react'
 import { Canvas } from './components/Canvas.tsx'
 import { Sidebar } from './components/Sidebar.tsx'
 import { NodePanel } from './components/panels/NodePanel.tsx'
@@ -68,6 +69,7 @@ export default function App() {
       />
       <div className="app__editor-body">
         <Sidebar projectDir={projectDir} />
+        <ReactFlowProvider>
         <Canvas
           workflow={editorWorkflow}
           dispatch={dispatch}
@@ -77,6 +79,7 @@ export default function App() {
           selectedNodeId={selectedNodeId}
           selectedEdgeId={selectedEdgeId}
         />
+        </ReactFlowProvider>
         {selectedNode && (
           <NodePanel
             node={selectedNode}
