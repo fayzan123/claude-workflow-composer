@@ -143,4 +143,4 @@ vite.config.ts.timestamp-*
 .vite/
 .worktrees/
 .gstack/
-docs/
+docs/superpowers
