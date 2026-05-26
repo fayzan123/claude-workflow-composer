@@ -165,19 +165,6 @@ This tool has filesystem access to `~/.claude/`. Open source is the trust model 
 
 ---
 
-## Competitive Landscape
-
-| Tool | What It Does | Gap |
-|---|---|---|
-| [claude-studio](https://dev.to/zagentz/claude-studio-a-visual-orchestration-platform-for-claude-code-multi-agent-workflows-5g0p) | Visual DAG management + CLAUDE.md sync | Management, not authoring; no export to skill orchestrators |
-| [wshobson/agents](https://github.com/wshobson/agents) | 191-agent registry across harnesses | Registry only — no visual composer |
-| [jeremylongshore/claude-code-plugins-plus-skills](https://github.com/jeremylongshore/claude-code-plugins-plus-skills) | 2,810 skills + CLI + marketplace | Registry + CLI — no authoring canvas |
-| Langflow / n8n | Visual AI/automation builders | General-purpose; not coding-agent-specific |
-
-The authoring gap — visually composing a Claude Code multi-agent workflow from blank canvas to working exported files — is currently unoccupied.
-
----
-
 ## Development
 
 ```bash

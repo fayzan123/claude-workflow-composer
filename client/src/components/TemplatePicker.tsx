@@ -82,8 +82,8 @@ export function TemplatePicker({ onSelect, onOpenRecent }: Props) {
   async function handleDeleteDeployed(slug: string) {
     try {
       await api.exportedWorkflows.delete(slug)
-      setDeployed((ds) => ds.filter((d) => d.slug !== slug))
     } catch { /* best-effort */ } finally {
+      setDeployed((ds) => ds.filter((d) => d.slug !== slug))
       setDeletingSlug(null)
     }
   }
