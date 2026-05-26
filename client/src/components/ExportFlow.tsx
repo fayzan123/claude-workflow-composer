@@ -10,7 +10,6 @@ interface Props {
   workflow: CwcFile
   dispatch: React.Dispatch<WorkflowAction>
   onClose: () => void
-  projectDir?: string
 }
 
 type Step = 'target-select' | 'previewing' | 'confirming' | 'result' | 'delete-target' | 'deleting' | 'delete-result'
@@ -21,13 +20,14 @@ interface PreviewData {
   target: ExportTarget
 }
 
-export function ExportFlow({ workflow, dispatch, onClose, projectDir }: Props) {
+export function ExportFlow({ workflow, dispatch, onClose }: Props) {
   const [step, setStep] = useState<Step>('target-select')
   const [result, setResult] = useState<ExportResult | null>(null)
   const [preview, setPreview] = useState<PreviewData | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loadingPhase, setLoadingPhase] = useState<'preview' | 'export'>('preview')
   const [deleteResult, setDeleteResult] = useState<DeleteExportResult | null>(null)
+  const [projectDir, setProjectDir] = useState(() => localStorage.getItem('cwc:lastProjectDir') ?? '')
 
   const hasBeenExported = workflow.nodes.some((n) => n.exportedSlug)
 
@@ -70,10 +70,7 @@ export function ExportFlow({ workflow, dispatch, onClose, projectDir }: Props) {
   }
 
   function handleProjectExport() {
-    if (!projectDir) {
-      setError('No project directory available. Save the workflow to a project first.')
-      return
-    }
+    localStorage.setItem('cwc:lastProjectDir', projectDir)
     runPreview({ type: 'project', projectDir })
   }
 
@@ -130,23 +127,37 @@ export function ExportFlow({ workflow, dispatch, onClose, projectDir }: Props) {
                 <span className="export-flow-target-btn__path">~/.claude/</span>
               </button>
 
-              <button
-                className="export-flow-target-btn"
-                onClick={handleProjectExport}
-                disabled={!projectDir}
-                type="button"
-                title={!projectDir ? 'Save the workflow to a project directory first' : undefined}
-              >
-                <span className="export-flow-target-btn__icon">
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
-                  </svg>
-                </span>
-                <span className="export-flow-target-btn__label">Project</span>
-                <span className="export-flow-target-btn__path">
-                  {projectDir ? shortenPath(projectDir) + '/' : '.claude/'}
-                </span>
-              </button>
+              <div className="export-flow-project-input">
+                <label className="export-flow-project-input__label" htmlFor="project-dir-input">
+                  Project directory
+                </label>
+                <input
+                  id="project-dir-input"
+                  className="export-flow-project-input__field"
+                  type="text"
+                  value={projectDir}
+                  onChange={(e) => setProjectDir(e.target.value)}
+                  placeholder="/absolute/path/to/project"
+                  spellCheck={false}
+                />
+                <button
+                  className="export-flow-target-btn"
+                  onClick={handleProjectExport}
+                  disabled={!projectDir.startsWith('/')}
+                  type="button"
+                  title={!projectDir.startsWith('/') ? 'Enter an absolute path starting with /' : undefined}
+                >
+                  <span className="export-flow-target-btn__icon">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+                    </svg>
+                  </span>
+                  <span className="export-flow-target-btn__label">Project</span>
+                  <span className="export-flow-target-btn__path">
+                    {projectDir ? shortenPath(projectDir) + '/' : '.claude/'}
+                  </span>
+                </button>
+              </div>
             </div>
 
             {hasBeenExported && (
@@ -287,10 +298,10 @@ export function ExportFlow({ workflow, dispatch, onClose, projectDir }: Props) {
 
               <button
                 className="export-flow-target-btn export-flow-target-btn--danger"
-                onClick={() => runDelete({ type: 'project', projectDir: projectDir! })}
-                disabled={!projectDir}
+                onClick={() => runDelete({ type: 'project', projectDir })}
+                disabled={!projectDir.startsWith('/')}
                 type="button"
-                title={!projectDir ? 'No project directory available' : undefined}
+                title={!projectDir.startsWith('/') ? 'Enter an absolute path starting with /' : undefined}
               >
                 <span className="export-flow-target-btn__icon export-flow-target-btn__icon--danger">
                   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
