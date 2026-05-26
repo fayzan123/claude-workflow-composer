@@ -10,7 +10,7 @@
     "dist/"
   ],
   "bin": {
-    "cwc": "./dist/bin/cwc.js"
+    "cwc": "dist/bin/cwc.js"
   },
   "scripts": {
     "test": "vitest run",
