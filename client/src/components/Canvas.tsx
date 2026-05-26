@@ -4,6 +4,7 @@ import {
   Background,
   Controls,
   MiniMap,
+  MarkerType,
   useReactFlow,
   applyNodeChanges,
   type Connection,
@@ -65,6 +66,7 @@ export function Canvas({ workflow, dispatch, validation, onSelectNode, onSelectE
       label: e.label,
       selected: e.id === selectedEdgeId,
       animated: true,
+      markerEnd: { type: MarkerType.ArrowClosed },
     })), [workflow.edges, selectedEdgeId])
 
   const onNodesChange = useCallback((changes: NodeChange[]) => {
