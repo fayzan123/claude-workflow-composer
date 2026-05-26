@@ -18,8 +18,24 @@ This spec covers 10 targeted improvements to how workflows are created, saved, l
 **Design:**
 - Add `saveError: Error | null` state to `App.tsx`.
 - Pass `(err) => setSaveError(err)` as the `onError` argument to `useAutoSave`.
-- Clear `saveError` on each successful save (add `onSuccess` callback to `useAutoSave`, or clear it in the effect when a new save starts).
-- In `TopBar`, replace the plain "Saved" indicator with a red "Save failed" state when `saveError` is set. Clicking it (or the next successful save) dismisses it.
+- Add an `onSuccess` callback to `useAutoSave`. To avoid `onSuccess` exceptions being swallowed into `onError`, use a success-flag pattern:
+  ```ts
+  let succeeded = false
+  try {
+    await api.workflows.save(...)
+    succeeded = true
+  } catch (err) {
+    onErrorRef.current?.(err as Error)
+  } finally {
+    setIsSaving(false)
+    setHasPendingTimer(false)
+  }
+  if (succeeded) onSuccessRef.current?.()
+  ```
+  Store `onSuccess` in a ref (`onSuccessRef`) for the same reason `onError` is stored in `onErrorRef` (avoids stale closure, keeps it out of effect deps).
+- `flush()` (see Item 8) must also use this pattern so it calls `onSuccess` correctly.
+- `App.tsx` passes `() => setSaveError(null)` as `onSuccess`, clearing the error on the next successful save.
+- In `TopBar`, replace the plain "Saved" indicator with a red "Save failed" state when `saveError` is set. Clicking it dismisses it; the next successful save also clears it automatically.
 - No modal, no toast library — inline badge state only.
 
 ---
@@ -29,47 +45,38 @@ This spec covers 10 targeted improvements to how workflows are created, saved, l
 **Problem:** `App.tsx` derives `projectDir` from the `.cwc` file path, which is always inside `~/.cwc/workflows/`. "Export to Project" therefore writes to `~/.cwc/workflows/.claude/` — completely wrong.
 
 **Design:**
-- Remove the `projectDir` prop derivation from `App.tsx` entirely.
-- In `ExportFlow`, when the user selects "Project" export, show a text input: "Project directory (absolute path)". Pre-fill with an empty string or the last-used project dir (stored in `localStorage`).
+- Remove the `projectDir` prop derivation from `App.tsx` and stop passing it to `ExportFlow`.
+- In `ExportFlow`, when the user selects "Project" export, show a text input: "Project directory (absolute path)". Pre-fill from `localStorage` key `cwc:lastProjectDir`, otherwise empty.
 - Validate that the entered path is non-empty and absolute before enabling the preview step.
-- Persist the last-used project dir in `localStorage` key `cwc:lastProjectDir` so repeat exports to the same project don't require re-typing.
+- Persist the entered value to `localStorage` key `cwc:lastProjectDir` on successful preview so repeat exports to the same project don't require re-typing.
+
+**`Sidebar` / `MyAgentsTab`:** `Sidebar` also receives `projectDir` from `App.tsx` and forwards it to `MyAgentsTab` to load project-specific agents from `<projectDir>/.claude/agents/`. This prop is currently broken for the same root-cause reason (it resolves to `~/.cwc/workflows/`). However, fixing `Sidebar`'s `projectDir` requires a different mechanism (the user specifying their working project) and is out of scope for this item. For now: **stop passing `projectDir` to `Sidebar` from `App.tsx`**. `MyAgentsTab` will fall back to user-level agents only (`api.agents()` with no argument), which is correct and honest behavior. The project-agents feature is deferred to Approach C.
 
 ---
 
-## Item 3: Recents enriched with real metadata
+## Item 3 + 4 + 5: Full workflow list (replacing recents as primary source)
 
-**Problem:** The home screen derives workflow names from the file path slug via `formatPath()`, not from the actual `meta.name` field. Renamed workflows show the wrong name.
+**Note on Items 3, 4, 5:** These three items overlap and are resolved together. Item 3 (enrich recents endpoint) and Item 4 (stale cleanup) become moot once Item 5 switches the home screen to `GET /api/workflows/list`. Implementing Item 3's recents enrichment separately would produce dead code. The plan is: implement Item 5 (switch to `workflows/list`) and let it subsume 3 and 4.
 
-**Design:**
-- Update `GET /api/recents` to return enriched objects: `{ path: string; name: string; nodeCount: number; updated: string }` instead of raw path strings.
-- Server reads each `.cwc` file and extracts `meta.name`, `meta.updated`, and `nodes.length`. Paths where the file is missing or unreadable are filtered out of the response silently (this handles stale cleanup — see Item 4).
-- Client replaces `formatPath()` name display with `item.name` directly.
-- The `api.recents.list()` return type changes from `string[]` to the enriched array.
-
----
-
-## Item 4: Stale recents cleanup
-
-**Problem:** Clicking a stale recent silently no-ops. The entry persists in the list with no feedback.
+**Problem:** The home screen shows at most 10 recently-opened workflows; names are derived from file slugs, not `meta.name`; stale recents fail silently.
 
 **Design:**
-- Stale entries are already filtered at the server level by Item 3's enriched endpoint (missing files are dropped from the response).
-- If a file goes missing between list-load and click (race condition), `handleOpenRecent` catches the error and shows an inline message: "This workflow was deleted or moved." The entry is removed from the displayed list via `setRecents(r => r.filter(p => p.path !== path))`.
-- No persistent stale state — stale entries disappear on next list load.
-
----
-
-## Item 5: Full workflow list (not just recents)
-
-**Problem:** The home screen shows at most 10 recently-opened workflows. Workflows beyond that limit, or created outside the app, are invisible.
-
-**Design:**
-- Replace `GET /api/recents` as the data source with `GET /api/workflows/list`, which scans all `.cwc` files in `~/.cwc/workflows/` and returns `{ path, name, nodeCount, updated }`.
-- Sort the list by `updated` descending by default.
-- `recents.json` is still maintained (for future use / sort boosting) but the home screen no longer depends on it as the primary source.
+- Switch the home screen from `GET /api/recents` to `GET /api/workflows/list` as the primary data source.
+- Update `GET /api/workflows/list` to return `{ path: string; name: string; nodeCount: number; updated: string }[]` — currently returns `{ path, name, updated }`, so `nodeCount` (= `nodes.length`) must be added to the server handler.
+- Update `client/src/lib/api.ts`: `workflows.list()` return type changes from `{ path: string; name: string; updated: string }[]` to `{ path: string; name: string; nodeCount: number; updated: string }[]`.
+- Sort the list by `updated` descending by default. All `.cwc` files in `~/.cwc/workflows/` are included — no 10-item cap.
 - The "Recent" tab label changes to "Workflows".
-- The `MAX_RECENTS = 10` cap is removed from the home screen display (the cap remains in `recentsRouter` for its own file, but the display is unlimited).
-- `GET /api/workflows/list` already exists and returns the right shape — it just needs the `nodeCount` field added.
+- `recents.json` is still maintained server-side (write on open/create/delete) for future use, but the home screen no longer reads from it. The existing `api.recents.add(path)` call in `handleOpenRecent` in `App.tsx` is kept as-is — it still writes to the recents file for future use.
+- Stale files (unreadable/missing) are filtered from `workflows/list` server-side, same as the existing behavior.
+- If a workflow disappears between list-load and click, the stale entry must be removed from `TemplatePicker`'s list. Since `App.tsx` owns `handleOpenRecent` and `TemplatePicker` owns the list state, change `onOpenRecent` to `(path: string) => Promise<void>` and have `TemplatePicker` call it and catch the rejection: `onOpenRecent(item.path).catch(() => { setWorkflows(ws => ws.filter(w => w.path !== item.path)); /* show inline message */ })`. `App.tsx` rejects (re-throws) when the workflow is not found so `TemplatePicker` can handle it.
+
+**`TemplatePicker` state type migration:** The component currently stores `useState<string[]>` for recents. This must change to `useState<WorkflowListItem[]>` where `WorkflowListItem = { path: string; name: string; nodeCount: number; updated: string }`. All usages must be updated:
+- `recents.map((path) => ...)` → `workflows.map((item) => ...)`, using `item.path`, `item.name`, `item.nodeCount`, `item.updated`
+- `handleDelete(path: string)` stays the same signature (pass `item.path`)
+- Stale entry removal: `setWorkflows(ws => ws.filter(w => w.path !== path))`
+- Tab badge: `workflows.length`
+- `formatPath()` utility is no longer needed and can be removed
+- `api.recents.list()` call is replaced by `api.workflows.list()`
 
 ---
 
@@ -93,7 +100,7 @@ This spec covers 10 targeted improvements to how workflows are created, saved, l
 **Design:**
 - Add a `deletingPath: string | null` state to `TemplatePicker`.
 - First trash click sets `deletingPath` to that workflow's path. The card enters a "confirming" state showing two buttons: "Confirm delete" (destructive) and "Cancel".
-- Clicking anywhere else on the page or pressing Escape resets `deletingPath` to null (cancel).
+- Pressing Escape or clicking elsewhere resets `deletingPath` to null. Use the same `useEffect` + `document.addEventListener('keydown', ...)` + `document.addEventListener('mousedown', ...)` pattern already used in `TopBar` for the errors/warnings popovers. The effect depends on `!!deletingPath` so it only attaches when a confirmation is pending.
 - Actual delete only fires on "Confirm delete".
 - No modal overlay — inline card state only, same pattern as GitHub's inline confirmations.
 
@@ -114,13 +121,26 @@ This spec covers 10 targeted improvements to how workflows are created, saved, l
 - Returns `{ path: newPath, renamed: true }`.
 
 **Client changes:**
-- `TopBar` name input `onBlur` (and Enter key): if name changed, call `api.workflows.rename(workflowPath, newName)`.
-- On success: update `workflowPath` state in `App.tsx` to the returned `newPath`.
-- On `renamed: false` (slug same): nothing — auto-save already handled the name change in content.
-- On error: show inline warning in TopBar ("A workflow with that name already exists").
-- Add `onRename: (newPath: string) => void` prop to `TopBar`; `App.tsx` implements it by calling `setWorkflowPath(newPath)`.
+- `TopBar` continues to dispatch `SET_META` on every keystroke (unchanged). This keeps `meta.name` live in the `.cwc` content and auto-saves the new name to the file. `onRename` fires additionally on `onBlur`/Enter to also rename the file itself.
+- `TopBar` receives `onRename: (newName: string) => void`. On name input `onBlur` (and Enter key), if the name has changed from the last persisted name, `TopBar` calls `onRename(newName)`.
+- `App.tsx` implements `onRename`: flushes the pending save, calls the rename API, updates `workflowPath`.
+- On `renamed: false` (slug unchanged): nothing to do — the flush already saved the updated name.
+- On rename error: `App.tsx` sets a `renameError` string that is passed to `TopBar` as a prop and displayed inline.
 
-**Note:** After rename, `useAutoSave` automatically uses the new path because it reads `workflowPath` from props. No special handling needed.
+**Race condition between auto-save and rename — requires Item 9 to be implemented first:**
+Item 9 changes the cleanup effect to stop resetting `isSaving`/`hasPendingTimer`. Item 8's `flush()` depends on that cleanup change being in place, otherwise the cleanup effect triggered by the `SET_META` dispatch (which changes `workflow`, re-running the effect) will reset `isSaving` to `false` mid-flush. Implement Item 9 before Item 8.
+
+- Add a `flush(): Promise<void>` function to `useAutoSave`'s return value. `flush` cancels any pending timer, immediately `await`s `api.workflows.save(filePath, workflow)`, calls `onSuccess` on success, calls `onError` on failure, clears `hasPendingTimer` and `isSaving` in `finally`.
+- **`flush` must use refs for `filePath` and `workflow`**, not the closure values at creation time — otherwise `flush` would be recreated on every render (breaking `useCallback` memoization) or would capture stale values. Add `workflowRef` and `filePathRef` alongside the existing `onErrorRef`, keeping them in sync with the latest props in the same `useEffect` pattern.
+- `App.tsx` implements `onRename(newName: string)` as:
+  1. `await flush()`
+  2. `const result = await api.workflows.rename(workflowPath, newName)`
+  3. If `result.renamed`: `setWorkflowPath(result.path)`
+  4. If error: set rename error state for TopBar to display.
+
+**Post-rename and delete export:** After removing the `projectDir` prop from `App.tsx` (Item 2), `ExportFlow` uses `localStorage` key `cwc:lastProjectDir` for both the export and delete-project flows. The `delete-target` step also reads this value. If `lastProjectDir` is set, the Project delete button shows the stored path and is enabled. If `lastProjectDir` is empty, the Project button is disabled with tooltip "Export to a project directory first". This means a user who has never exported to a project in this browser cannot delete a project export from the UI in this session — they would need to export first. This is an acceptable limitation for now.
+
+**`useAutoSave` after rename:** After `setWorkflowPath(newPath)`, the hook receives the new `filePath` on the next render and saves to the correct new path. No special handling needed beyond the flush described above.
 
 ---
 
@@ -129,9 +149,14 @@ This spec covers 10 targeted improvements to how workflows are created, saved, l
 **Problem:** Clicking home while a save is pending can silently discard changes.
 
 **Design:**
-- Add `isDirty: boolean` to `useAutoSave`'s return value. `isDirty` is true from the moment the debounce timer starts until the save completes (i.e., `isSaving || pendingTimer`).
-- In `App.tsx`, the `onHome` handler checks `isSaving || isDirty`. If true, shows an inline confirmation in the TopBar: "Changes still saving — leave anyway?" with "Leave" and "Stay" buttons.
-- "Leave" navigates home and discards the pending save.
+- Add `isDirty: boolean` to `useAutoSave`'s return value.
+- Currently `setIsSaving(true)` fires immediately when a change is detected — before the 500ms debounce fires. Move `setIsSaving(true)` to inside the `setTimeout` callback so it only becomes `true` when the save is actually in-flight. This makes `isSaving` mean "save is in flight" (not "change detected").
+- Add a new `hasPendingTimer` boolean state: set to `true` when the debounce timer is scheduled, set to `false` in the `finally` block of the save (not in the cleanup effect). Do not reset it in the cleanup effect — the cleanup fires on every keystroke (because `workflow` changes each time), and resetting there causes `isDirty` to flicker to `false` between keystrokes. Only `finally` clears it.
+- `isDirty = hasPendingTimer || isSaving`.
+- The cleanup effect should only call `clearTimeout(timerRef.current)` — it should NOT call `setIsSaving(false)` or `setHasPendingTimer(false)`. Those are cleared in `finally` only.
+- On unmount: the cleanup fires and cancels the pending timer, but if a save is in-flight `finally` never runs on the unmounted component — `hasPendingTimer` and `isSaving` are left true in abandoned state. This is harmless because React discards the state with the component. No special handling needed.
+- In `App.tsx`, the `onHome` handler checks `isDirty` (which already includes `isSaving`). If true, shows an inline confirmation in the TopBar: "Changes still saving — leave anyway?" with "Leave" and "Stay" buttons. Do not check `isSaving || isDirty` — that double-counts `isSaving`; just check `isDirty`.
+- "Leave" navigates home. Any pending timer is cancelled (via the effect cleanup that runs on unmount). Any in-flight `fetch` completes in the background but its result is ignored — the component is gone. No `AbortController` needed; the worst case is a completed write to a file the user navigated away from, which is harmless.
 - "Stay" dismisses the confirmation, auto-save continues.
 - Implemented as a small `showLeaveConfirm` boolean state in `App.tsx` — no library needed.
 
@@ -143,8 +168,8 @@ This spec covers 10 targeted improvements to how workflows are created, saved, l
 
 **Design:**
 - Import `slugify` in `src/server/api/workflows.ts`.
-- Replace the inline regex with `slugify(name).slice(0, 64) || 'untitled'`.
-- Verify `slugify.ts` produces equivalent output (it should — same logic). If there's any difference, `slugify.ts` is the source of truth.
+- Replace the inline regex with `slugify(name) || 'untitled'`. Do not add `.slice(0, 64)` — `slugify.ts` already applies that limit internally.
+- **Note on behavioral difference:** The two implementations differ for names containing punctuation other than spaces and underscores. The inline regex converts any non-alphanumeric character to `-` (e.g. `"foo.bar"` → `"foo-bar"`), while `slugify.ts` removes non-alphanumeric, non-hyphen characters without inserting a separator (e.g. `"foo.bar"` → `"foobar"`). After this change, `default-path` will use `slugify.ts` behavior. This affects only edge-case names with dots or special chars — `slugify.ts` is the correct source of truth since it's what the export uses.
 
 ---
 
@@ -176,11 +201,13 @@ Auto-save errors
 | File | Change |
 |------|--------|
 | `src/server/api/workflows.ts` | Add `/rename` route; fix slugification; add `nodeCount` to `/list` response |
-| `src/server/api/recents.ts` | Enrich GET response with `name`, `nodeCount`, `updated` |
-| `client/src/hooks/useAutoSave.ts` | Add `onSuccess` callback; expose `isDirty` |
-| `client/src/lib/api.ts` | Update `recents.list` return type; add `workflows.rename` call |
-| `client/src/App.tsx` | Wire `onError`/`onSuccess` for auto-save; add `onRename`; unsaved guard state; fix `projectDir` removal |
-| `client/src/components/TopBar.tsx` | Save-error state display; rename on blur/Enter; leave confirmation |
+| `src/server/api/recents.ts` | No changes needed (home screen no longer reads recents) |
+| `client/src/hooks/useAutoSave.ts` | Add `onSuccess` callback; add `hasPendingTimer` state; expose `isDirty` |
+| `client/src/lib/api.ts` | Update `workflows.list` return type to include `nodeCount`; add `workflows.rename` call; remove `recents.list` usage from home screen (keep API method for write operations) |
+| `client/src/App.tsx` | Wire `onError`/`onSuccess` for auto-save; add `onRename`; unsaved guard state; remove `projectDir` derivation; remove `projectDir` prop from `ExportFlow` and `Sidebar` calls |
+| `client/src/components/TopBar.tsx` | Save-error state display; `onRename` callback on blur/Enter; leave confirmation |
+| `client/src/components/Sidebar.tsx` | Remove `projectDir` prop (forwarded to `MyAgentsTab`; removing it means `MyAgentsTab` shows user-level agents only — correct for now) |
+| `client/src/components/sidebar/MyAgentsTab.tsx` | `projectDir` prop becomes optional-unused; `api.agents()` called with no argument |
 | `client/src/components/TemplatePicker.tsx` | Use `workflows/list`; show enriched metadata; inline delete confirmation |
 | `client/src/components/ExportFlow.tsx` | Replace `projectDir` prop with text input; persist `lastProjectDir` to localStorage |
 
