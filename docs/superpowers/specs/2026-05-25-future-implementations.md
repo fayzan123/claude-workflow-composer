@@ -56,7 +56,30 @@ Implication for the canvas:
 - Playground agents and skills are explicitly labeled as fictional in the UI (e.g. "Example Agent")
 - The fake agent and template data currently in `agentLibrary.ts` and `templates.ts` belongs in Playground, not the real builder — relocate it there when Playground is built
 
-**Implementation note:** The current hardcoded Library data (`agentLibrary.ts`) is the correct seed content for Playground. It just belongs in the wrong place. When Playground ships, that data moves into a Playground-specific module. The real builder's sidebar never shows it.
+**Guided Tutorial**
+
+When a user enters Playground for the first time, they are placed into a step-by-step guided tutorial rather than a blank canvas. The tutorial walks them through building a complete, coherent workflow from scratch — one action at a time — using synthetic agents and skills. Each step has a highlighted instruction and a single clear action the user must take before advancing.
+
+The tutorial sequence:
+
+1. **Place your first agent** — a tooltip points to the sidebar and says "Drag the Researcher agent onto the canvas." The canvas dims everything except the sidebar card and the drop target.
+2. **Place your second agent** — "Now drag the Writer agent onto the canvas." The first node is already on the canvas; the user adds the second.
+3. **Connect the agents** — "Draw an arrow from Researcher to Writer. The Researcher passes its findings to the Writer." The user drags from the output handle of one node to the input of the other.
+4. **Fill in the handoff** — "Describe what happens when Researcher finishes. What does it pass to Writer?" The edge panel opens; the user types the trigger text. A pre-filled placeholder shows what good trigger prose looks like.
+5. **Attach a skill** — "The Writer works better when it follows a specific structure. Drag the `distill` skill onto the Writer node." The user drags from the Skills tab and drops onto the Writer card.
+6. **Mark the workflow end** — "Every workflow needs an endpoint. Draw a final arrow from Writer and mark it as complete." The user draws the terminal edge and selects "Workflow complete" from the edge panel.
+7. **Review the result** — The tutorial pauses and shows the user what they built: a two-node pipeline where a Researcher gathers information and a Writer synthesizes it into a structured output. A summary panel explains what each piece does and why the workflow makes sense end-to-end.
+
+The tutorial produces a real, coherent synthetic workflow — not a throwaway exercise. By the end, the user understands: what a node is, what an edge is, what a skill adds, and what a completed workflow looks like. They can then freely explore Playground with the full sandbox, or switch to the real builder.
+
+**Tutorial design rules:**
+- Each step has exactly one action — no step asks the user to do two things
+- The canvas is dimmed except for the relevant interactive area — focus is narrow at every step
+- The user can skip the tutorial at any time and go straight to the free sandbox
+- Completing the tutorial once suppresses it on future Playground sessions (stored in `~/.cwc/prefs.json`)
+- The synthetic workflow produced by the tutorial should be a recognizable, useful pattern — not arbitrary. A Researcher → Writer pipeline is a natural first example because it's simple, maps to a real use case, and demonstrates both agent sequencing and skill attachment
+
+**Implementation note:** The current hardcoded Library data (`agentLibrary.ts`) is the correct seed content for Playground's free sandbox. It just belongs in the wrong place. When Playground ships, that data moves into a Playground-specific module. The real builder's sidebar never shows it.
 
 ---
 
