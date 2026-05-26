@@ -72,5 +72,41 @@ export function workflowsRouter(workflowsDir: string, recentsPath: string) {
     }
   })
 
+  router.post('/rename', async (req, res) => {
+    const { oldPath, newName } = req.body as { oldPath: string; newName: string }
+    if (!oldPath || !newName) return void res.status(400).json({ error: 'oldPath and newName required' })
+
+    const newSlug = slugify(newName) || 'untitled'
+    const dir = path.dirname(oldPath)
+    const newPath = path.join(dir, `${newSlug}.cwc`)
+
+    if (newPath === oldPath) return void res.json({ path: oldPath, renamed: false })
+    if (await fs.access(newPath).then(() => true).catch(() => false)) {
+      return void res.status(400).json({ error: 'A workflow with that name already exists' })
+    }
+
+    let raw: string
+    try {
+      raw = await fs.readFile(oldPath, 'utf-8')
+    } catch {
+      return void res.status(404).json({ error: 'not found' })
+    }
+
+    const cwc: CwcFile = JSON.parse(raw)
+    cwc.meta.name = newName
+    cwc.meta.updated = new Date().toISOString()
+    await fs.writeFile(newPath, JSON.stringify(cwc, null, 2), 'utf-8')
+    await fs.unlink(oldPath)
+
+    try {
+      const recentsRaw = await fs.readFile(recentsPath, 'utf-8')
+      const recents: string[] = JSON.parse(recentsRaw)
+      const updated = recents.map((p) => (p === oldPath ? newPath : p))
+      await fs.writeFile(recentsPath, JSON.stringify(updated, null, 2), 'utf-8')
+    } catch { /* recents file missing or corrupt — skip */ }
+
+    res.json({ path: newPath, renamed: true })
+  })
+
   return router
 }

@@ -17,7 +17,8 @@ const FIXTURE_CWC: CwcFile = {
 
 beforeAll(async () => {
   tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'cwc-test-'))
-  const app = createApp({ staticDir: null, workflowsDir: tmpDir })
+  const recentsPath = path.join(tmpDir, 'recents.json')
+  const app = createApp({ staticDir: null, workflowsDir: tmpDir, recentsPath })
   await new Promise<void>((resolve) => {
     server = app.listen(0, () => { port = (server.address() as { port: number }).port; resolve() })
   })
@@ -110,4 +111,43 @@ it('DELETE /api/workflows deletes the file', async () => {
   expect(status).toBe(200)
   expect((body as { deleted: boolean }).deleted).toBe(true)
   await expect(fs.access(filePath)).rejects.toThrow()
+})
+
+it('POST /api/workflows/rename renames the file and returns new path', async () => {
+  const oldPath = path.join(tmpDir, 'rename-me.cwc')
+  await fs.writeFile(oldPath, JSON.stringify(FIXTURE_CWC), 'utf-8')
+  const { status, body } = await httpPost('/api/workflows/rename', { oldPath, newName: 'Brand New Name' })
+  expect(status).toBe(200)
+  const result = body as { path: string; renamed: boolean }
+  expect(result.renamed).toBe(true)
+  expect(result.path).toContain('brand-new-name.cwc')
+  await expect(fs.access(oldPath)).rejects.toThrow()
+  const raw = await fs.readFile(result.path, 'utf-8')
+  expect(JSON.parse(raw).meta.name).toBe('Brand New Name')
+})
+
+it('POST /api/workflows/rename returns renamed:false when slug is unchanged', async () => {
+  const filePath = path.join(tmpDir, 'same-slug.cwc')
+  await fs.writeFile(filePath, JSON.stringify({ ...FIXTURE_CWC, meta: { ...FIXTURE_CWC.meta, name: 'Same Slug' } }), 'utf-8')
+  const { status, body } = await httpPost('/api/workflows/rename', { oldPath: filePath, newName: 'Same Slug' })
+  expect(status).toBe(200)
+  expect((body as { renamed: boolean }).renamed).toBe(false)
+  await expect(fs.access(filePath)).resolves.toBeUndefined()
+})
+
+it('POST /api/workflows/rename returns 400 when target name already exists', async () => {
+  const existingPath = path.join(tmpDir, 'already-exists.cwc')
+  const sourcePath = path.join(tmpDir, 'source-wf.cwc')
+  await fs.writeFile(existingPath, JSON.stringify(FIXTURE_CWC), 'utf-8')
+  await fs.writeFile(sourcePath, JSON.stringify(FIXTURE_CWC), 'utf-8')
+  const { status } = await httpPost('/api/workflows/rename', { oldPath: sourcePath, newName: 'Already Exists' })
+  expect(status).toBe(400)
+})
+
+it('POST /api/workflows/rename returns 404 when source file is missing', async () => {
+  const { status } = await httpPost('/api/workflows/rename', {
+    oldPath: path.join(tmpDir, 'ghost.cwc'),
+    newName: 'New Name',
+  })
+  expect(status).toBe(404)
 })
