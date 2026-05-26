@@ -25,8 +25,10 @@ export function ExportFlow({ workflow, dispatch, onClose, projectDir }: Props) {
   const [result, setResult] = useState<ExportResult | null>(null)
   const [preview, setPreview] = useState<PreviewData | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [loadingPhase, setLoadingPhase] = useState<'preview' | 'export'>('preview')
 
   async function runPreview(target: ExportTarget) {
+    setLoadingPhase('preview')
     setStep('previewing')
     setError(null)
     try {
@@ -41,6 +43,7 @@ export function ExportFlow({ workflow, dispatch, onClose, projectDir }: Props) {
 
   async function runExport() {
     if (!preview) return
+    setLoadingPhase('export')
     setStep('previewing')
     setError(null)
     try {
@@ -122,7 +125,7 @@ export function ExportFlow({ workflow, dispatch, onClose, projectDir }: Props) {
         {step === 'previewing' && (
           <div className="export-flow-step export-flow-step--centered">
             <div className="export-flow-spinner" aria-hidden="true" />
-            <p className="export-flow-modal__subtitle">Loading preview…</p>
+            <p className="export-flow-modal__subtitle">{loadingPhase === 'export' ? 'Exporting…' : 'Loading preview…'}</p>
           </div>
         )}
 
