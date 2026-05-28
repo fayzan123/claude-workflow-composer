@@ -2,8 +2,6 @@
 
 **n8n for coding agent workflows.** A visual desktop app for composing multi-agent [Claude Code](https://claude.ai/code) workflows — drag agents onto a canvas, wire handoffs, attach skills, and export a working workflow directly into your Claude installation. No YAML editing required.
 
-> Built for the ~115k Claude Code users who are hand-wiring agent pipelines in `.md` files and wondering why there's no better way.
-
 ---
 
 ## The Problem
@@ -146,15 +144,15 @@ Storage:
 
 ## Key Concepts
 
-| Concept | Description |
-|---|---|
-| **CwcFile** | JSON file format (`.cwc`) representing a full workflow: metadata, nodes, edges |
-| **Bespoke node** | A node whose agent definition is authored in the UI — exporter writes a new `.md` file |
-| **Reference node** | A node with an `agentRef` slug pointing to an existing agent on disk — exporter writes nothing |
-| **Handoff** | A directed edge with a trigger description and optional context artifacts |
-| **Terminal edge** | An edge with no target node — marks a workflow end state (complete/escalated/aborted) |
-| **Ownership comment** | HTML comment appended to every exported file: `<!-- cwc:node:<id>:workflow:<id> -->` |
-| **Orchestrator skill** | The workflow skill generated on export — a Claude Code skill that delegates via Agent tool |
+| Concept                | Description                                                                                                  |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------ |
+| **CwcFile**            | JSON file format (`.cwc`) representing a full workflow: metadata, nodes, edges                               |
+| **Bespoke node**       | A node whose agent definition is authored in the UI — exporter writes a new `.md` file                       |
+| **Reference node**     | A node with an `agentRef` slug pointing to an existing agent on disk — exporter writes nothing               |
+| **Handoff**            | A directed edge with a trigger description and optional context artifacts                                    |
+| **Terminal edge**      | An edge with no target node — marks a workflow end state (complete/escalated/aborted)                        |
+| **Ownership comment**  | HTML comment appended to every exported file: `<!-- cwc:node:<id>:workflow:<id> -->`                         |
+| **Orchestrator skill** | The workflow skill generated on export — a Claude Code skill that delegates via Agent tool                   |
 | **Conflict detection** | Reads the ownership comment from a file on disk to determine if this workflow can safely overwrite/delete it |
 
 ---
