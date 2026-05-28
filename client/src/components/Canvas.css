@@ -240,3 +240,30 @@
 .react-flow__background {
   background: var(--color-surface-secondary);
 }
+
+.canvas-empty-hint {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  text-align: center;
+  color: var(--color-text-tertiary);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  user-select: none;
+}
+
+.canvas-empty-hint__text {
+  font-size: var(--text-sm);
+  font-weight: 500;
+  color: var(--color-text-secondary);
+  margin: 0;
+}
+
+.canvas-empty-hint__sub {
+  font-size: var(--text-xs);
+  margin: 0;
+}

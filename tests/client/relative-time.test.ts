@@ -13,6 +13,9 @@ describe('relativeTime', () => {
   it('returns "X hr ago" for < 24hr ago', () => {
     expect(relativeTime(new Date(NOW - 3 * 3600_000).toISOString(), NOW)).toBe('3 hr ago')
   })
+  it('returns "1 day ago" (singular) for exactly 1 day', () => {
+    expect(relativeTime(new Date(NOW - 86400_000).toISOString(), NOW)).toBe('1 day ago')
+  })
   it('returns "X days ago" for older', () => {
     expect(relativeTime(new Date(NOW - 2 * 86400_000).toISOString(), NOW)).toBe('2 days ago')
   })

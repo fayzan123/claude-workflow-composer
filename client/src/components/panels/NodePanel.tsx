@@ -5,7 +5,7 @@ import { slugify } from '../../../../src/slugify.ts'
 import { CLAUDE_MODELS } from '../../lib/models.ts'
 import './NodePanel.css'
 
-const AVAILABLE_TOOLS = ['Read', 'Write', 'Edit', 'Bash', 'WebSearch', 'WebFetch', 'Agent', 'TodoWrite', 'NotebookEdit', 'LSP']
+const AVAILABLE_TOOLS = ['Read', 'Write', 'Edit', 'Bash', 'Glob', 'Grep', 'WebSearch', 'WebFetch', 'Agent', 'Skill', 'Task', 'TodoWrite', 'NotebookEdit', 'LSP']
 
 interface Props {
   node: CwcNode

@@ -22,7 +22,7 @@ export function relativeTime(isoString: string, now = Date.now()): string {
   const hr = Math.floor(min / 60)
   if (hr < 24) return `${hr} hr ago`
   const days = Math.floor(hr / 24)
-  return `${days} days ago`
+  return `${days} day${days === 1 ? '' : 's'} ago`
 }
 
 function shortenPath(p: string): string {

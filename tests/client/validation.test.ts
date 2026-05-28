@@ -51,13 +51,14 @@ describe('validateWorkflow', () => {
     expect(warnings.some((w) => w.type === 'disconnected-node')).toBe(false)
   })
 
-  it('warns on duplicate slug', () => {
+  it('errors on duplicate slug and blocks export', () => {
     const cwc = makeMinimalCwc({
       nodes: [makeNode({ id: 'n1', name: 'Backend Architect' }), makeNode({ id: 'n2', name: 'Backend Architect' })],
       edges: [],
     })
-    const { warnings } = validateWorkflow(cwc)
-    expect(warnings.some((w) => w.type === 'duplicate-slug')).toBe(true)
+    const { errors, canExport } = validateWorkflow(cwc)
+    expect(errors.some((e) => e.type === 'duplicate-slug')).toBe(true)
+    expect(canExport).toBe(false)
   })
 
   it('canExport is true when no errors', () => {

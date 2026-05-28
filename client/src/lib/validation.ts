@@ -30,7 +30,7 @@ export function validateWorkflow(cwc: CwcFile): ValidationResult {
   for (const [, nodeIds] of slugCounts) {
     if (nodeIds.length > 1) {
       nodeIds.forEach((nodeId) =>
-        warnings.push({ type: 'duplicate-slug', nodeId, message: 'Two agents produce the same filename — rename one' })
+        errors.push({ type: 'duplicate-slug', nodeId, message: 'Two agents produce the same filename — rename one' })
       )
     }
   }

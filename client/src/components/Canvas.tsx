@@ -74,11 +74,14 @@ export function Canvas({ workflow, dispatch, validation, onSelectNode, onSelectE
   }, [])
 
   const onConnect = useCallback((connection: Connection) => {
+    if (connection.source === connection.target) return
+    const duplicate = workflow.edges.some((e) => e.from === connection.source && e.to === connection.target)
+    if (duplicate) return
     dispatch({
       type: 'ADD_EDGE',
       payload: { from: connection.source, to: connection.target, trigger: '', context: [] },
     })
-  }, [dispatch])
+  }, [dispatch, workflow.edges])
 
   const onNodeDragStart = useCallback(() => {
     isDragging.current = true
@@ -122,11 +125,13 @@ export function Canvas({ workflow, dispatch, validation, onSelectNode, onSelectE
   }, [dispatch, selectedNodeId, selectedEdgeId, onSelectNode, onSelectEdge])
 
   const onReconnect = useCallback((oldEdge: Edge, newConnection: Connection) => {
-    dispatch({
-      type: 'UPDATE_EDGE',
-      payload: { edgeId: oldEdge.id, from: newConnection.source, to: newConnection.target },
-    })
-  }, [dispatch])
+    if (newConnection.source === newConnection.target) return
+    const duplicate = workflow.edges.some(
+      (e) => e.id !== oldEdge.id && e.from === newConnection.source && e.to === newConnection.target
+    )
+    if (duplicate) return
+    dispatch({ type: 'UPDATE_EDGE', payload: { edgeId: oldEdge.id, from: newConnection.source, to: newConnection.target } })
+  }, [dispatch, workflow.edges])
 
   const onDrop = useCallback((event: React.DragEvent) => {
     event.preventDefault()
@@ -219,6 +224,16 @@ export function Canvas({ workflow, dispatch, validation, onSelectNode, onSelectE
         <Controls />
         <MiniMap />
       </ReactFlow>
+      {workflow.nodes.length === 0 && (
+        <div className="canvas-empty-hint" aria-hidden="true">
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M14 8V6a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h7a2 2 0 0 0 2-2v-2" />
+            <path d="M18 12H9" /><path d="M15 9l3 3-3 3" />
+          </svg>
+          <p className="canvas-empty-hint__text">Drag agents from the sidebar to get started</p>
+          <p className="canvas-empty-hint__sub">Connect nodes with arrows to define the handoff order</p>
+        </div>
+      )}
     </div>
   )
 }

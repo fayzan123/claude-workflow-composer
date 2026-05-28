@@ -1,8 +1,9 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import type { CwcFile } from '../types.ts'
 import type { WorkflowAction } from '../hooks/useWorkflow.ts'
 import type { ExportTarget, ExportResult } from '../../../src/exporter.ts'
 import type { DeleteExportResult } from '../../../src/server/api/export-delete.ts'
+import { slugify } from '../../../src/slugify.ts'
 import { api } from '../lib/api.ts'
 import './ExportFlow.css'
 
@@ -28,6 +29,9 @@ export function ExportFlow({ workflow, dispatch, onClose }: Props) {
   const [loadingPhase, setLoadingPhase] = useState<'preview' | 'export'>('preview')
   const [deleteResult, setDeleteResult] = useState<DeleteExportResult | null>(null)
   const [projectDir, setProjectDir] = useState(() => localStorage.getItem('cwc:lastProjectDir') ?? '')
+  const [copied, setCopied] = useState(false)
+  const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  useEffect(() => () => { if (copyTimerRef.current) clearTimeout(copyTimerRef.current) }, [])
 
   const hasBeenExported = workflow.nodes.some((n) => n.exportedSlug)
 
@@ -239,7 +243,9 @@ export function ExportFlow({ workflow, dispatch, onClose }: Props) {
           </div>
         )}
 
-        {step === 'result' && result && (
+        {step === 'result' && result && (() => {
+          const invokeCmd = `/cwc-${slugify(result.updatedCwc.meta.name)}`
+          return (
           <div className="export-flow-step">
             <div className="export-flow-success-icon" aria-hidden="true">
               <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -248,6 +254,36 @@ export function ExportFlow({ workflow, dispatch, onClose }: Props) {
             </div>
             <h2 className="export-flow-modal__title">Export complete!</h2>
             <p className="export-flow-modal__subtitle">Workflow written to disk successfully.</p>
+
+            <div className="export-flow-invoke">
+              <p className="export-flow-invoke__label">Invoke in Claude Code</p>
+              <div className="export-flow-invoke__row">
+                <code className="export-flow-invoke__cmd">{invokeCmd}</code>
+                <button
+                  className="export-flow-invoke__copy"
+                  type="button"
+                  onClick={() => {
+                    void navigator.clipboard.writeText(invokeCmd).then(() => {
+                      setCopied(true)
+                      if (copyTimerRef.current) clearTimeout(copyTimerRef.current)
+                      copyTimerRef.current = setTimeout(() => setCopied(false), 2000)
+                    })
+                  }}
+                  aria-label="Copy command"
+                >
+                  {copied ? (
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <polyline points="20 6 9 17 4 12" />
+                    </svg>
+                  ) : (
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+                      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                    </svg>
+                  )}
+                </button>
+              </div>
+            </div>
 
             {result.warnings.length > 0 && (
               <div className="export-flow-warnings">
@@ -268,7 +304,7 @@ export function ExportFlow({ workflow, dispatch, onClose }: Props) {
               Close
             </button>
           </div>
-        )}
+        )})()}
 
         {step === 'delete-target' && (
           <div className="export-flow-step">
