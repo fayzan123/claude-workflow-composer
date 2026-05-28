@@ -49,6 +49,21 @@ export function TemplatePicker({ onSelect, onOpenRecent }: Props) {
     api.exportedWorkflows.list().then(setDeployed).catch(() => {})
   }, [])
 
+  // Live reload: poll for new workflow files while the Workflows tab is active
+  useEffect(() => {
+    if (activeTab !== 'workflows') return
+    const interval = setInterval(() => {
+      api.workflows.list().then((items) => {
+        setWorkflows(prev => {
+          const sorted = items.slice().sort((a, b) => b.updated.localeCompare(a.updated))
+          if (sorted.length === prev.length && sorted.every((w, i) => w.path === prev[i]?.path)) return prev
+          return sorted
+        })
+      }).catch(() => {})
+    }, 3000)
+    return () => clearInterval(interval)
+  }, [activeTab])
+
   useEffect(() => {
     if (!deletingPath) return
     function handleKey(e: KeyboardEvent) { if (e.key === 'Escape') setDeletingPath(null) }

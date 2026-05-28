@@ -1,6 +1,6 @@
 {
   "name": "claude-cwc",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Visual composer for Claude Code multi-agent workflows",
   "type": "module",
   "engines": {
@@ -15,9 +15,10 @@
   "scripts": {
     "test": "vitest run",
     "test:watch": "vitest",
-    "build": "npm run build:server && npm run build:client",
+    "build": "npm run build:server && npm run build:client && npm run build:skills",
     "build:server": "tsc",
     "build:client": "vite build --config client/vite.config.ts",
+    "build:skills": "node -e \"const fs=require('fs');const p=require('path');const d='dist/skills/cwc-generate-workflow';fs.mkdirSync(d,{recursive:true});fs.copyFileSync('src/skills/cwc-generate-workflow/SKILL.md',p.join(d,'SKILL.md'))\"",
     "dev:server": "tsc --watch",
     "dev:client": "vite --config client/vite.config.ts",
     "typecheck": "tsc --noEmit && tsc --noEmit -p client/tsconfig.json",

@@ -121,6 +121,14 @@ export function TopBar({
           aria-label="Workflow name"
           placeholder="Workflow name"
         />
+        <input
+          className="top-bar__desc-input"
+          type="text"
+          value={workflow.meta.description}
+          onChange={(e) => dispatch({ type: 'SET_META', payload: { description: e.target.value } })}
+          aria-label="Workflow description"
+          placeholder="Add a description…"
+        />
         <div className="top-bar__meta">
           {workflow.nodes.length} agent{workflow.nodes.length !== 1 ? 's' : ''}
           {workflow.edges.length > 0 && ` · ${workflow.edges.length} handoff${workflow.edges.length !== 1 ? 's' : ''}`}
