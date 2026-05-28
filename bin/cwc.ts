@@ -157,15 +157,15 @@ async function startServer(): Promise<void> {
 }
 
 const [,, command] = process.argv
-const { version } = JSON.parse(
-  await fs.readFile(path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'package.json'), 'utf-8')
-) as { version: string }
 
 if (command === 'stop') {
   await stopServer()
 } else if (command === 'uninstall-skill') {
   await uninstallSkill()
 } else {
+  const { version } = JSON.parse(
+    await fs.readFile(path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..', 'package.json'), 'utf-8')
+  ) as { version: string }
   await maybeManageSkill(version)
   await startServer()
 }
