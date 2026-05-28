@@ -31,6 +31,7 @@ function nodeSlug(node: CwcNode): string {
 }
 
 export interface OverrideInfo {
+  model?: string
   skills?: string[]
   tools?: string[]
   systemPrompt?: string
@@ -42,6 +43,7 @@ function formatOverrideAnnotation(nodeId: string, overrides: Record<string, Over
   if (!o) return ''
 
   const parts: string[] = []
+  if (o.model) parts.push(`model (${o.model})`)
   if (o.skills && o.skills.length > 0) parts.push(`additional skills (${o.skills.join(', ')})`)
   if (o.tools && o.tools.length > 0) parts.push(`tools (${o.tools.join(', ')})`)
   if (o.systemPrompt && o.systemPrompt.trim()) {

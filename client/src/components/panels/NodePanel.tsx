@@ -146,21 +146,19 @@ export function NodePanel({ node, isEntryNode, terminalEdge, dispatch, onClose, 
         </div>
         )}
 
-        {!isRef && (
-          <div className="node-panel__field">
-            <label className="node-panel__label">Model</label>
-            <select
-              className="node-panel__select"
-              value={node.agent.model ?? ''}
-              onChange={handleModelChange}
-            >
-              <option value="">Default</option>
-              {CLAUDE_MODELS.map((m) => (
-                <option key={m.id} value={m.id}>{m.label}</option>
-              ))}
-            </select>
-          </div>
-        )}
+        <div className="node-panel__field">
+          <label className="node-panel__label">Model</label>
+          <select
+            className="node-panel__select"
+            value={node.agent.model ?? ''}
+            onChange={handleModelChange}
+          >
+            <option value="">Default</option>
+            {CLAUDE_MODELS.map((m) => (
+              <option key={m.id} value={m.id}>{m.label}</option>
+            ))}
+          </select>
+        </div>
 
         <div className="node-panel__field">
           <label className="node-panel__label node-panel__label--required">Completion Criteria *</label>

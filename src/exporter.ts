@@ -90,12 +90,14 @@ export async function exportWorkflow(
       }
 
       // Collect overrides for orchestrator annotation
-      const hasOverrides = (node.agent.skills ?? []).length > 0
+      const hasOverrides = (node.agent.model ?? '').length > 0
+        || (node.agent.skills ?? []).length > 0
         || (node.agent.tools ?? []).length > 0
         || (node.agent.systemPrompt ?? '').trim().length > 0
         || (node.agent.completionCriteria ?? '').trim().length > 0
       if (hasOverrides) {
         nodeOverrides[node.id] = {
+          model: node.agent.model,
           skills: node.agent.skills,
           tools: node.agent.tools,
           systemPrompt: node.agent.systemPrompt,

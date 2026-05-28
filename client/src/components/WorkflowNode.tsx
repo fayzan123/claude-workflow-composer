@@ -60,7 +60,7 @@ export function WorkflowNode({ data }: NodeProps) {
       )}
       <div className="workflow-node__footer">
         <span className="workflow-node__slug">{isRef ? nodeData.agentRef : (nodeData.agent.name ? slugify(nodeData.agent.name) : '...')}</span>
-        {!isRef && nodeData.agent.model && (
+        {nodeData.agent.model && (
           <span className="workflow-node__model-chip">{modelChipLabel(nodeData.agent.model)}</span>
         )}
       </div>
