@@ -2,6 +2,7 @@ import { useEffect, useState, useRef } from 'react'
 import { api } from '../lib/api.ts'
 import type { CwcFile } from '../types.ts'
 import type { ExportedWorkflowEntry } from '../../../src/server/api/exported-workflows.ts'
+import { TEMPLATES } from '../templates/index.ts'
 import './TemplatePicker.css'
 
 type WorkflowListItem = { path: string; name: string; nodeCount: number; updated: string }
@@ -88,22 +89,10 @@ export function TemplatePicker({ onSelect, onOpenRecent }: Props) {
     }
   }
 
-  async function handleNewWorkflow() {
+  async function createAndOpen(cwc: CwcFile) {
     setError(null)
     setCreating(true)
     try {
-      const cwc: CwcFile = {
-        meta: {
-          id: crypto.randomUUID(),
-          name: 'Untitled Workflow',
-          description: '',
-          version: 1,
-          created: new Date().toISOString(),
-          updated: new Date().toISOString(),
-        },
-        nodes: [],
-        edges: [],
-      }
       const pathRes = await fetch(`/api/workflows/default-path?name=${encodeURIComponent(cwc.meta.name)}`)
       const { path: resolvedPath } = await pathRes.json() as { path: string }
       await api.workflows.save(resolvedPath, cwc)
@@ -113,6 +102,26 @@ export function TemplatePicker({ onSelect, onOpenRecent }: Props) {
       setError('Failed to create workflow. Is the server running?')
       setCreating(false)
     }
+  }
+
+  function handleNewWorkflow() {
+    createAndOpen({
+      meta: {
+        id: crypto.randomUUID(),
+        name: 'Untitled Workflow',
+        description: '',
+        version: 1,
+        created: new Date().toISOString(),
+        updated: new Date().toISOString(),
+      },
+      nodes: [],
+      edges: [],
+    })
+  }
+
+  function handleTemplateSelect(templateId: string) {
+    const tmpl = TEMPLATES.find(t => t.id === templateId)
+    if (tmpl) createAndOpen(tmpl.build())
   }
 
   if (notInstalled) {
@@ -207,6 +216,29 @@ export function TemplatePicker({ onSelect, onOpenRecent }: Props) {
             <span className="template-card__title">Blank Canvas</span>
             <span className="template-card__desc">Start from scratch with your own agents and skills</span>
           </button>
+          <div className="template-picker__templates-heading">Starter Templates</div>
+          <div className="template-picker__templates-grid">
+            {TEMPLATES.map(tmpl => (
+              <button
+                key={tmpl.id}
+                className="template-card template-card--starter"
+                onClick={() => handleTemplateSelect(tmpl.id)}
+                disabled={creating}
+                type="button"
+              >
+                <div className="template-card__meta">
+                  <span className="template-card__node-count">{tmpl.nodeCount} agents</span>
+                  <div className="template-card__tags">
+                    {tmpl.tags.map(tag => (
+                      <span key={tag} className="template-card__tag">{tag}</span>
+                    ))}
+                  </div>
+                </div>
+                <span className="template-card__title">{tmpl.name}</span>
+                <span className="template-card__desc">{tmpl.description}</span>
+              </button>
+            ))}
+          </div>
         </section>
       )}
 
