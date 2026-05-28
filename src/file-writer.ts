@@ -1,11 +1,34 @@
 import type { CwcNode } from './schema.js'
 import type { SkillResolution } from './skill-resolver.js'
 
+/**
+ * Render a string as a YAML scalar for frontmatter. Free-text fields like an
+ * agent name or description can contain colons, leading indicators, or newlines
+ * that would make a plain scalar invalid (and break YAML parsing of the exported
+ * file). When that's the case we emit a double-quoted scalar with the necessary
+ * escapes; simple values pass through unquoted to keep the output readable.
+ */
+export function yamlScalar(value: string): string {
+  const needsQuoting =
+    value === '' ||
+    /^[\s>|@`"'#%&*!?{}[\],:-]/.test(value) ||  // ambiguous leading indicator
+    /[:#]/.test(value) ||                        // colon/hash can start YAML structure
+    /[\n\t]/.test(value) ||                      // control characters
+    value !== value.trim()                       // surrounding whitespace
+  if (!needsQuoting) return value
+  const escaped = value
+    .replace(/\\/g, '\\\\')
+    .replace(/"/g, '\\"')
+    .replace(/\n/g, '\\n')
+    .replace(/\t/g, '\\t')
+  return `"${escaped}"`
+}
+
 function buildFrontmatter(node: CwcNode): string {
   const { name, description, color, model, tools } = node.agent
   const lines = ['---']
-  lines.push(`name: ${name}`)
-  lines.push(`description: ${description}`)
+  lines.push(`name: ${yamlScalar(name)}`)
+  lines.push(`description: ${yamlScalar(description)}`)
   if (color) lines.push(`color: ${color}`)
   if (model) lines.push(`model: ${model}`)
   if (tools && tools.length > 0) lines.push(`tools: ${tools.join(', ')}`)
@@ -62,8 +85,8 @@ export function buildWorkflowSkillContent(
 ): string {
   const frontmatter = [
     '---',
-    `name: ${name}`,
-    `description: ${description}`,
+    `name: ${yamlScalar(name)}`,
+    `description: ${yamlScalar(description)}`,
     'disable-model-invocation: true',
     '---',
   ].join('\n')

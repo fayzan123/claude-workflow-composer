@@ -2,7 +2,7 @@ import * as fs from 'node:fs/promises'
 import * as path from 'node:path'
 import matter from 'gray-matter'
 import type { CwcFile, CwcNode } from './schema.js'
-import { slugify } from './slugify.js'
+import { slugify, agentSlug } from './slugify.js'
 import { generateOrchestratorBody, OverrideInfo } from './prose-generator.js'
 import { resolveSkill, SkillResolution } from './skill-resolver.js'
 import { buildAgentFileContent, buildWorkflowSkillContent } from './file-writer.js'
@@ -116,7 +116,7 @@ export async function exportWorkflow(
       continue
     }
 
-    const newSlug = slugify(node.agent.name)
+    const newSlug = agentSlug(node.agent.name)
     const agentPath = path.join(agentsDir, `${newSlug}.md`)
 
     // Rename: old file cleanup

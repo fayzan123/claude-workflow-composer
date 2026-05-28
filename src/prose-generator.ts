@@ -1,6 +1,6 @@
 import type { CwcNode, CwcEdge, CwcArtifact } from './schema.js'
 import { bfsTraversal } from './bfs.js'
-import { slugify } from './slugify.js'
+import { agentSlug } from './slugify.js'
 
 function oxfordJoin(items: string[]): string {
   if (items.length === 0) return ''
@@ -27,7 +27,7 @@ function formatContextClause(context: CwcArtifact[] | undefined): string {
 }
 
 function nodeSlug(node: CwcNode): string {
-  return node.agentRef ?? node.exportedSlug ?? slugify(node.agent.name)
+  return node.agentRef ?? node.exportedSlug ?? agentSlug(node.agent.name)
 }
 
 export interface OverrideInfo {

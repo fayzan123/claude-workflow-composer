@@ -1,7 +1,7 @@
 import { Router as createRouter } from 'express'
 import * as path from 'node:path'
 import * as os from 'node:os'
-import { exec } from 'node:child_process'
+import { execFile } from 'node:child_process'
 
 export function openFileRouter() {
   const router = createRouter()
@@ -22,9 +22,11 @@ export function openFileRouter() {
       return
     }
 
-    // Use platform-appropriate open command
-    const cmd = process.platform === 'darwin' ? `open "${resolved}"` : `xdg-open "${resolved}"`
-    exec(cmd, (err) => {
+    // Use platform-appropriate open command. execFile (not exec) so the path is
+    // passed as a literal argv entry — no shell, no interpolation of quotes/
+    // backticks in a filename that happens to live under .claude.
+    const opener = process.platform === 'darwin' ? 'open' : 'xdg-open'
+    execFile(opener, [resolved], (err) => {
       if (err) {
         res.status(500).json({ error: 'Failed to open file' })
         return

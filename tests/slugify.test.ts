@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { slugify } from '../src/slugify.js'
+import { slugify, agentSlug } from '../src/slugify.js'
 
 describe('slugify', () => {
   it('lowercases and hyphenates spaces', () => {
@@ -29,5 +29,17 @@ describe('slugify', () => {
 
   it('handles empty string', () => {
     expect(slugify('')).toBe('')
+  })
+})
+
+describe('agentSlug', () => {
+  it('slugifies normal names', () => {
+    expect(agentSlug('Backend Architect')).toBe('backend-architect')
+  })
+
+  it('falls back to "agent" when name has no slug-able characters', () => {
+    expect(agentSlug('🎉')).toBe('agent')
+    expect(agentSlug('---')).toBe('agent')
+    expect(agentSlug('')).toBe('agent')
   })
 })

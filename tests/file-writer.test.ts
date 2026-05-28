@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from 'vitest'
 import { buildAgentFileContent, buildWorkflowSkillContent } from '../src/file-writer.js'
 import type { CwcNode, CwcFile } from '../src/schema.js'
 import type { SkillResolution } from '../src/skill-resolver.js'
+import matter from 'gray-matter'
 
 const baseNode: CwcNode = {
   id: 'node-1',
@@ -89,6 +90,36 @@ describe('buildAgentFileContent', () => {
       'Use the `brainstorming` skill. (Explores)\n<!-- cwc:node:node-1:workflow:wf-uuid -->'
     )
   })
+
+  it('produces parseable frontmatter when name/description contain a colon', () => {
+    const node = {
+      ...baseNode,
+      agent: { ...baseNode.agent, name: 'Backend: Architect', description: 'Reviews code: finds bugs' },
+    }
+    const content = buildAgentFileContent(node, [], 'wf-uuid')
+    expect(() => matter(content)).not.toThrow()
+    const { data } = matter(content)
+    expect(data.name).toBe('Backend: Architect')
+    expect(data.description).toBe('Reviews code: finds bugs')
+  })
+
+  it('escapes quotes and special leading characters in frontmatter values', () => {
+    const node = {
+      ...baseNode,
+      agent: { ...baseNode.agent, name: '# Lead "Dev"', description: '@mention {curly}' },
+    }
+    const content = buildAgentFileContent(node, [], 'wf-uuid')
+    expect(() => matter(content)).not.toThrow()
+    const { data } = matter(content)
+    expect(data.name).toBe('# Lead "Dev"')
+    expect(data.description).toBe('@mention {curly}')
+  })
+
+  it('leaves simple values unquoted', () => {
+    const content = buildAgentFileContent(baseNode, [], 'wf-uuid')
+    expect(content).toContain('name: Backend Architect')
+    expect(content).toContain('description: Designs the API')
+  })
 })
 
 describe('buildWorkflowSkillContent', () => {
@@ -111,5 +142,11 @@ describe('buildWorkflowSkillContent', () => {
     const content = buildWorkflowSkillContent('tdd-pipeline', 'TDD description', 'body', 'wf-uuid')
     const lines = content.split('\n').filter(l => l.trim().length > 0)
     expect(lines[lines.length - 1]).toBe('<!-- cwc:workflow:wf-uuid -->')
+  })
+
+  it('produces parseable frontmatter when description contains a colon', () => {
+    const content = buildWorkflowSkillContent('tdd-pipeline', 'Pipeline: builds and tests', 'body', 'wf-uuid')
+    expect(() => matter(content)).not.toThrow()
+    expect(matter(content).data.description).toBe('Pipeline: builds and tests')
   })
 })

@@ -2,7 +2,7 @@ import { Router as createRouter } from 'express'
 import type { ExportTarget } from '../../exporter.js'
 import type { CwcFile } from '../../schema.js'
 import { detectConflict } from '../../conflict-detector.js'
-import { slugify } from '../../slugify.js'
+import { slugify, agentSlug } from '../../slugify.js'
 import * as fs from 'node:fs/promises'
 import * as path from 'node:path'
 import * as os from 'node:os'
@@ -45,7 +45,7 @@ export async function deleteExport(cwc: CwcFile, target: ExportTarget): Promise<
       // Ref nodes point to pre-existing agent files — never delete them
       continue
     }
-    const slug = node.exportedSlug ?? slugify(node.agent.name)
+    const slug = node.exportedSlug ?? agentSlug(node.agent.name)
     const agentPath = path.join(agentsDir, `${slug}.md`)
     const content = await safeReadFile(agentPath)
     if (content === null) {
