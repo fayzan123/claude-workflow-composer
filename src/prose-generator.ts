@@ -103,17 +103,31 @@ export function generateOrchestratorBody(
     const backEdges = step.outgoingEdges.filter(ae => ae.isBackEdge)
 
     if (forwardEdges.length > 1) {
-      const targets = forwardEdges.map(ae => nodeMap.get(ae.edge.to!)).filter(Boolean) as CwcNode[]
-      const nameList = targets.map(n => `**${n.agent.name}**`).join(' and ')
-      lines.push(`${stepNum++}. When **${step.node.agent.name}** completes, invoke ${nameList} in parallel:`)
-      for (const ae of forwardEdges) {
-        const target = nodeMap.get(ae.edge.to!)
-        if (!target) continue
-        const trigger = ae.edge.trigger.trim() || `Activate **${target.agent.name}**.`
-        const ctx = formatContextClause(ae.edge.context)
-        const overrides = formatOverrideAnnotation(ae.edge.to!, nodeOverrides)
-        lines.push(`   - **${target.agent.name}** (\`subagent_type: "${nodeSlug(target)}"\`): ${trigger}${ctx}${overrides}`)
-        emitted.add(ae.edge.id)
+      const isConditional = step.node.dispatchMode === 'conditional'
+      if (isConditional) {
+        lines.push(`${stepNum++}. When **${step.node.agent.name}** completes, evaluate the result and invoke exactly one of the following branches:`)
+        for (const ae of forwardEdges) {
+          const target = nodeMap.get(ae.edge.to!)
+          if (!target) continue
+          const condition = ae.edge.trigger.trim() || `Branch to **${target.agent.name}**.`
+          const ctx = formatContextClause(ae.edge.context)
+          const overrides = formatOverrideAnnotation(ae.edge.to!, nodeOverrides)
+          lines.push(`   - If ${condition} invoke **${target.agent.name}** (\`subagent_type: "${nodeSlug(target)}"\`).${ctx}${overrides}`)
+          emitted.add(ae.edge.id)
+        }
+      } else {
+        const targets = forwardEdges.map(ae => nodeMap.get(ae.edge.to!)).filter(Boolean) as CwcNode[]
+        const nameList = targets.map(n => `**${n.agent.name}**`).join(' and ')
+        lines.push(`${stepNum++}. When **${step.node.agent.name}** completes, invoke ${nameList} in parallel:`)
+        for (const ae of forwardEdges) {
+          const target = nodeMap.get(ae.edge.to!)
+          if (!target) continue
+          const trigger = ae.edge.trigger.trim() || `Activate **${target.agent.name}**.`
+          const ctx = formatContextClause(ae.edge.context)
+          const overrides = formatOverrideAnnotation(ae.edge.to!, nodeOverrides)
+          lines.push(`   - **${target.agent.name}** (\`subagent_type: "${nodeSlug(target)}"\`): ${trigger}${ctx}${overrides}`)
+          emitted.add(ae.edge.id)
+        }
       }
     } else if (forwardEdges.length === 1) {
       const ae = forwardEdges[0]

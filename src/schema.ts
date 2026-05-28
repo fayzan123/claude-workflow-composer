@@ -32,6 +32,7 @@ export interface CwcNode {
   position: { x: number; y: number }
   exportedSlug: string | null
   startTrigger?: string
+  dispatchMode?: 'parallel' | 'conditional'
   agent: CwcAgent
   agentRef?: string
 }

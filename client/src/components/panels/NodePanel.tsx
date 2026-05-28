@@ -96,6 +96,11 @@ export function NodePanel({ node, isEntryNode, terminalEdge, dispatch, onClose, 
     dispatch({ type: 'UPDATE_NODE', payload: { nodeId: node.id, agent: {}, startTrigger: e.target.value } })
   }
 
+  function handleDispatchModeChange(e: React.ChangeEvent<HTMLSelectElement>) {
+    const value = e.target.value as 'parallel' | 'conditional' | ''
+    dispatch({ type: 'UPDATE_NODE', payload: { nodeId: node.id, agent: {}, dispatchMode: value === '' ? undefined : value } })
+  }
+
   const slugPreview = slugify(node.agent.name) || '...'
   const isRef = !!node.agentRef
 
@@ -225,6 +230,20 @@ export function NodePanel({ node, isEntryNode, terminalEdge, dispatch, onClose, 
             />
             <button className="node-panel__btn" onClick={handleAddSkill}>Add</button>
           </div>
+        </div>
+
+        <div className="node-panel__field">
+          <label className="node-panel__label">Dispatch Mode</label>
+          <select
+            className="node-panel__select"
+            value={node.dispatchMode ?? ''}
+            onChange={handleDispatchModeChange}
+          >
+            <option value="">Parallel fan-out (default)</option>
+            <option value="parallel">Parallel fan-out</option>
+            <option value="conditional">Conditional branch (router)</option>
+          </select>
+          <div className="node-panel__field-hint">When this node has multiple outgoing edges, run all in parallel or pick exactly one branch.</div>
         </div>
 
         <div className="node-panel__field">

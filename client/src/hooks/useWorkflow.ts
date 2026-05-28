@@ -6,7 +6,7 @@ export type WorkflowAction =
   | { type: 'LOAD'; payload: CwcFile }
   | { type: 'SET_META'; payload: Partial<CwcFile['meta']> }
   | { type: 'ADD_NODE'; payload: { agent: CwcAgent; position: { x: number; y: number }; agentRef?: string } }
-  | { type: 'UPDATE_NODE'; payload: { nodeId: string; agent: Partial<CwcAgent>; startTrigger?: string } }
+  | { type: 'UPDATE_NODE'; payload: { nodeId: string; agent: Partial<CwcAgent>; startTrigger?: string; dispatchMode?: 'parallel' | 'conditional' } }
   | { type: 'MOVE_NODE'; payload: { nodeId: string; position: { x: number; y: number } } }
   | { type: 'REMOVE_NODE'; payload: { nodeId: string } }
   | { type: 'ADD_EDGE'; payload: Omit<CwcEdge, 'id'> }
@@ -34,7 +34,7 @@ function reducer(state: CwcFile, action: WorkflowAction): CwcFile {
       meta: { ...state.meta, updated: now },
       nodes: state.nodes.map((n) =>
         n.id === action.payload.nodeId
-          ? { ...n, agent: { ...n.agent, ...action.payload.agent }, startTrigger: action.payload.startTrigger ?? n.startTrigger }
+          ? { ...n, agent: { ...n.agent, ...action.payload.agent }, startTrigger: action.payload.startTrigger ?? n.startTrigger, dispatchMode: action.payload.dispatchMode ?? n.dispatchMode }
           : n
       ),
     }

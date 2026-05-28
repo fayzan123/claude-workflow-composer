@@ -2,6 +2,8 @@
 
 **n8n for coding agent workflows.** A visual desktop app for composing multi-agent [Claude Code](https://claude.ai/code) workflows — drag agents onto a canvas, wire handoffs, attach skills, and export a working workflow directly into your Claude installation. No YAML editing required.
 
+![Claude Workflow Composer demo](demo.gif)
+
 ---
 
 ## The Problem

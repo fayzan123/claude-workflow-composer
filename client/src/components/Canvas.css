@@ -185,6 +185,20 @@
   flex-shrink: 0;
 }
 
+.workflow-node__router-indicator {
+  display: inline-flex;
+  align-items: center;
+  font-size: 0.5625rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  background: oklch(0.93 0.06 50);
+  color: oklch(0.45 0.14 50);
+  flex-shrink: 0;
+}
+
 /* ReactFlow overrides */
 .react-flow__controls {
   box-shadow: var(--shadow-md);

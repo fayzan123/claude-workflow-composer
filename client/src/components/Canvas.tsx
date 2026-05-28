@@ -57,17 +57,25 @@ export function Canvas({ workflow, dispatch, validation, onSelectNode, onSelectE
     setNodes(rfNodes)
   }, [rfNodes])
 
-  const rfEdges = useMemo(() => workflow.edges
-    .filter((e) => e.to !== null)
-    .map((e) => ({
-      id: e.id,
-      source: e.from,
-      target: e.to!,
-      label: e.label,
-      selected: e.id === selectedEdgeId,
-      animated: true,
-      markerEnd: { type: MarkerType.ArrowClosed },
-    })), [workflow.edges, selectedEdgeId])
+  const rfEdges = useMemo(() => {
+    const nodeMap = new Map(workflow.nodes.map((n) => [n.id, n]))
+    return workflow.edges
+      .filter((e) => e.to !== null)
+      .map((e) => {
+        const sourceNode = nodeMap.get(e.from)
+        const isConditional = sourceNode?.dispatchMode === 'conditional'
+        return {
+          id: e.id,
+          source: e.from,
+          target: e.to!,
+          label: e.label,
+          selected: e.id === selectedEdgeId,
+          animated: !isConditional,
+          style: isConditional ? { strokeDasharray: '6 3' } : undefined,
+          markerEnd: { type: MarkerType.ArrowClosed },
+        }
+      })
+  }, [workflow.edges, workflow.nodes, selectedEdgeId])
 
   const onNodesChange = useCallback((changes: NodeChange[]) => {
     setNodes((nds) => applyNodeChanges(changes, nds))

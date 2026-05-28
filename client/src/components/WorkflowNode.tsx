@@ -19,6 +19,7 @@ export interface WorkflowNodeData {
   }
   agentRef?: string
   startTrigger?: string
+  dispatchMode?: 'parallel' | 'conditional'
   warnings: ValidationWarning[]
   errors: ValidationError[]
   isSelected: boolean
@@ -30,6 +31,7 @@ export function WorkflowNode({ data }: NodeProps) {
   const hasErrors = nodeData.errors.length > 0
   const accentColor = nodeData.agent.color ?? 'oklch(0.47 0.20 255)'
   const isRef = !!nodeData.agentRef
+  const isRouter = nodeData.dispatchMode === 'conditional'
 
   return (
     <div
@@ -42,6 +44,7 @@ export function WorkflowNode({ data }: NodeProps) {
         <div className="workflow-node__name-row">
           <span className="workflow-node__name">{nodeData.agent.name || 'Unnamed Agent'}</span>
           {isRef && <span className="workflow-node__ref-indicator" title={`References agent: ${nodeData.agentRef}`}>Ref</span>}
+          {isRouter && <span className="workflow-node__router-indicator" title="Conditional branch: one outgoing edge fires based on result">⬦ Router</span>}
           {hasErrors && <span className="workflow-node__status-badge workflow-node__status-badge--error" title={nodeData.errors.map(e => e.message).join('\n')}>!</span>}
           {!hasErrors && hasIssues && <span className="workflow-node__status-badge workflow-node__status-badge--warning" title={nodeData.warnings.map(w => w.message).join('\n')}>!</span>}
         </div>

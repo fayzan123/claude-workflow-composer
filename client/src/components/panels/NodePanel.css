@@ -141,6 +141,12 @@
   color: var(--color-text-tertiary);
 }
 
+.node-panel__field-hint {
+  font-size: var(--text-xs);
+  color: var(--color-text-tertiary);
+  margin-top: 4px;
+}
+
 .node-panel__slug-preview code {
   font-family: var(--font-mono);
   background: var(--color-surface-hover);
