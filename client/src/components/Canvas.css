@@ -158,6 +158,19 @@
   font-family: var(--font-mono);
 }
 
+.workflow-node__model-chip {
+  font-size: 0.5625rem;
+  font-family: var(--font-mono);
+  font-weight: 500;
+  padding: 1px 5px;
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-secondary);
+  color: var(--color-text-secondary);
+  border: 1px solid var(--color-border);
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
 .workflow-node__ref-indicator {
   display: inline-flex;
   align-items: center;

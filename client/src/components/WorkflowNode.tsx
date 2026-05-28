@@ -3,6 +3,7 @@ import { Handle, Position } from '@xyflow/react'
 import type { NodeProps } from '@xyflow/react'
 import type { ValidationWarning, ValidationError } from '../lib/validation.ts'
 import { slugify } from '../../../src/slugify.ts'
+import { modelChipLabel } from '../lib/models.ts'
 
 export interface WorkflowNodeData {
   id: string
@@ -59,6 +60,9 @@ export function WorkflowNode({ data }: NodeProps) {
       )}
       <div className="workflow-node__footer">
         <span className="workflow-node__slug">{isRef ? nodeData.agentRef : (nodeData.agent.name ? slugify(nodeData.agent.name) : '...')}</span>
+        {!isRef && nodeData.agent.model && (
+          <span className="workflow-node__model-chip">{modelChipLabel(nodeData.agent.model)}</span>
+        )}
       </div>
       <Handle type="source" position={Position.Right} />
     </div>
