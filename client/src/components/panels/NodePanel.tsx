@@ -2,6 +2,7 @@ import React, { useState } from 'react'
 import type { CwcNode, CwcAgent, CwcEdge, TerminalType } from '../../../../src/schema.ts'
 import type { WorkflowAction } from '../../hooks/useWorkflow.ts'
 import { slugify } from '../../../../src/slugify.ts'
+import { CLAUDE_MODELS } from '../../lib/models.ts'
 import './NodePanel.css'
 
 const AVAILABLE_TOOLS = ['Read', 'Write', 'Edit', 'Bash', 'WebSearch', 'WebFetch', 'Agent', 'TodoWrite', 'NotebookEdit', 'LSP']
@@ -37,6 +38,13 @@ export function NodePanel({ node, isEntryNode, terminalEdge, dispatch, onClose, 
 
   function handleSystemPromptChange(e: React.ChangeEvent<HTMLTextAreaElement>) {
     updateAgent({ systemPrompt: e.target.value })
+  }
+
+  function handleModelChange(e: React.ChangeEvent<HTMLSelectElement>) {
+    const value = e.target.value
+    // Passing undefined causes JSON.stringify to omit the key entirely,
+    // so exported agent frontmatter correctly has no `model:` line.
+    updateAgent({ model: value === '' ? undefined : value })
   }
 
   function handleToolToggle(tool: string) {
@@ -136,6 +144,22 @@ export function NodePanel({ node, isEntryNode, terminalEdge, dispatch, onClose, 
             rows={3}
           />
         </div>
+        )}
+
+        {!isRef && (
+          <div className="node-panel__field">
+            <label className="node-panel__label">Model</label>
+            <select
+              className="node-panel__select"
+              value={node.agent.model ?? ''}
+              onChange={handleModelChange}
+            >
+              <option value="">Default</option>
+              {CLAUDE_MODELS.map((m) => (
+                <option key={m.id} value={m.id}>{m.label}</option>
+              ))}
+            </select>
+          </div>
         )}
 
         <div className="node-panel__field">
