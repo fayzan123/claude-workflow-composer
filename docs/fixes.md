@@ -1,7 +1,7 @@
 # Open issues — ranked by importance
 
-## 1. Conditional branches silently rendered as parallel execution
-`prose-generator.ts:105` — any node with >1 forward edge becomes "invoke X and Y in parallel". But each edge already carries a trigger (e.g. "if tests fail" vs "if tests pass"). A router/conditional pattern — arguably the most common multi-agent shape — gets exported as "always run both at once," which is wrong. The data model has no notion of parallel fan-out vs conditional branch, so the orchestrator can't distinguish them. This undercuts the core value prop.
+## ~~1. Conditional branches silently rendered as parallel execution~~ ✓ Fixed
+Added `dispatchMode?: 'parallel' | 'conditional'` to `CwcNode` (`schema.ts`). NodePanel exposes a Dispatch Mode dropdown. `prose-generator.ts` now emits "evaluate the result and invoke exactly one of the following branches" for conditional nodes vs. the parallel fan-out prose. Default remains parallel (no behaviour change for existing workflows).
 
 ## 2. No undo/redo + destructive delete on autosave
 Delete/Backspace removes a node instantly (`Canvas.tsx:107`), autosaved 500ms later, with no undo. For a visual editor this is a serious safety/UX hole.
@@ -10,7 +10,7 @@ Delete/Backspace removes a node instantly (`Canvas.tsx:107`), autosaved 500ms la
 `TemplatePicker.tsx:99` creates workflows with `description: ''`. `TopBar` only edits `meta.name`. There is no field anywhere in the editor for `meta.description` — yet `exportWorkflow` writes it as the orchestrator skill's `description:` frontmatter. Every exported skill therefore has a blank description.
 
 ## 4. No orchestrator preview
-The BFS prose is the actual product, but you only see it buried in the export modal's file preview. A live "Orchestrator preview" panel would build trust and catch the parallel-vs-conditional problem (#1) immediately.
+The BFS prose is the actual product, but you only see it buried in the export modal's file preview. A live "Orchestrator preview" panel would build trust immediately.
 
 ## 5. Skill entry has no autocomplete
 `NodePanel.tsx:56` — skill entry is raw free-text with no autocomplete against installed skills. Typos only surface as export warnings, despite the Sidebar already having the full installed-skills list.
