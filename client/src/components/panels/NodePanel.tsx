@@ -1,8 +1,10 @@
-import React, { useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import type { CwcNode, CwcAgent, CwcEdge, TerminalType } from '../../../../src/schema.ts'
 import type { WorkflowAction } from '../../hooks/useWorkflow.ts'
+import type { SkillEntry } from '../../../../src/server/api/skills.ts'
 import { slugify } from '../../../../src/slugify.ts'
 import { CLAUDE_MODELS } from '../../lib/models.ts'
+import { api } from '../../lib/api.ts'
 import './NodePanel.css'
 
 const AVAILABLE_TOOLS = ['Read', 'Write', 'Edit', 'Bash', 'Glob', 'Grep', 'WebSearch', 'WebFetch', 'Agent', 'Skill', 'Task', 'TodoWrite', 'NotebookEdit', 'LSP']
@@ -19,6 +21,12 @@ interface Props {
 export function NodePanel({ node, isEntryNode, terminalEdge, dispatch, onClose, onDelete }: Props) {
   const [promptExpanded, setPromptExpanded] = useState(false)
   const [newSkill, setNewSkill] = useState('')
+  const [skillFocused, setSkillFocused] = useState(false)
+  const [installedSkills, setInstalledSkills] = useState<SkillEntry[]>([])
+
+  useEffect(() => {
+    api.skills().then(setInstalledSkills).catch(() => {})
+  }, [])
 
   function updateAgent(agentPartial: Partial<CwcAgent>) {
     dispatch({ type: 'UPDATE_NODE', payload: { nodeId: node.id, agent: agentPartial } })
@@ -53,8 +61,8 @@ export function NodePanel({ node, isEntryNode, terminalEdge, dispatch, onClose, 
     updateAgent({ tools: next })
   }
 
-  function handleAddSkill() {
-    const trimmed = newSkill.trim()
+  function handleAddSkill(value?: string) {
+    const trimmed = (value ?? newSkill).trim()
     if (!trimmed) return
     const current = node.agent.skills ?? []
     if (!current.includes(trimmed)) {
@@ -103,6 +111,17 @@ export function NodePanel({ node, isEntryNode, terminalEdge, dispatch, onClose, 
 
   const slugPreview = slugify(node.agent.name) || '...'
   const isRef = !!node.agentRef
+
+  const addedSkills = node.agent.skills ?? []
+  const query = newSkill.trim().toLowerCase()
+  const skillSuggestions = installedSkills
+    .filter((s) => !addedSkills.includes(s.namespacedSlug))
+    .filter((s) =>
+      !query ||
+      s.namespacedSlug.toLowerCase().includes(query) ||
+      s.name.toLowerCase().includes(query)
+    )
+    .slice(0, 8)
 
   return (
     <aside className="node-panel">
@@ -220,15 +239,37 @@ export function NodePanel({ node, isEntryNode, terminalEdge, dispatch, onClose, 
             ))}
           </div>
           <div className="node-panel__skill-add">
-            <input
-              className="node-panel__input"
-              type="text"
-              value={newSkill}
-              onChange={(e) => setNewSkill(e.target.value)}
-              onKeyDown={handleSkillKeyDown}
-              placeholder="Add skill..."
-            />
-            <button className="node-panel__btn" onClick={handleAddSkill}>Add</button>
+            <div className="node-panel__skill-input-wrap">
+              <input
+                className="node-panel__input"
+                type="text"
+                value={newSkill}
+                onChange={(e) => setNewSkill(e.target.value)}
+                onKeyDown={handleSkillKeyDown}
+                onFocus={() => setSkillFocused(true)}
+                onBlur={() => setSkillFocused(false)}
+                placeholder="Add skill..."
+              />
+              {skillFocused && skillSuggestions.length > 0 && (
+                <ul className="node-panel__skill-suggestions">
+                  {skillSuggestions.map((s) => (
+                    <li key={s.namespacedSlug}>
+                      <button
+                        type="button"
+                        className="node-panel__skill-suggestion"
+                        onMouseDown={(e) => { e.preventDefault(); handleAddSkill(s.namespacedSlug) }}
+                      >
+                        <span className="node-panel__skill-suggestion-slug">{s.namespacedSlug}</span>
+                        {s.name && s.name !== s.namespacedSlug && (
+                          <span className="node-panel__skill-suggestion-name">{s.name}</span>
+                        )}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+            <button className="node-panel__btn" onClick={() => handleAddSkill()}>Add</button>
           </div>
         </div>
 

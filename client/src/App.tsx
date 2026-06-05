@@ -11,6 +11,7 @@ import { Sidebar } from './components/Sidebar.tsx'
 import { NodePanel } from './components/panels/NodePanel.tsx'
 import { EdgePanel } from './components/panels/EdgePanel.tsx'
 import { TopBar } from './components/TopBar.tsx'
+import { OrchestratorPreview } from './components/OrchestratorPreview.tsx'
 import { ExportFlow } from './components/ExportFlow.tsx'
 import { HelpModal } from './components/HelpModal.tsx'
 import './App.css'
@@ -30,12 +31,13 @@ export default function App() {
   const [workflow, setWorkflow] = useState<CwcFile | null>(null)
   const [workflowPath, setWorkflowPath] = useState<string | null>(null)
   const [showExport, setShowExport] = useState(false)
+  const [showPreview, setShowPreview] = useState(false)
   const [showHelp, setShowHelp] = useState(false)
   const [saveError, setSaveError] = useState<Error | null>(null)
   const [renameError, setRenameError] = useState<string | null>(null)
   const [showLeaveConfirm, setShowLeaveConfirm] = useState(false)
 
-  const { workflow: editorWorkflow, dispatch } = useWorkflow(workflow ?? undefined)
+  const { workflow: editorWorkflow, dispatch, canUndo, canRedo } = useWorkflow(workflow ?? undefined)
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null)
   const validation = validateWorkflow(editorWorkflow)
@@ -55,6 +57,17 @@ export default function App() {
     viewTransition(() => {
       setSelectedEdgeId(id)
       if (id) setSelectedNodeId(null)
+    })
+  }, [])
+
+  const handleTogglePreview = useCallback(() => {
+    setShowPreview((open) => {
+      // Opening the preview clears any node/edge selection so it owns the slot.
+      if (!open) {
+        setSelectedNodeId(null)
+        setSelectedEdgeId(null)
+      }
+      return !open
     })
   }, [])
 
@@ -133,6 +146,12 @@ export default function App() {
         renameError={renameError}
         showLeaveConfirm={showLeaveConfirm}
         dispatch={dispatch}
+        canUndo={canUndo}
+        canRedo={canRedo}
+        onUndo={() => dispatch({ type: 'UNDO' })}
+        onRedo={() => dispatch({ type: 'REDO' })}
+        previewOpen={showPreview}
+        onTogglePreview={handleTogglePreview}
         onExport={() => setShowExport(true)}
         onHelp={() => setShowHelp(true)}
         onHome={handleHomeClick}
@@ -177,6 +196,12 @@ export default function App() {
               dispatch({ type: 'REMOVE_EDGE', payload: { edgeId: selectedEdge.id } })
               handleSelectEdge(null)
             }}
+          />
+        )}
+        {!selectedNode && !selectedEdge && showPreview && (
+          <OrchestratorPreview
+            workflow={editorWorkflow}
+            onClose={() => setShowPreview(false)}
           />
         )}
       </div>

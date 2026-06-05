@@ -12,6 +12,12 @@ interface Props {
   renameError: string | null
   showLeaveConfirm: boolean
   dispatch: React.Dispatch<WorkflowAction>
+  canUndo: boolean
+  canRedo: boolean
+  onUndo: () => void
+  onRedo: () => void
+  previewOpen: boolean
+  onTogglePreview: () => void
   onExport: () => void
   onHome: () => void
   onHelp: () => void
@@ -23,7 +29,7 @@ interface Props {
 
 export function TopBar({
   workflow, validation, isSaving, saveError, renameError, showLeaveConfirm,
-  dispatch, onExport, onHome, onHelp, onRename, onLeaveConfirm, onLeaveCancel, onDismissSaveError,
+  dispatch, canUndo, canRedo, onUndo, onRedo, previewOpen, onTogglePreview, onExport, onHome, onHelp, onRename, onLeaveConfirm, onLeaveCancel, onDismissSaveError,
 }: Props) {
   const [errorsOpen, setErrorsOpen] = useState(false)
   const [warningsOpen, setWarningsOpen] = useState(false)
@@ -109,6 +115,35 @@ export function TopBar({
           <polyline points="9 22 9 12 15 12 15 22" />
         </svg>
       </button>
+
+      <div className="top-bar__history">
+        <button
+          className="top-bar__history-btn"
+          onClick={onUndo}
+          disabled={!canUndo}
+          type="button"
+          title="Undo (⌘Z)"
+          aria-label="Undo"
+        >
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M3 7v6h6" />
+            <path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13" />
+          </svg>
+        </button>
+        <button
+          className="top-bar__history-btn"
+          onClick={onRedo}
+          disabled={!canRedo}
+          type="button"
+          title="Redo (⇧⌘Z)"
+          aria-label="Redo"
+        >
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M21 7v6h-6" />
+            <path d="M3 17a9 9 0 0 1 9-9 9 9 0 0 1 6 2.3L21 13" />
+          </svg>
+        </button>
+      </div>
 
       <div className="top-bar__name-wrap">
         <input
@@ -224,6 +259,20 @@ export function TopBar({
           aria-label="Help"
         >
           ?
+        </button>
+
+        <button
+          className={`top-bar__preview-btn ${previewOpen ? 'top-bar__preview-btn--active' : ''}`}
+          onClick={onTogglePreview}
+          type="button"
+          title="Toggle orchestrator preview"
+          aria-pressed={previewOpen}
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z" />
+            <circle cx="12" cy="12" r="3" />
+          </svg>
+          Preview
         </button>
 
         <button

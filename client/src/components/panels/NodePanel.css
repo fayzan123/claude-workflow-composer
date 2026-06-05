@@ -221,8 +221,58 @@
   gap: 6px;
 }
 
-.node-panel__skill-add .node-panel__input {
+.node-panel__skill-input-wrap {
+  position: relative;
   flex: 1;
+}
+
+.node-panel__skill-add .node-panel__input {
+  width: 100%;
+}
+
+.node-panel__skill-suggestions {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  z-index: 10;
+  margin: 0;
+  padding: 4px;
+  list-style: none;
+  max-height: 220px;
+  overflow-y: auto;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md);
+}
+
+.node-panel__skill-suggestion {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  width: 100%;
+  text-align: left;
+  padding: 6px 8px;
+  background: none;
+  border: none;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.node-panel__skill-suggestion:hover {
+  background: var(--color-surface-hover);
+}
+
+.node-panel__skill-suggestion-slug {
+  font-size: var(--text-sm);
+  font-family: var(--font-mono);
+  color: var(--color-text);
+}
+
+.node-panel__skill-suggestion-name {
+  font-size: var(--text-xs);
+  color: var(--color-text-tertiary);
 }
 
 .node-panel__btn {

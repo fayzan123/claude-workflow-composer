@@ -117,9 +117,18 @@ export function Canvas({ workflow, dispatch, validation, onSelectNode, onSelectE
 
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
-      if (e.key !== 'Delete' && e.key !== 'Backspace') return
       const tag = (e.target as HTMLElement).tagName
-      if (tag === 'INPUT' || tag === 'TEXTAREA' || (e.target as HTMLElement).isContentEditable) return
+      const inField = tag === 'INPUT' || tag === 'TEXTAREA' || (e.target as HTMLElement).isContentEditable
+
+      if ((e.metaKey || e.ctrlKey) && (e.key === 'z' || e.key === 'Z')) {
+        if (inField) return // let the field handle native text undo/redo
+        e.preventDefault()
+        dispatch({ type: e.shiftKey ? 'REDO' : 'UNDO' })
+        return
+      }
+
+      if (e.key !== 'Delete' && e.key !== 'Backspace') return
+      if (inField) return
       if (selectedNodeId) {
         dispatch({ type: 'REMOVE_NODE', payload: { nodeId: selectedNodeId } })
         onSelectNode(null)

@@ -13,11 +13,15 @@ export type WorkflowAction =
   | { type: 'UPDATE_EDGE'; payload: { edgeId: string } & Partial<Omit<CwcEdge, 'id'>> }
   | { type: 'REMOVE_EDGE'; payload: { edgeId: string } }
   | { type: 'UPDATE_EXPORTED_SLUG'; payload: { nodeId: string; slug: string } }
+  | { type: 'UNDO' }
+  | { type: 'REDO' }
 
 function reducer(state: CwcFile, action: WorkflowAction): CwcFile {
   const now = new Date().toISOString()
   switch (action.type) {
     case 'LOAD': return action.payload
+    case 'UNDO':
+    case 'REDO': return state
     case 'SET_META': return { ...state, meta: { ...state.meta, ...action.payload, updated: now } }
     case 'ADD_NODE': {
       const node: CwcNode = {
@@ -84,7 +88,58 @@ function makeEmptyWorkflow(): CwcFile {
   }
 }
 
+const MAX_HISTORY = 100
+
+export interface HistoryState {
+  past: CwcFile[]
+  present: CwcFile
+  future: CwcFile[]
+  lastKey: string | null
+}
+
+// Rapid edits that share a coalesce key (typing in a text field, retitling) collapse
+// into a single undo step instead of one step per keystroke.
+function coalesceKey(action: WorkflowAction): string | null {
+  switch (action.type) {
+    case 'SET_META': return 'meta'
+    case 'UPDATE_NODE': return `update:${action.payload.nodeId}`
+    default: return null
+  }
+}
+
+export function historyReducer(state: HistoryState, action: WorkflowAction): HistoryState {
+  switch (action.type) {
+    case 'LOAD':
+      return { past: [], present: reducer(state.present, action), future: [], lastKey: null }
+    case 'UNDO': {
+      if (state.past.length === 0) return state
+      const previous = state.past[state.past.length - 1]
+      return { past: state.past.slice(0, -1), present: previous, future: [state.present, ...state.future], lastKey: null }
+    }
+    case 'REDO': {
+      if (state.future.length === 0) return state
+      const next = state.future[0]
+      return { past: [...state.past, state.present], present: next, future: state.future.slice(1), lastKey: null }
+    }
+    // Post-export bookkeeping — should never land on the undo stack.
+    case 'UPDATE_EXPORTED_SLUG':
+      return { ...state, present: reducer(state.present, action) }
+    default: {
+      const present = reducer(state.present, action)
+      if (present === state.present) return state
+      const key = coalesceKey(action)
+      const coalesce = key !== null && key === state.lastKey
+      const past = coalesce ? state.past : [...state.past, state.present].slice(-MAX_HISTORY)
+      return { past, present, future: [], lastKey: key }
+    }
+  }
+}
+
 export function useWorkflow(initial?: CwcFile) {
-  const [workflow, dispatch] = useReducer(reducer, initial ?? makeEmptyWorkflow())
-  return { workflow, dispatch }
+  const [state, dispatch] = useReducer(
+    historyReducer,
+    undefined,
+    (): HistoryState => ({ past: [], present: initial ?? makeEmptyWorkflow(), future: [], lastKey: null })
+  )
+  return { workflow: state.present, dispatch, canUndo: state.past.length > 0, canRedo: state.future.length > 0 }
 }

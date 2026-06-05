@@ -3,7 +3,7 @@ import * as path from 'node:path'
 import matter from 'gray-matter'
 import type { CwcFile, CwcNode } from './schema.js'
 import { slugify, agentSlug } from './slugify.js'
-import { generateOrchestratorBody, OverrideInfo } from './prose-generator.js'
+import { generateOrchestratorBody, collectNodeOverrides } from './prose-generator.js'
 import { resolveSkill, SkillResolution } from './skill-resolver.js'
 import { buildAgentFileContent, buildWorkflowSkillContent } from './file-writer.js'
 import { detectConflict } from './conflict-detector.js'
@@ -64,7 +64,7 @@ export async function exportWorkflow(
   await ensureDir(agentsDir)
 
   const updatedNodes: CwcNode[] = []
-  const nodeOverrides: Record<string, OverrideInfo> = {}
+  const nodeOverrides = collectNodeOverrides(cwc.nodes)
 
   for (const node of cwc.nodes) {
     if (node.agentRef) {
@@ -86,22 +86,6 @@ export async function exportWorkflow(
         const resolved = await resolveSkillWithOverride(skillSlug, opts.userSkillsDir)
         if (!resolved.found) {
           warnings.push(`Skill not found: ${skillSlug} — install it on the target machine`)
-        }
-      }
-
-      // Collect overrides for orchestrator annotation
-      const hasOverrides = (node.agent.model ?? '').length > 0
-        || (node.agent.skills ?? []).length > 0
-        || (node.agent.tools ?? []).length > 0
-        || (node.agent.systemPrompt ?? '').trim().length > 0
-        || (node.agent.completionCriteria ?? '').trim().length > 0
-      if (hasOverrides) {
-        nodeOverrides[node.id] = {
-          model: node.agent.model,
-          skills: node.agent.skills,
-          tools: node.agent.tools,
-          systemPrompt: node.agent.systemPrompt,
-          completionCriteria: node.agent.completionCriteria,
         }
       }
 

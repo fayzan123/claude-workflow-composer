@@ -38,6 +38,35 @@ export interface OverrideInfo {
   completionCriteria?: string
 }
 
+/**
+ * Collect per-node configuration overrides for reference nodes. A ref node points
+ * at an existing agent file, so any model/skills/tools/prompt/criteria set on it
+ * are workflow-specific and surface as orchestrator annotations rather than a new
+ * agent file. Bespoke nodes bake their config into their own `.md`, so they're
+ * skipped here. Shared by the exporter and the live preview so both agree.
+ */
+export function collectNodeOverrides(nodes: CwcNode[]): Record<string, OverrideInfo> {
+  const overrides: Record<string, OverrideInfo> = {}
+  for (const node of nodes) {
+    if (!node.agentRef) continue
+    const hasOverrides = (node.agent.model ?? '').length > 0
+      || (node.agent.skills ?? []).length > 0
+      || (node.agent.tools ?? []).length > 0
+      || (node.agent.systemPrompt ?? '').trim().length > 0
+      || (node.agent.completionCriteria ?? '').trim().length > 0
+    if (hasOverrides) {
+      overrides[node.id] = {
+        model: node.agent.model,
+        skills: node.agent.skills,
+        tools: node.agent.tools,
+        systemPrompt: node.agent.systemPrompt,
+        completionCriteria: node.agent.completionCriteria,
+      }
+    }
+  }
+  return overrides
+}
+
 function formatOverrideAnnotation(nodeId: string, overrides: Record<string, OverrideInfo>): string {
   const o = overrides[nodeId]
   if (!o) return ''
