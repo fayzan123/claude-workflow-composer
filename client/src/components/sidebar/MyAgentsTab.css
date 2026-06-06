@@ -110,3 +110,9 @@
   color: var(--color-text-tertiary);
   font-family: var(--font-mono);
 }
+
+.my-agents__generate {
+  margin: 8px; padding: 8px 12px; background: #3b82f6; color: #fff;
+  border: none; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 500;
+}
+.my-agents__generate:hover { background: #2563eb; }

@@ -1,7 +1,8 @@
-import React, { useEffect, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { api } from '../../lib/api.ts'
 import type { AgentEntry } from '../../../../src/server/api/agents.ts'
 import { MarkdownViewer } from '../MarkdownViewer.tsx'
+import { GenerateAgentModal } from '../GenerateAgentModal.tsx'
 import './MyAgentsTab.css'
 
 export function MyAgentsTab() {
@@ -10,14 +11,18 @@ export function MyAgentsTab() {
   const [error, setError] = useState<string | null>(null)
   const [search, setSearch] = useState('')
   const [viewing, setViewing] = useState<{ filePath: string; title: string } | null>(null)
+  const [generating, setGenerating] = useState(false)
   const isDragging = useRef(false)
 
-  useEffect(() => {
+  const load = useCallback(() => {
+    setLoading(true)
     api.agents()
       .then(setAgents)
       .catch((err: unknown) => setError(err instanceof Error ? err.message : 'Failed to load agents'))
       .finally(() => setLoading(false))
   }, [])
+
+  useEffect(() => { load() }, [load])
 
   if (loading) return <div className="my-agents__status">Loading agents...</div>
   if (error) return <div className="my-agents__status my-agents__status--error">Error: {error}</div>
@@ -36,6 +41,9 @@ export function MyAgentsTab() {
 
   return (
     <div className="my-agents">
+      <button className="my-agents__generate" onClick={() => setGenerating(true)}>
+        + Generate agent
+      </button>
       <div className="my-agents__search-wrap">
         <input
           className="my-agents__search"
@@ -90,6 +98,12 @@ export function MyAgentsTab() {
           filePath={viewing.filePath}
           title={viewing.title}
           onClose={() => setViewing(null)}
+        />
+      )}
+      {generating && (
+        <GenerateAgentModal
+          onClose={() => setGenerating(false)}
+          onCreated={() => { setGenerating(false); load() }}
         />
       )}
     </div>
