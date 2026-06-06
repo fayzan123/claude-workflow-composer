@@ -3,21 +3,24 @@ import { api } from '../lib/api.ts'
 import './MarkdownViewer.css'
 
 interface Props {
-  filePath: string
+  filePath?: string
+  content?: string
   title: string
   onClose: () => void
 }
 
-export function MarkdownViewer({ filePath, title, onClose }: Props) {
-  const [content, setContent] = useState<string | null>(null)
+export function MarkdownViewer({ filePath, content: rawContent, title, onClose }: Props) {
+  const [content, setContent] = useState<string | null>(rawContent ?? null)
   const [error, setError] = useState<string | null>(null)
   const overlayRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
+    if (rawContent !== undefined) { setContent(rawContent); return }
+    if (!filePath) return
     api.fileContent(filePath)
       .then((r) => setContent(r.content))
       .catch(() => setError('Could not load file content.'))
-  }, [filePath])
+  }, [filePath, rawContent])
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -32,6 +35,7 @@ export function MarkdownViewer({ filePath, title, onClose }: Props) {
   }
 
   async function handleOpen() {
+    if (!filePath) return
     try {
       await api.openFile(filePath)
     } catch {
@@ -45,9 +49,11 @@ export function MarkdownViewer({ filePath, title, onClose }: Props) {
         <div className="markdown-viewer__header">
           <span className="markdown-viewer__title">{title}</span>
           <div className="markdown-viewer__actions">
-            <button className="markdown-viewer__open-btn" onClick={handleOpen}>
-              Open in editor
-            </button>
+            {filePath && (
+              <button className="markdown-viewer__open-btn" onClick={handleOpen}>
+                Open in editor
+              </button>
+            )}
             <button className="markdown-viewer__close-btn" onClick={onClose} aria-label="Close">
               ×
             </button>
