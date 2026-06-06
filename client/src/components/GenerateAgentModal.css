@@ -1,0 +1,44 @@
+.gen-agent-overlay {
+  position: fixed; inset: 0; background: rgba(0,0,0,0.5);
+  display: flex; align-items: center; justify-content: center; z-index: 1000;
+}
+.gen-agent {
+  background: var(--panel-bg, #1e1e1e); color: var(--text, #eee);
+  width: min(900px, 92vw); max-height: 88vh; border-radius: 8px;
+  display: flex; flex-direction: column; overflow: hidden;
+}
+.gen-agent__header {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 12px 16px; border-bottom: 1px solid rgba(255,255,255,0.1);
+}
+.gen-agent__title { font-weight: 600; }
+.gen-agent__close { background: none; border: none; color: inherit; font-size: 22px; cursor: pointer; }
+.gen-agent__error { background: #5a1d1d; color: #ffd7d7; padding: 8px 16px; font-size: 13px; }
+.gen-agent__body { display: grid; grid-template-columns: 1fr 1fr; gap: 0; min-height: 0; flex: 1; }
+.gen-agent__chat { display: flex; flex-direction: column; border-right: 1px solid rgba(255,255,255,0.1); min-height: 0; }
+.gen-agent__messages { flex: 1; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 8px; }
+.gen-agent__hint { color: #999; font-size: 13px; }
+.gen-agent__msg { padding: 8px 10px; border-radius: 6px; font-size: 13px; max-width: 90%; }
+.gen-agent__msg--user { align-self: flex-end; background: #2d4a63; }
+.gen-agent__msg--assistant { align-self: flex-start; background: #2a2a2a; }
+.gen-agent__status { color: #8ab4f8; font-size: 13px; font-style: italic; }
+.gen-agent__input-row { display: flex; gap: 8px; padding: 12px; border-top: 1px solid rgba(255,255,255,0.1); }
+.gen-agent__input { flex: 1; resize: none; height: 56px; background: #111; color: inherit; border: 1px solid #333; border-radius: 6px; padding: 8px; }
+.gen-agent__send, .gen-agent__build, .gen-agent__save {
+  background: #3b82f6; color: white; border: none; border-radius: 6px; padding: 8px 14px; cursor: pointer;
+}
+.gen-agent__send:disabled, .gen-agent__build:disabled, .gen-agent__save:disabled { opacity: 0.5; cursor: default; }
+.gen-agent__spec { overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 12px; }
+.gen-agent__field { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: #aaa; }
+.gen-agent__field input, .gen-agent__field textarea {
+  background: #111; color: #eee; border: 1px solid #333; border-radius: 6px; padding: 6px 8px; font-size: 13px;
+}
+.gen-agent__field textarea { resize: vertical; min-height: 48px; }
+.gen-agent__chips { display: flex; flex-wrap: wrap; gap: 4px; }
+.gen-agent__chip { background: #333; border-radius: 4px; padding: 2px 6px; font-size: 12px; color: #ddd; }
+.gen-agent__behaviors { margin: 0; padding-left: 18px; font-size: 13px; color: #ccc; }
+.gen-agent__build { align-self: flex-start; margin-top: 8px; }
+.gen-agent__build-view { display: flex; flex-direction: column; min-height: 0; flex: 1; }
+.gen-agent__build-actions { display: flex; gap: 8px; justify-content: flex-end; padding: 12px 16px; border-top: 1px solid rgba(255,255,255,0.1); }
+.gen-agent__build-actions button { background: #2a2a2a; color: #eee; border: 1px solid #444; border-radius: 6px; padding: 8px 14px; cursor: pointer; }
+.gen-agent__build-actions .gen-agent__save { background: #3b82f6; border-color: #3b82f6; }
