@@ -1,5 +1,6 @@
 import type { CwcFile } from '../types.ts'
 import type { AgentEntry } from '../../../src/server/api/agents.ts'
+import type { AgentSpec } from '../../../src/agent-generator.ts'
 import type { SkillEntry } from '../../../src/server/api/skills.ts'
 import type { ExportTarget, ExportResult } from '../../../src/exporter.ts'
 import type { DeleteExportResult } from '../../../src/server/api/export-delete.ts'
@@ -17,6 +18,17 @@ async function req<T>(method: string, path: string, body?: unknown): Promise<T> 
   return res.json() as Promise<T>
 }
 
+async function reqWithError<T>(method: string, path: string, body?: unknown): Promise<T> {
+  const res = await fetch(`${BASE}${path}`, {
+    method,
+    headers: body ? { 'Content-Type': 'application/json' } : {},
+    body: body ? JSON.stringify(body) : undefined,
+  })
+  const json = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error((json as { error?: string }).error || `${method} ${path} failed: ${res.status}`)
+  return json as T
+}
+
 export const api = {
   health: () => req<{ status: string }>('GET', '/health'),
   claudeCheck: () => req<{ installed: boolean; claudeDir: string }>('GET', '/claude-check'),
@@ -32,6 +44,15 @@ export const api = {
 
   agents: (projectDir?: string) =>
     req<AgentEntry[]>('GET', `/agents${projectDir ? `?projectDir=${encodeURIComponent(projectDir)}` : ''}`),
+
+  agentGen: {
+    spec: (message: string, sessionId?: string) =>
+      reqWithError<{ spec: AgentSpec; sessionId: string }>('POST', '/agents/generate/spec', { message, sessionId }),
+    build: (spec: AgentSpec, sessionId?: string) =>
+      reqWithError<{ content: string; slug: string }>('POST', '/agents/generate/build', { spec, sessionId }),
+  },
+  saveAgent: (slug: string, content: string, overwrite = false) =>
+    reqWithError<{ slug: string; filePath: string }>('POST', '/agents', { slug, content, overwrite }),
 
   recents: {
     list: () => req<string[]>('GET', '/recents'),
