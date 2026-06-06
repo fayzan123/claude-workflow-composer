@@ -42,3 +42,9 @@
 .gen-agent__build-actions { display: flex; gap: 8px; justify-content: flex-end; padding: 12px 16px; border-top: 1px solid rgba(255,255,255,0.1); }
 .gen-agent__build-actions button { background: #2a2a2a; color: #eee; border: 1px solid #444; border-radius: 6px; padding: 8px 14px; cursor: pointer; }
 .gen-agent__build-actions .gen-agent__save { background: #3b82f6; border-color: #3b82f6; }
+.gen-agent__preview {
+  flex: 1; overflow-y: auto; margin: 0; padding: 16px;
+  background: #111; color: #ddd; font-size: 12px;
+  white-space: pre-wrap; word-break: break-word;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}

@@ -1,7 +1,6 @@
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { api } from '../lib/api.ts'
 import type { AgentSpec } from '../../../src/agent-generator.ts'
-import { MarkdownViewer } from './MarkdownViewer.tsx'
 import './GenerateAgentModal.css'
 
 interface Props {
@@ -21,6 +20,8 @@ export function GenerateAgentModal({ onClose, onCreated }: Props) {
   const [status, setStatus] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [draft, setDraft] = useState<{ content: string; slug: string } | null>(null)
+  const messagesEndRef = useRef<HTMLDivElement>(null)
+  useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages, status])
 
   async function sendMessage() {
     const msg = input.trim()
@@ -60,20 +61,24 @@ export function GenerateAgentModal({ onClose, onCreated }: Props) {
     }
   }
 
-  async function save(overwrite = false) {
+  async function save() {
     if (!draft || busy) return
     setError(null)
     setBusy(true)
     try {
-      const { slug } = await api.saveAgent(draft.slug, draft.content, overwrite)
-      onCreated(slug)
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Save failed'
-      if (/already exists/i.test(msg) && !overwrite) {
-        if (window.confirm(`${msg}\n\nOverwrite it?`)) { await save(true); return }
-      } else {
-        setError(msg)
+      let result
+      try {
+        result = await api.saveAgent(draft.slug, draft.content, false)
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : 'Save failed'
+        if (/already exists/i.test(msg) && window.confirm(`${msg}\n\nOverwrite it?`)) {
+          result = await api.saveAgent(draft.slug, draft.content, true)
+        } else {
+          if (!/already exists/i.test(msg)) setError(msg)
+          return
+        }
       }
+      onCreated(result.slug)
     } finally {
       setBusy(false)
     }
@@ -104,6 +109,7 @@ export function GenerateAgentModal({ onClose, onCreated }: Props) {
                   <div key={i} className={`gen-agent__msg gen-agent__msg--${m.role}`}>{m.text}</div>
                 ))}
                 {status && <div className="gen-agent__status">{status}</div>}
+                <div ref={messagesEndRef} />
               </div>
               <div className="gen-agent__input-row">
                 <textarea
@@ -145,7 +151,7 @@ export function GenerateAgentModal({ onClose, onCreated }: Props) {
                   <div className="gen-agent__field">
                     <span>Key behaviors</span>
                     <ul className="gen-agent__behaviors">
-                      {spec.keyBehaviors.map((b, i) => <li key={i}>{b}</li>)}
+                      {spec.keyBehaviors.map((b, i) => <li key={`${i}-${b}`}>{b}</li>)}
                     </ul>
                   </div>
                   <button className="gen-agent__build" onClick={build} disabled={busy || !spec.name.trim()}>
@@ -159,11 +165,11 @@ export function GenerateAgentModal({ onClose, onCreated }: Props) {
 
         {phase === 'build' && draft && (
           <div className="gen-agent__build-view">
-            <MarkdownViewer content={draft.content} title={spec?.name ?? 'Agent'} onClose={() => setPhase('spec')} />
+            <pre className="gen-agent__preview">{draft.content}</pre>
             <div className="gen-agent__build-actions">
-              <button onClick={() => setPhase('spec')} disabled={busy}>← Back to spec</button>
+              <button onClick={() => { setPhase('spec'); setDraft(null) }} disabled={busy}>← Back to spec</button>
               <button onClick={build} disabled={busy}>Regenerate</button>
-              <button className="gen-agent__save" onClick={() => save(false)} disabled={busy}>
+              <button className="gen-agent__save" onClick={() => save()} disabled={busy}>
                 Save to ~/.claude/agents/
               </button>
             </div>
