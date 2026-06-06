@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import matter from 'gray-matter'
-import { assembleAgentFile, type AgentSpec } from '../src/agent-generator.js'
+import { assembleAgentFile, type AgentSpec, parseSpec } from '../src/agent-generator.js'
 
 const SPEC: AgentSpec = {
   name: 'Migration Reviewer',
@@ -45,5 +45,40 @@ describe('assembleAgentFile', () => {
   it('contains no cwc ownership comment (standalone agent)', () => {
     const file = assembleAgentFile(SPEC, 'body')
     expect(file).not.toContain('cwc:node')
+  })
+})
+
+describe('parseSpec', () => {
+  const raw = JSON.stringify({
+    name: 'Migration Reviewer',
+    description: 'Audits SQL migrations.',
+    whenToUse: 'Before applying migrations.',
+    suggestedTools: ['Read', 'Bash', 'NotARealTool'],
+    suggestedColor: 'red',
+    keyBehaviors: ['Checks locks'],
+  })
+
+  it('parses a bare JSON object', () => {
+    const spec = parseSpec(raw)
+    expect(spec.name).toBe('Migration Reviewer')
+  })
+
+  it('parses JSON wrapped in markdown fences with surrounding prose', () => {
+    const spec = parseSpec("Here is the spec:\n```json\n" + raw + "\n```\nDone.")
+    expect(spec.description).toBe('Audits SQL migrations.')
+  })
+
+  it('drops tool names outside the valid CWC tool set', () => {
+    const spec = parseSpec(raw)
+    expect(spec.suggestedTools).toEqual(['Read', 'Bash'])
+  })
+
+  it('falls back to "blue" for an invalid color', () => {
+    const spec = parseSpec(JSON.stringify({ name: 'X', description: 'y', suggestedColor: 'chartreuse' }))
+    expect(spec.suggestedColor).toBe('blue')
+  })
+
+  it('throws a clear error when no JSON object is present', () => {
+    expect(() => parseSpec('I could not produce a spec.')).toThrow(/no spec/i)
   })
 })
