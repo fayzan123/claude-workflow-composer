@@ -17,7 +17,10 @@ const SPEC_JSON = JSON.stringify({
 
 // Fake runner: returns spec JSON unless the prompt asks for a body.
 const fakeRunner: ClaudeRunner = (prompt) => {
-  if (prompt.includes('system prompt body')) {
+  if (prompt.includes('TRIGGER_FAIL')) {
+    return Promise.reject(new Error('runner boom'))
+  }
+  if (prompt.startsWith('Write the system prompt body')) {
     return Promise.resolve({ result: '# Migration Reviewer\n\nYou are **Migration Reviewer**.', sessionId: 'sess-abc' })
   }
   return Promise.resolve({ result: SPEC_JSON, sessionId: 'sess-abc' })
@@ -59,4 +62,15 @@ it('POST /api/agents/generate/build returns assembled agent markdown', async () 
 it('POST /api/agents/generate/spec returns 400 when message is missing', async () => {
   const { status } = await post('/api/agents/generate/spec', {})
   expect(status).toBe(400)
+})
+
+it('POST /api/agents/generate/build returns 400 when spec is missing', async () => {
+  const { status } = await post('/api/agents/generate/build', {})
+  expect(status).toBe(400)
+})
+
+it('POST /api/agents/generate/spec returns 502 when the runner fails', async () => {
+  const { status, json } = await post('/api/agents/generate/spec', { message: 'TRIGGER_FAIL please' })
+  expect(status).toBe(502)
+  expect(json.error).toMatch(/boom/)
 })

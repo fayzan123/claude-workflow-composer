@@ -39,8 +39,8 @@ export function createApp(opts: AppOptions): express.Express {
   app.use('/api/workflows', workflowsRouter(wfDir, recPath))
 
   const homeDir = opts.userHomeDir ?? os.homedir()
-  app.use('/api/agents', agentsRouter(homeDir))
   app.use('/api/agents/generate', agentsGenerateRouter(opts.claudeRunner))
+  app.use('/api/agents', agentsRouter(homeDir))
 
   app.use('/api/recents', recentsRouter(recPath))
 

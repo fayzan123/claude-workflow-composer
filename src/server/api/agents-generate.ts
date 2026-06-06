@@ -36,9 +36,10 @@ export function agentsGenerateRouter(runner: ClaudeRunner = defaultRunner) {
       return
     }
     try {
-      const out = await runner(buildBuildPrompt(spec), sessionId ? { resume: sessionId } : {})
-      const content = assembleAgentFile(spec, out.result)
-      res.json({ content, slug: agentSlug(spec.name) })
+      const normSpec = { ...spec, name: spec.name.trim() }
+      const out = await runner(buildBuildPrompt(normSpec), sessionId ? { resume: sessionId } : {})
+      const content = assembleAgentFile(normSpec, out.result)
+      res.json({ content, slug: agentSlug(normSpec.name) })
     } catch (err) {
       res.status(502).json({ error: err instanceof Error ? err.message : 'Generation failed' })
     }
