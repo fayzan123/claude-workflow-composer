@@ -80,6 +80,6 @@ export function parseSpec(text: string): AgentSpec {
     whenToUse: String(raw['whenToUse'] ?? '').trim(),
     suggestedTools: tools,
     suggestedColor: color,
-    keyBehaviors: asStringArray(raw['keyBehaviors']),
+    keyBehaviors: asStringArray(raw['keyBehaviors']).map((s) => s.trim()),
   }
 }

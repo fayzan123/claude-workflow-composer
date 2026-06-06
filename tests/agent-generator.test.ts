@@ -81,4 +81,14 @@ describe('parseSpec', () => {
   it('throws a clear error when no JSON object is present', () => {
     expect(() => parseSpec('I could not produce a spec.')).toThrow(/no spec/i)
   })
+
+  it('parses an object with a nested JSON object field', () => {
+    const spec = parseSpec('{"name":"Foo","description":"d","meta":{"a":1},"keyBehaviors":["x"]}')
+    expect(spec.name).toBe('Foo')
+    expect(spec.keyBehaviors).toEqual(['x'])
+  })
+
+  it('throws when a JSON object is present but malformed', () => {
+    expect(() => parseSpec('{bad json}')).toThrow(/valid/i)
+  })
 })
