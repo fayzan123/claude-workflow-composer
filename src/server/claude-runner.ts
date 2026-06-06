@@ -56,6 +56,10 @@ export const runClaude: ClaudeRunner = (prompt, opts = {}) => {
       },
       (err, stdout, stderr) => {
         if (err) {
+          if ((err as NodeJS.ErrnoException & { killed?: boolean }).killed) {
+            reject(new Error(`claude timed out after ${(opts.timeoutMs ?? 120_000) / 1000}s`))
+            return
+          }
           reject(new Error(`claude failed: ${stderr?.toString().trim() || err.message}`))
           return
         }
