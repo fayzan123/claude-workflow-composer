@@ -64,3 +64,42 @@ it('GET /api/agents returns empty array when agents dir is missing', async () =>
   expect(Array.isArray(agents)).toBe(true)
   await fs.rm(emptyDir, { recursive: true })
 })
+
+async function postAgent(body: unknown) {
+  const res = await fetch(`http://localhost:${port}/api/agents`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+  })
+  return { status: res.status, json: await res.json() as any }
+}
+
+it('POST /api/agents writes a new agent file and returns its slug', async () => {
+  const content = '---\nname: Migration Reviewer\ndescription: Audits migrations.\n---\nYou are **Migration Reviewer**.'
+  const { status, json } = await postAgent({ slug: 'migration-reviewer', content })
+  expect(status).toBe(200)
+  expect(json.slug).toBe('migration-reviewer')
+  const written = await fs.readFile(path.join(tmpUserDir, '.claude', 'agents', 'migration-reviewer.md'), 'utf-8')
+  expect(written).toContain('name: Migration Reviewer')
+})
+
+it('POST /api/agents returns 409 when the slug exists and overwrite is not set', async () => {
+  const content = '---\nname: Dup\ndescription: d\n---\nbody'
+  await postAgent({ slug: 'dup-agent', content })
+  const { status, json } = await postAgent({ slug: 'dup-agent', content })
+  expect(status).toBe(409)
+  expect(json.error).toMatch(/exists/i)
+})
+
+it('POST /api/agents overwrites when overwrite:true', async () => {
+  const a = '---\nname: Over\ndescription: v1\n---\nbody'
+  const b = '---\nname: Over\ndescription: v2\n---\nbody'
+  await postAgent({ slug: 'over-agent', content: a })
+  const { status } = await postAgent({ slug: 'over-agent', content: b, overwrite: true })
+  expect(status).toBe(200)
+  const written = await fs.readFile(path.join(tmpUserDir, '.claude', 'agents', 'over-agent.md'), 'utf-8')
+  expect(written).toContain('v2')
+})
+
+it('POST /api/agents rejects a slug with path traversal', async () => {
+  const { status } = await postAgent({ slug: '../evil', content: '---\nname: x\ndescription: y\n---\nb' })
+  expect(status).toBe(400)
+})

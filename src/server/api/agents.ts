@@ -52,5 +52,36 @@ export function agentsRouter(userHomeDir: string) {
     res.json(agents)
   })
 
+  router.post('/', async (req, res) => {
+    const slug = req.body?.slug
+    const content = req.body?.content
+    const overwrite = req.body?.overwrite === true
+    if (typeof slug !== 'string' || slug.trim() === '' || typeof content !== 'string') {
+      res.status(400).json({ error: 'slug and content are required' })
+      return
+    }
+    // Reject anything that isn't a plain slug (no separators, no traversal).
+    if (!/^[a-z0-9-]+$/.test(slug)) {
+      res.status(400).json({ error: 'invalid slug' })
+      return
+    }
+    const dir = path.join(userHomeDir, '.claude', 'agents')
+    const filePath = path.join(dir, `${slug}.md`)
+    try {
+      await fs.mkdir(dir, { recursive: true })
+      if (!overwrite) {
+        try {
+          await fs.access(filePath)
+          res.status(409).json({ error: `An agent named "${slug}" already exists.` })
+          return
+        } catch { /* does not exist — proceed */ }
+      }
+      await fs.writeFile(filePath, content, 'utf-8')
+      res.json({ slug, filePath })
+    } catch (err) {
+      res.status(500).json({ error: err instanceof Error ? err.message : 'write failed' })
+    }
+  })
+
   return router
 }
