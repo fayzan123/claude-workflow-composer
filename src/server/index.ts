@@ -15,12 +15,15 @@ import { skillsRouter } from './api/skills.js'
 import { fileContentRouter } from './api/file-content.js'
 import { openFileRouter } from './api/open-file.js'
 import { exportedWorkflowsRouter } from './api/exported-workflows.js'
+import type { ClaudeRunner } from './claude-runner.js'
+import { agentsGenerateRouter } from './api/agents-generate.js'
 
 export interface AppOptions {
   staticDir: string | null
   workflowsDir?: string
   userHomeDir?: string
   recentsPath?: string
+  claudeRunner?: ClaudeRunner
 }
 
 export function createApp(opts: AppOptions): express.Express {
@@ -37,6 +40,7 @@ export function createApp(opts: AppOptions): express.Express {
 
   const homeDir = opts.userHomeDir ?? os.homedir()
   app.use('/api/agents', agentsRouter(homeDir))
+  app.use('/api/agents/generate', agentsGenerateRouter(opts.claudeRunner))
 
   app.use('/api/recents', recentsRouter(recPath))
 
