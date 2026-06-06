@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import matter from 'gray-matter'
-import { assembleAgentFile, type AgentSpec, parseSpec } from '../src/agent-generator.js'
+import { assembleAgentFile, type AgentSpec, parseSpec, buildSpecPrompt, buildBuildPrompt } from '../src/agent-generator.js'
 
 const SPEC: AgentSpec = {
   name: 'Migration Reviewer',
@@ -90,5 +90,21 @@ describe('parseSpec', () => {
 
   it('throws when a JSON object is present but malformed', () => {
     expect(() => parseSpec('{bad json}')).toThrow(/valid/i)
+  })
+})
+
+describe('prompt builders', () => {
+  it('spec prompt embeds the user message and demands JSON-only output', () => {
+    const p = buildSpecPrompt('an agent that reviews my SQL migrations')
+    expect(p).toContain('an agent that reviews my SQL migrations')
+    expect(p).toMatch(/only.*JSON/i)
+    expect(p).toContain('suggestedTools')
+  })
+
+  it('build prompt names the agent and forbids frontmatter + generic filler', () => {
+    const p = buildBuildPrompt(SPEC)
+    expect(p).toContain('Migration Reviewer')
+    expect(p).toMatch(/do not.*frontmatter/i)
+    expect(p).toMatch(/helpful assistant/i)
   })
 })
