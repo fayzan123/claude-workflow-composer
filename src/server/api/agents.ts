@@ -56,11 +56,12 @@ export function agentsRouter(userHomeDir: string) {
     const slug = req.body?.slug
     const content = req.body?.content
     const overwrite = req.body?.overwrite === true
-    if (typeof slug !== 'string' || slug.trim() === '' || typeof content !== 'string') {
+    if (typeof slug !== 'string' || typeof content !== 'string' || content.trim() === '') {
       res.status(400).json({ error: 'slug and content are required' })
       return
     }
     // Reject anything that isn't a plain slug (no separators, no traversal).
+    // The regex also rejects an empty or whitespace-only slug.
     if (!/^[a-z0-9-]+$/.test(slug)) {
       res.status(400).json({ error: 'invalid slug' })
       return
@@ -70,6 +71,7 @@ export function agentsRouter(userHomeDir: string) {
     try {
       await fs.mkdir(dir, { recursive: true })
       if (!overwrite) {
+        // No O_EXCL here — ~/.claude/agents/ is a single-user dir, so the race is benign.
         try {
           await fs.access(filePath)
           res.status(409).json({ error: `An agent named "${slug}" already exists.` })
@@ -79,7 +81,7 @@ export function agentsRouter(userHomeDir: string) {
       await fs.writeFile(filePath, content, 'utf-8')
       res.json({ slug, filePath })
     } catch (err) {
-      res.status(500).json({ error: err instanceof Error ? err.message : 'write failed' })
+      res.status(500).json({ error: String(err) })
     }
   })
 

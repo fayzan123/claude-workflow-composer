@@ -103,3 +103,8 @@ it('POST /api/agents rejects a slug with path traversal', async () => {
   const { status } = await postAgent({ slug: '../evil', content: '---\nname: x\ndescription: y\n---\nb' })
   expect(status).toBe(400)
 })
+
+it('POST /api/agents returns 400 when slug or content is missing', async () => {
+  const { status } = await postAgent({})
+  expect(status).toBe(400)
+})
