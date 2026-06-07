@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { api } from '../lib/api.ts'
 import './MarkdownViewer.css'
 
@@ -43,7 +44,7 @@ export function MarkdownViewer({ filePath, content: rawContent, title, onClose }
     }
   }
 
-  return (
+  return createPortal(
     <div className="markdown-viewer-overlay" ref={overlayRef} onClick={handleOverlayClick}>
       <div className="markdown-viewer" role="dialog" aria-modal="true" aria-label={title}>
         <div className="markdown-viewer__header">
@@ -65,6 +66,7 @@ export function MarkdownViewer({ filePath, content: rawContent, title, onClose }
           {content && <pre className="markdown-viewer__pre">{content}</pre>}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   )
 }

@@ -14,12 +14,14 @@ export function MyAgentsTab() {
   const [generating, setGenerating] = useState(false)
   const isDragging = useRef(false)
 
-  const load = useCallback(() => {
-    setLoading(true)
+  // silent=true refreshes the list in the background without flipping the
+  // loading early-return (which would unmount any open modal).
+  const load = useCallback((silent = false) => {
+    if (!silent) setLoading(true)
     api.agents()
       .then(setAgents)
-      .catch((err: unknown) => setError(err instanceof Error ? err.message : 'Failed to load agents'))
-      .finally(() => setLoading(false))
+      .catch((err: unknown) => { if (!silent) setError(err instanceof Error ? err.message : 'Failed to load agents') })
+      .finally(() => { if (!silent) setLoading(false) })
   }, [])
 
   useEffect(() => { load() }, [load])
@@ -100,12 +102,11 @@ export function MyAgentsTab() {
           onClose={() => setViewing(null)}
         />
       )}
-      {generating && (
-        <GenerateAgentModal
-          onClose={() => setGenerating(false)}
-          onCreated={() => { setGenerating(false); load() }}
-        />
-      )}
+      <GenerateAgentModal
+        open={generating}
+        onClose={() => setGenerating(false)}
+        onCreated={() => load(true)}
+      />
     </div>
   )
 }

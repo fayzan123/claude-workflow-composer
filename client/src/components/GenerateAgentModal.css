@@ -12,7 +12,14 @@
   padding: 12px 16px; border-bottom: 1px solid rgba(255,255,255,0.1);
 }
 .gen-agent__title { font-weight: 600; }
-.gen-agent__close { background: none; border: none; color: inherit; font-size: 22px; cursor: pointer; }
+.gen-agent__header-actions { display: flex; align-items: center; gap: 8px; }
+.gen-agent__newbtn {
+  background: #2a2a2a; color: #ddd; border: 1px solid #444;
+  border-radius: 6px; padding: 4px 10px; font-size: 12px; cursor: pointer;
+}
+.gen-agent__newbtn:hover { background: #333; }
+.gen-agent__newbtn:disabled { opacity: 0.5; cursor: default; }
+.gen-agent__close { background: none; border: none; color: inherit; font-size: 22px; cursor: pointer; line-height: 1; }
 .gen-agent__error { background: #5a1d1d; color: #ffd7d7; padding: 8px 16px; font-size: 13px; }
 .gen-agent__body { display: grid; grid-template-columns: 1fr 1fr; gap: 0; min-height: 0; flex: 1; }
 .gen-agent__chat { display: flex; flex-direction: column; border-right: 1px solid rgba(255,255,255,0.1); min-height: 0; }
@@ -48,3 +55,28 @@
   white-space: pre-wrap; word-break: break-word;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
 }
+.gen-agent__slugline { font-size: 12px; color: #9aa; margin-top: -4px; }
+.gen-agent__slugline code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: #bcd; background: #1a1a1a; padding: 1px 5px; border-radius: 4px;
+}
+.gen-agent__slugline--build {
+  padding: 10px 16px; margin: 0; border-bottom: 1px solid rgba(255,255,255,0.1);
+}
+.gen-agent__done {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  text-align: center; gap: 10px; padding: 40px 24px; flex: 1;
+}
+.gen-agent__done-check {
+  width: 48px; height: 48px; border-radius: 50%; background: #1e4620; color: #6ee787;
+  display: flex; align-items: center; justify-content: center; font-size: 26px;
+}
+.gen-agent__done-title { font-size: 18px; font-weight: 600; }
+.gen-agent__done-name { font-size: 14px; color: #ddd; }
+.gen-agent__done-hint { font-size: 13px; color: #999; max-width: 360px; margin: 4px 0 12px; }
+.gen-agent__done-actions { display: flex; gap: 8px; }
+.gen-agent__done-actions button {
+  background: #2a2a2a; color: #eee; border: 1px solid #444;
+  border-radius: 6px; padding: 8px 14px; cursor: pointer;
+}
+.gen-agent__done-actions .gen-agent__save { background: #3b82f6; border-color: #3b82f6; }
