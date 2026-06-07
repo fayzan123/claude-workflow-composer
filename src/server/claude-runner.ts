@@ -63,7 +63,7 @@ export const runClaude: ClaudeRunner = (prompt, opts = {}) => {
           reject(new Error(`claude failed: ${stderr?.toString().trim() || err.message}`))
           return
         }
-        let parsed: { result?: string; session_id?: string }
+        let parsed: { result?: string; session_id?: string; is_error?: boolean }
         try {
           parsed = JSON.parse(stdout.toString())
         } catch {
@@ -72,6 +72,10 @@ export const runClaude: ClaudeRunner = (prompt, opts = {}) => {
         }
         if (typeof parsed.result !== 'string' || parsed.result.trim() === '') {
           reject(new Error('claude returned an empty result.'))
+          return
+        }
+        if (parsed.is_error) {
+          reject(new Error(parsed.result || 'claude returned an error result.'))
           return
         }
         resolve({ result: parsed.result, sessionId: parsed.session_id ?? '' })

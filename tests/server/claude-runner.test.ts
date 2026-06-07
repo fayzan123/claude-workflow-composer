@@ -9,6 +9,7 @@ let fakeBin: string
 let failBin: string
 let garbageBin: string
 let emptyBin: string
+let errorBin: string
 
 beforeAll(async () => {
   tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'cwc-claude-bin-'))
@@ -35,6 +36,11 @@ process.stdout.write('not json at all')
   emptyBin = path.join(tmpDir, 'claude-empty')
   await fs.writeFile(emptyBin, `#!/usr/bin/env node
 process.stdout.write(JSON.stringify({ result: '' }))
+`, { mode: 0o755 })
+
+  errorBin = path.join(tmpDir, 'claude-iserror')
+  await fs.writeFile(errorBin, `#!/usr/bin/env node
+process.stdout.write(JSON.stringify({ result: 'I cannot do that', is_error: true, session_id: 'x' }))
 `, { mode: 0o755 })
 })
 
@@ -73,4 +79,8 @@ it('rejects when claude returns malformed JSON', async () => {
 
 it('rejects when claude returns an empty result', async () => {
   await expect(runClaude('x', { binPath: emptyBin })).rejects.toThrow(/empty result/)
+})
+
+it('rejects when claude returns is_error true', async () => {
+  await expect(runClaude('x', { binPath: errorBin })).rejects.toThrow(/I cannot do that/)
 })

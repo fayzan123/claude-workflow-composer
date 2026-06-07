@@ -72,7 +72,12 @@ export function GenerateAgentModal({ onClose, onCreated }: Props) {
       } catch (err) {
         const msg = err instanceof Error ? err.message : 'Save failed'
         if (/already exists/i.test(msg) && window.confirm(`${msg}\n\nOverwrite it?`)) {
-          result = await api.saveAgent(draft.slug, draft.content, true)
+          try {
+            result = await api.saveAgent(draft.slug, draft.content, true)
+          } catch (overwriteErr) {
+            setError(overwriteErr instanceof Error ? overwriteErr.message : 'Save failed')
+            return
+          }
         } else {
           if (!/already exists/i.test(msg)) setError(msg)
           return

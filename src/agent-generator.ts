@@ -27,7 +27,7 @@ export function assembleAgentFile(spec: AgentSpec, body: string): string {
 }
 
 export const VALID_TOOLS = [
-  'Read', 'Write', 'Edit', 'Bash', 'WebSearch', 'WebFetch', 'Agent', 'TodoWrite',
+  'Read', 'Write', 'Edit', 'Bash', 'Grep', 'Glob', 'WebSearch', 'WebFetch', 'Agent', 'TodoWrite',
 ] as const
 
 export const VALID_COLORS = [
