@@ -1,6 +1,6 @@
 {
   "name": "claude-cwc",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "Visual composer for Claude Code multi-agent workflows",
   "type": "module",
   "engines": {
