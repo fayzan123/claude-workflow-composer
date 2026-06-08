@@ -10,7 +10,7 @@ export function SkillsPanel() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [search, setSearch] = useState('')
-  const [viewing, setViewing] = useState<{ filePath: string; title: string } | null>(null)
+  const [viewing, setViewing] = useState<{ filePath: string; title: string; source: string } | null>(null)
   const [generating, setGenerating] = useState(false)
   const isDragging = useRef(false)
 
@@ -25,6 +25,20 @@ export function SkillsPanel() {
   }, [])
 
   useEffect(() => { load() }, [load])
+
+  async function handleDelete(skill: SkillEntry) {
+    const plugin = skill.source === 'plugin'
+    const msg = plugin
+      ? `⚠️ "${skill.name}" is part of an installed plugin (${skill.namespacedSlug.split(':')[0]}).\n\nDeleting it removes the file from the plugin's cache — it may break the plugin or be overwritten when the plugin updates.\n\nDelete anyway?`
+      : `Delete skill "${skill.name}"?\n\nThis removes ${skill.filePath} and can't be undone.`
+    if (!window.confirm(msg)) return
+    try {
+      await api.deleteSkill(skill.filePath)
+      load(true)
+    } catch (err) {
+      window.alert(err instanceof Error ? err.message : 'Delete failed')
+    }
+  }
 
   if (loading) return <div className="skills-panel__status">Loading skills...</div>
   if (error) return <div className="skills-panel__status skills-panel__status--error">Error: {error}</div>
@@ -83,9 +97,15 @@ export function SkillsPanel() {
                   isDragging.current = false
                 }}
                 onClick={() => {
-                  if (!isDragging.current) setViewing({ filePath: skill.filePath, title: skill.name })
+                  if (!isDragging.current) setViewing({ filePath: skill.filePath, title: skill.name, source: skill.source })
                 }}
               >
+                <button
+                  className="skills-panel__delete"
+                  title="Delete skill"
+                  draggable={false}
+                  onClick={(e) => { e.stopPropagation(); handleDelete(skill) }}
+                >🗑</button>
                 <strong className="skills-panel__name">{skill.name}</strong>
                 {skill.description && <p className="skills-panel__desc">{skill.description}</p>}
                 <span className="skills-panel__slug">{skill.namespacedSlug}</span>
@@ -99,6 +119,8 @@ export function SkillsPanel() {
           filePath={viewing.filePath}
           title={viewing.title}
           onClose={() => setViewing(null)}
+          onSaved={() => load(true)}
+          editNote={viewing.source === 'plugin' ? 'External — this edits an installed plugin’s file and may be overwritten when the plugin updates.' : undefined}
         />
       )}
       <GenerateSkillModal
