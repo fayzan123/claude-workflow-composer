@@ -16,3 +16,9 @@ export function slugify(name: string): string {
 export function agentSlug(name: string): string {
   return slugify(name) || 'agent'
 }
+
+/** Slug for a skill's directory and SKILL.md frontmatter name. Falls back to a safe
+ * default when the name is made entirely of characters slugify strips. */
+export function skillSlug(name: string): string {
+  return slugify(name) || 'skill'
+}

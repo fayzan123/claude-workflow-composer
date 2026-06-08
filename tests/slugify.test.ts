@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { slugify, agentSlug } from '../src/slugify.js'
+import { slugify, agentSlug, skillSlug } from '../src/slugify.js'
 
 describe('slugify', () => {
   it('lowercases and hyphenates spaces', () => {
@@ -42,4 +42,9 @@ describe('agentSlug', () => {
     expect(agentSlug('---')).toBe('agent')
     expect(agentSlug('')).toBe('agent')
   })
+})
+
+describe('skillSlug', () => {
+  it('slugifies a name', () => { expect(skillSlug('Migration Reviewer')).toBe('migration-reviewer') })
+  it('falls back to "skill" for an empty slug', () => { expect(skillSlug('🎉')).toBe('skill') })
 })
