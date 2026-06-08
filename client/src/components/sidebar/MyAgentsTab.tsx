@@ -26,6 +26,16 @@ export function MyAgentsTab() {
 
   useEffect(() => { load() }, [load])
 
+  async function handleDelete(agent: AgentEntry) {
+    if (!window.confirm(`Delete agent "${agent.name}"?\n\nThis removes ${agent.filePath} and can't be undone.`)) return
+    try {
+      await api.deleteAgent(agent.filePath)
+      load(true)
+    } catch (err) {
+      window.alert(err instanceof Error ? err.message : 'Delete failed')
+    }
+  }
+
   if (loading) return <div className="my-agents__status">Loading agents...</div>
   if (error) return <div className="my-agents__status my-agents__status--error">Error: {error}</div>
 
@@ -87,6 +97,12 @@ export function MyAgentsTab() {
                   if (!isDragging.current) setViewing({ filePath: agent.filePath, title: agent.name })
                 }}
               >
+                <button
+                  className="my-agents__delete"
+                  title="Delete agent"
+                  draggable={false}
+                  onClick={(e) => { e.stopPropagation(); handleDelete(agent) }}
+                >🗑</button>
                 <strong className="my-agents__name">{agent.name}</strong>
                 {agent.description && <p className="my-agents__desc">{agent.description}</p>}
                 <span className="my-agents__slug">{agent.slug}</span>
@@ -100,6 +116,7 @@ export function MyAgentsTab() {
           filePath={viewing.filePath}
           title={viewing.title}
           onClose={() => setViewing(null)}
+          onSaved={() => load(true)}
         />
       )}
       <GenerateAgentModal
