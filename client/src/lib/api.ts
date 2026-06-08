@@ -1,6 +1,7 @@
 import type { CwcFile } from '../types.ts'
 import type { AgentEntry } from '../../../src/server/api/agents.ts'
 import type { AgentSpec } from '../../../src/agent-generator.ts'
+import type { SkillSpec } from '../../../src/skill-generator.ts'
 import type { SkillEntry } from '../../../src/server/api/skills.ts'
 import type { ExportTarget, ExportResult } from '../../../src/exporter.ts'
 import type { DeleteExportResult } from '../../../src/server/api/export-delete.ts'
@@ -61,6 +62,15 @@ export const api = {
   },
 
   skills: () => req<SkillEntry[]>('GET', '/skills'),
+
+  skillGen: {
+    spec: (message: string, sessionId?: string) =>
+      reqWithError<{ spec: SkillSpec; sessionId: string }>('POST', '/skills/generate/spec', { message, sessionId }),
+    build: (spec: SkillSpec, sessionId?: string) =>
+      reqWithError<{ content: string; slug: string }>('POST', '/skills/generate/build', { spec, sessionId }),
+  },
+  saveSkill: (slug: string, content: string, overwrite = false) =>
+    reqWithError<{ slug: string; filePath: string }>('POST', '/skills', { slug, content, overwrite }),
 
   export: (cwcFile: CwcFile, target: ExportTarget) =>
     req<ExportResult>('POST', '/export', { cwcFile, target }),
