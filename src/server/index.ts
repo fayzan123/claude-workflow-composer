@@ -50,7 +50,7 @@ export function createApp(opts: AppOptions): express.Express {
   app.use('/api/export', exportRouter())
   app.use('/api/skills/generate', skillsGenerateRouter(opts.claudeRunner))
   app.use('/api/skills', skillsRouter(homeDir))
-  app.use('/api/file-content', fileContentRouter())
+  app.use('/api/file-content', fileContentRouter(homeDir))
   app.use('/api/open-file', openFileRouter())
   app.use('/api/exported-workflows', exportedWorkflowsRouter(homeDir))
 
