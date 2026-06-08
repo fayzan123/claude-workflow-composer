@@ -85,5 +85,29 @@ export function agentsRouter(userHomeDir: string) {
     }
   })
 
+  router.delete('/', async (req, res) => {
+    const filePath = req.query['path'] as string | undefined
+    if (!filePath) {
+      res.status(400).json({ error: 'path query parameter required' })
+      return
+    }
+    const claudeDir = path.join(userHomeDir, '.claude')
+    const resolved = path.resolve(filePath)
+    if (!resolved.startsWith(claudeDir + path.sep)) {
+      res.status(403).json({ error: 'Access restricted to .claude directory' })
+      return
+    }
+    if (!resolved.endsWith('.md') || !resolved.split(path.sep).includes('agents')) {
+      res.status(400).json({ error: 'not an agent file' })
+      return
+    }
+    try {
+      await fs.unlink(resolved)
+      res.json({ deleted: true })
+    } catch {
+      res.status(404).json({ error: 'File not found' })
+    }
+  })
+
   return router
 }

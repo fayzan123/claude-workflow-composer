@@ -108,3 +108,40 @@ it('POST /api/agents returns 400 when slug or content is missing', async () => {
   const { status } = await postAgent({})
   expect(status).toBe(400)
 })
+
+async function del(filePath: string) {
+  const res = await fetch(`http://localhost:${port}/api/agents?path=${encodeURIComponent(filePath)}`, { method: 'DELETE' })
+  return { status: res.status, json: await res.json() as any }
+}
+
+it('DELETE /api/agents removes a user agent file', async () => {
+  const dir = path.join(tmpUserDir, '.claude', 'agents')
+  await fs.mkdir(dir, { recursive: true })
+  const fp = path.join(dir, 'to-delete.md')
+  await fs.writeFile(fp, '---\nname: X\ndescription: y\n---\nb', 'utf-8')
+  const { status, json } = await del(fp)
+  expect(status).toBe(200)
+  expect(json.deleted).toBe(true)
+  await expect(fs.access(fp)).rejects.toBeTruthy()
+})
+
+it('DELETE /api/agents returns 404 for a missing file', async () => {
+  const fp = path.join(tmpUserDir, '.claude', 'agents', 'ghost.md')
+  const { status } = await del(fp)
+  expect(status).toBe(404)
+})
+
+it('DELETE /api/agents returns 403 for a path outside .claude', async () => {
+  const outside = path.join(tmpUserDir, 'outside.md')
+  await fs.writeFile(outside, 'x', 'utf-8')
+  const { status } = await del(outside)
+  expect(status).toBe(403)
+})
+
+it('DELETE /api/agents returns 400 for a non-.md path', async () => {
+  const fp = path.join(tmpUserDir, '.claude', 'agents', 'notmd.txt')
+  await fs.mkdir(path.dirname(fp), { recursive: true })
+  await fs.writeFile(fp, 'x', 'utf-8')
+  const { status } = await del(fp)
+  expect(status).toBe(400)
+})
