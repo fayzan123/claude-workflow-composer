@@ -1,7 +1,8 @@
-import React, { useEffect, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { api } from '../../lib/api.ts'
 import type { SkillEntry } from '../../../../src/server/api/skills.ts'
 import { MarkdownViewer } from '../MarkdownViewer.tsx'
+import { GenerateSkillModal } from '../GenerateSkillModal.tsx'
 import './SkillsPanel.css'
 
 export function SkillsPanel() {
@@ -10,14 +11,20 @@ export function SkillsPanel() {
   const [error, setError] = useState<string | null>(null)
   const [search, setSearch] = useState('')
   const [viewing, setViewing] = useState<{ filePath: string; title: string } | null>(null)
+  const [generating, setGenerating] = useState(false)
   const isDragging = useRef(false)
 
-  useEffect(() => {
+  // silent=true refreshes in the background without flipping the loading early-return
+  // (which would unmount the open modal).
+  const load = useCallback((silent = false) => {
+    if (!silent) setLoading(true)
     api.skills()
       .then(setSkills)
-      .catch((err: unknown) => setError(err instanceof Error ? err.message : 'Failed to load skills'))
-      .finally(() => setLoading(false))
+      .catch((err: unknown) => { if (!silent) setError(err instanceof Error ? err.message : 'Failed to load skills') })
+      .finally(() => { if (!silent) setLoading(false) })
   }, [])
+
+  useEffect(() => { load() }, [load])
 
   if (loading) return <div className="skills-panel__status">Loading skills...</div>
   if (error) return <div className="skills-panel__status skills-panel__status--error">Error: {error}</div>
@@ -40,6 +47,9 @@ export function SkillsPanel() {
 
   return (
     <div className="skills-panel">
+      <button className="skills-panel__generate" onClick={() => setGenerating(true)}>
+        + Generate skill
+      </button>
       <div className="skills-panel__search-wrap">
         <input
           className="skills-panel__search"
@@ -91,6 +101,11 @@ export function SkillsPanel() {
           onClose={() => setViewing(null)}
         />
       )}
+      <GenerateSkillModal
+        open={generating}
+        onClose={() => setGenerating(false)}
+        onCreated={() => load(true)}
+      />
     </div>
   )
 }
