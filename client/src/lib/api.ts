@@ -89,6 +89,15 @@ export const api = {
   fileContent: (filePath: string) =>
     req<{ content: string }>('GET', `/file-content?path=${encodeURIComponent(filePath)}`),
 
+  saveFileContent: (filePath: string, content: string) =>
+    reqWithError<{ saved: boolean }>('POST', '/file-content', { path: filePath, content }),
+
+  deleteAgent: (filePath: string) =>
+    reqWithError<{ deleted: boolean }>('DELETE', `/agents?path=${encodeURIComponent(filePath)}`),
+
+  deleteSkill: (filePath: string) =>
+    reqWithError<{ deleted: boolean }>('DELETE', `/skills?path=${encodeURIComponent(filePath)}`),
+
   openFile: (filePath: string) =>
     req<{ opened: boolean }>('POST', '/open-file', { path: filePath }),
 }
