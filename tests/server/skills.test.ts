@@ -87,3 +87,45 @@ it('POST /api/skills rejects a traversal slug', async () => {
   const { status } = await postSkill({ slug: '../evil', content: '---\nname: x\ndescription: y\n---\nb' })
   expect(status).toBe(400)
 })
+
+async function delSkill(filePath: string) {
+  const res = await fetch(`http://localhost:${port}/api/skills?path=${encodeURIComponent(filePath)}`, { method: 'DELETE' })
+  return { status: res.status, json: await res.json() as any }
+}
+
+it('DELETE /api/skills removes the whole skill directory', async () => {
+  const dir = path.join(tmpHome, '.claude', 'skills', 'del-me')
+  await fs.mkdir(dir, { recursive: true })
+  const fp = path.join(dir, 'SKILL.md')
+  await fs.writeFile(fp, '---\nname: del-me\ndescription: d\n---\nb', 'utf-8')
+  const { status, json } = await delSkill(fp)
+  expect(status).toBe(200)
+  expect(json.deleted).toBe(true)
+  await expect(fs.access(dir)).rejects.toBeTruthy()
+})
+
+it('DELETE /api/skills works for a plugin-cache skill path', async () => {
+  const dir = path.join(tmpHome, '.claude', 'plugins', 'cache', 'pub', 'plug', '1.0.0', 'skills', 'pskill')
+  await fs.mkdir(dir, { recursive: true })
+  const fp = path.join(dir, 'SKILL.md')
+  await fs.writeFile(fp, '---\nname: pskill\ndescription: d\n---\nb', 'utf-8')
+  const { status } = await delSkill(fp)
+  expect(status).toBe(200)
+  await expect(fs.access(dir)).rejects.toBeTruthy()
+})
+
+it('DELETE /api/skills returns 403 outside .claude', async () => {
+  const outside = path.join(tmpHome, 'x', 'SKILL.md')
+  await fs.mkdir(path.dirname(outside), { recursive: true })
+  await fs.writeFile(outside, 'x', 'utf-8')
+  const { status } = await delSkill(outside)
+  expect(status).toBe(403)
+})
+
+it('DELETE /api/skills returns 400 when path is not a SKILL.md under a skills dir', async () => {
+  const fp = path.join(tmpHome, '.claude', 'skills', 'not-skill.md')
+  await fs.mkdir(path.dirname(fp), { recursive: true })
+  await fs.writeFile(fp, 'x', 'utf-8')
+  const { status } = await delSkill(fp)
+  expect(status).toBe(400)
+})

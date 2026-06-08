@@ -93,5 +93,37 @@ export function skillsRouter(userHomeDir: string) {
     }
   })
 
+  router.delete('/', async (req, res) => {
+    const filePath = req.query['path'] as string | undefined
+    if (!filePath) {
+      res.status(400).json({ error: 'path query parameter required' })
+      return
+    }
+    const claudeDir = path.join(userHomeDir, '.claude')
+    const resolved = path.resolve(filePath)
+    if (!resolved.startsWith(claudeDir + path.sep)) {
+      res.status(403).json({ error: 'Access restricted to .claude directory' })
+      return
+    }
+    // Must be <...>/skills/<slug>/SKILL.md so we only ever remove a single skill dir.
+    const skillDir = path.dirname(resolved)
+    if (path.basename(resolved) !== 'SKILL.md' || path.basename(path.dirname(skillDir)) !== 'skills') {
+      res.status(400).json({ error: 'not a skill directory' })
+      return
+    }
+    try {
+      await fs.access(resolved)
+    } catch {
+      res.status(404).json({ error: 'Skill not found' })
+      return
+    }
+    try {
+      await fs.rm(skillDir, { recursive: true, force: true })
+      res.json({ deleted: true })
+    } catch (err) {
+      res.status(500).json({ error: String(err) })
+    }
+  })
+
   return router
 }
