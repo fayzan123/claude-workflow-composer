@@ -12,6 +12,7 @@ import { exportRouter } from './api/export.js'
 import { exportPreviewRouter } from './api/export-preview.js'
 import { exportDeleteRouter } from './api/export-delete.js'
 import { skillsRouter } from './api/skills.js'
+import { skillsGenerateRouter } from './api/skills-generate.js'
 import { fileContentRouter } from './api/file-content.js'
 import { openFileRouter } from './api/open-file.js'
 import { exportedWorkflowsRouter } from './api/exported-workflows.js'
@@ -47,6 +48,7 @@ export function createApp(opts: AppOptions): express.Express {
   app.use('/api/export/preview', exportPreviewRouter())
   app.use('/api/export/delete', exportDeleteRouter())
   app.use('/api/export', exportRouter())
+  app.use('/api/skills/generate', skillsGenerateRouter(opts.claudeRunner))
   app.use('/api/skills', skillsRouter(homeDir))
   app.use('/api/file-content', fileContentRouter())
   app.use('/api/open-file', openFileRouter())
