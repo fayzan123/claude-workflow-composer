@@ -50,3 +50,40 @@ it('GET /api/skills returns empty array when skills dir missing', async () => {
   await new Promise<void>((r) => emptyServer.close(() => r()))
   await fs.rm(emptyHome, { recursive: true })
 })
+
+async function postSkill(body: unknown) {
+  const res = await fetch(`http://localhost:${port}/api/skills`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+  })
+  return { status: res.status, json: await res.json() as any }
+}
+
+it('POST /api/skills writes <slug>/SKILL.md and returns the slug', async () => {
+  const content = '---\nname: migration-reviewer\ndescription: d\n---\nReview migrations.'
+  const { status, json } = await postSkill({ slug: 'migration-reviewer', content })
+  expect(status).toBe(200)
+  expect(json.slug).toBe('migration-reviewer')
+  const written = await fs.readFile(path.join(tmpHome, '.claude', 'skills', 'migration-reviewer', 'SKILL.md'), 'utf-8')
+  expect(written).toContain('name: migration-reviewer')
+})
+
+it('POST /api/skills returns 409 when the slug exists without overwrite', async () => {
+  const content = '---\nname: dup\ndescription: d\n---\nbody'
+  await postSkill({ slug: 'dup-skill', content })
+  const { status, json } = await postSkill({ slug: 'dup-skill', content })
+  expect(status).toBe(409)
+  expect(json.error).toMatch(/exists/i)
+})
+
+it('POST /api/skills overwrites when overwrite:true', async () => {
+  await postSkill({ slug: 'over-skill', content: '---\nname: over\ndescription: v1\n---\nb' })
+  const { status } = await postSkill({ slug: 'over-skill', content: '---\nname: over\ndescription: v2\n---\nb', overwrite: true })
+  expect(status).toBe(200)
+  const written = await fs.readFile(path.join(tmpHome, '.claude', 'skills', 'over-skill', 'SKILL.md'), 'utf-8')
+  expect(written).toContain('v2')
+})
+
+it('POST /api/skills rejects a traversal slug', async () => {
+  const { status } = await postSkill({ slug: '../evil', content: '---\nname: x\ndescription: y\n---\nb' })
+  expect(status).toBe(400)
+})

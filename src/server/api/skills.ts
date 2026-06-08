@@ -62,5 +62,36 @@ export function skillsRouter(userHomeDir: string) {
     res.json(skills)
   })
 
+  router.post('/', async (req, res) => {
+    const slug = req.body?.slug
+    const content = req.body?.content
+    const overwrite = req.body?.overwrite === true
+    if (typeof slug !== 'string' || typeof content !== 'string' || content.trim() === '') {
+      res.status(400).json({ error: 'slug and content are required' })
+      return
+    }
+    if (!/^[a-z0-9-]+$/.test(slug)) {
+      res.status(400).json({ error: 'invalid slug' })
+      return
+    }
+    const dir = path.join(userHomeDir, '.claude', 'skills', slug)
+    const filePath = path.join(dir, 'SKILL.md')
+    try {
+      if (!overwrite) {
+        // No O_EXCL — ~/.claude/skills/ is a single-user dir, so the race is benign.
+        try {
+          await fs.access(filePath)
+          res.status(409).json({ error: `A skill named "${slug}" already exists.` })
+          return
+        } catch { /* does not exist — proceed */ }
+      }
+      await fs.mkdir(dir, { recursive: true })
+      await fs.writeFile(filePath, content, 'utf-8')
+      res.json({ slug, filePath })
+    } catch (err) {
+      res.status(500).json({ error: String(err) })
+    }
+  })
+
   return router
 }
