@@ -3,6 +3,7 @@ import * as fs from 'node:fs/promises'
 import * as os from 'node:os'
 import * as path from 'node:path'
 import { runClaude, resolveClaudeBin } from '../../src/server/claude-runner.js'
+import { makeBin } from '../helpers/make-bin.js'
 
 let tmpDir: string
 let fakeBin: string
@@ -11,20 +12,6 @@ let garbageBin: string
 let emptyBin: string
 let errorBin: string
 let stdinEchoBin: string
-
-// Windows cannot spawn extension-less shebang scripts, so each fake binary is a
-// Node script plus a .cmd shim there — which also exercises the runner's shell path.
-async function makeBin(dir: string, name: string, source: string): Promise<string> {
-  if (process.platform === 'win32') {
-    await fs.writeFile(path.join(dir, `${name}.js`), source)
-    const cmd = path.join(dir, `${name}.cmd`)
-    await fs.writeFile(cmd, `@echo off\r\nnode "%~dp0${name}.js" %*\r\n`)
-    return cmd
-  }
-  const bin = path.join(dir, name)
-  await fs.writeFile(bin, `#!/usr/bin/env node\n${source}`, { mode: 0o755 })
-  return bin
-}
 
 beforeAll(async () => {
   tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'cwc-claude-bin-'))
