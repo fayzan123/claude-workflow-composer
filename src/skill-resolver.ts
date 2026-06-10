@@ -1,4 +1,5 @@
 import * as fs from 'node:fs/promises'
+import * as os from 'node:os'
 import * as path from 'node:path'
 import matter from 'gray-matter'
 
@@ -28,7 +29,7 @@ async function readSkillDescription(skillMdPath: string): Promise<string | null>
 }
 
 export async function resolveSkill(slug: string): Promise<SkillResolution> {
-  const home = process.env.HOME ?? ''
+  const home = process.env.HOME ?? os.homedir()
 
   if (slug.includes(':')) {
     const [pluginKey, skillSlug] = slug.split(':') as [string, string]

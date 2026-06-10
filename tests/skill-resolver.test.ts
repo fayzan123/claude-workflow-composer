@@ -1,5 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import * as fs from 'node:fs/promises'
+import * as os from 'node:os'
+import * as path from 'node:path'
 import { resolveSkill } from '../src/skill-resolver.js'
 
 vi.mock('node:fs/promises')
@@ -36,6 +38,15 @@ describe('resolveSkill', () => {
     mockAccess.mockRejectedValue(new Error('ENOENT'))
     const result = await resolveSkill('nonexistent')
     expect(result).toEqual({ slug: 'nonexistent', description: null, found: false })
+  })
+
+  it('resolves home via os.homedir() so it works when HOME is unset (Windows)', async () => {
+    delete process.env.HOME
+    mockAccess.mockRejectedValue(new Error('ENOENT'))
+    await resolveSkill('anything')
+    expect(mockAccess).toHaveBeenCalledWith(
+      path.join(os.homedir(), '.claude', 'skills', 'anything', 'SKILL.md'),
+    )
   })
 
   it('returns found: false for namespaced slug when plugin not in installed_plugins.json', async () => {

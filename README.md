@@ -1,5 +1,7 @@
 # Claude Workflow Composer
 
+[![CI](https://github.com/fayzan123/claude-workflow-composer/actions/workflows/ci.yml/badge.svg)](https://github.com/fayzan123/claude-workflow-composer/actions/workflows/ci.yml)
+
 **n8n for coding agent workflows.** A visual desktop app for composing multi-agent [Claude Code](https://claude.ai/code) workflows — drag agents onto a canvas, wire handoffs, attach skills, and export a working workflow directly into your Claude installation. No YAML editing required.
 
 ![Claude Workflow Composer demo](demo.gif)
@@ -177,7 +179,7 @@ npm run build               # Production build (server + client)
 
 ### Tests
 
-89 tests across 16 files covering:
+195 tests across 25 files (run `npm test` for the current count) covering:
 
 - **BFS traversal**: linear chains, back-edges, fan-out, multi-root, terminal edges
 - **Prose generation**: start triggers, bold wrapping, context artifacts, Oxford comma, back-edge ordering
@@ -189,6 +191,8 @@ npm run build               # Production build (server + client)
 - **Slugify**: special chars, truncation, hyphen collapse, empty input
 - **Conflict detection**: owned, foreign, absent, malformed states
 - **Skill resolution**: namespaced (plugin) and non-namespaced (user) skill lookup
+- **Claude runner**: binary resolution (incl. Windows shims), stdin prompt delivery, timeout/error envelopes
+- **Undo history**: coalescing, redo-stack clearing, edge cascade on node delete, history cap
 
 ---
 

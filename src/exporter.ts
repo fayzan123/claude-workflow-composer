@@ -1,4 +1,5 @@
 import * as fs from 'node:fs/promises'
+import * as os from 'node:os'
 import * as path from 'node:path'
 import matter from 'gray-matter'
 import type { CwcFile, CwcNode } from './schema.js'
@@ -59,7 +60,7 @@ export async function exportWorkflow(
   const agentsDir =
     target.type === 'project'
       ? path.join(target.projectDir, '.claude', 'agents')
-      : path.join(target.userDir ?? (process.env.HOME ?? ''), '.claude', 'agents')
+      : path.join(target.userDir ?? os.homedir(), '.claude', 'agents')
 
   await ensureDir(agentsDir)
 

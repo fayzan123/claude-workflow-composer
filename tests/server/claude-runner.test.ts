@@ -2,7 +2,7 @@ import { it, expect, beforeAll, afterAll } from 'vitest'
 import * as fs from 'node:fs/promises'
 import * as os from 'node:os'
 import * as path from 'node:path'
-import { runClaude } from '../../src/server/claude-runner.js'
+import { runClaude, resolveClaudeBin } from '../../src/server/claude-runner.js'
 
 let tmpDir: string
 let fakeBin: string
@@ -10,6 +10,7 @@ let failBin: string
 let garbageBin: string
 let emptyBin: string
 let errorBin: string
+let stdinEchoBin: string
 
 beforeAll(async () => {
   tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'cwc-claude-bin-'))
@@ -41,6 +42,15 @@ process.stdout.write(JSON.stringify({ result: '' }))
   errorBin = path.join(tmpDir, 'claude-iserror')
   await fs.writeFile(errorBin, `#!/usr/bin/env node
 process.stdout.write(JSON.stringify({ result: 'I cannot do that', is_error: true, session_id: 'x' }))
+`, { mode: 0o755 })
+
+  stdinEchoBin = path.join(tmpDir, 'claude-stdin-echo')
+  // Echoes whatever arrives on stdin back as the result.
+  await fs.writeFile(stdinEchoBin, `#!/usr/bin/env node
+const fs = require('fs')
+if (process.env.CLAUDE_ARGS_LOG) fs.appendFileSync(process.env.CLAUDE_ARGS_LOG, JSON.stringify(process.argv.slice(2)) + "\\n")
+const input = fs.readFileSync(0, 'utf-8')
+process.stdout.write(JSON.stringify({ type: 'result', result: input, session_id: 'sess-stdin' }))
 `, { mode: 0o755 })
 })
 
@@ -83,4 +93,41 @@ it('rejects when claude returns an empty result', async () => {
 
 it('rejects when claude returns is_error true', async () => {
   await expect(runClaude('x', { binPath: errorBin })).rejects.toThrow(/I cannot do that/)
+})
+
+it('delivers the prompt via stdin, never argv', async () => {
+  const logPath = path.join(tmpDir, 'args3.log')
+  const out = await runClaude('multi\nline prompt', { binPath: stdinEchoBin, timeoutMs: 5000, env: { CLAUDE_ARGS_LOG: logPath } })
+  expect(out.result).toBe('multi\nline prompt')
+  const args = (await fs.readFile(logPath, 'utf-8')).trim()
+  expect(args).not.toContain('line prompt')
+})
+
+it('resolveClaudeBin finds Windows shims (claude.cmd / claude.exe) on win32', async () => {
+  const binDir = await fs.mkdtemp(path.join(os.tmpdir(), 'cwc-win-bin-'))
+  await fs.writeFile(path.join(binDir, 'claude.cmd'), '@echo off\n', { mode: 0o755 })
+  const savedPath = process.env.PATH
+  process.env.PATH = binDir
+  try {
+    expect(resolveClaudeBin('win32')).toBe(path.join(binDir, 'claude.cmd'))
+    // The extension-less name is not executable on Windows — must not match it.
+    await fs.writeFile(path.join(binDir, 'claude'), '', { mode: 0o755 })
+    expect(resolveClaudeBin('win32')).toBe(path.join(binDir, 'claude.cmd'))
+  } finally {
+    process.env.PATH = savedPath
+    await fs.rm(binDir, { recursive: true })
+  }
+})
+
+it('resolveClaudeBin finds a plain claude binary on posix', async () => {
+  const binDir = await fs.mkdtemp(path.join(os.tmpdir(), 'cwc-posix-bin-'))
+  await fs.writeFile(path.join(binDir, 'claude'), '#!/bin/sh\n', { mode: 0o755 })
+  const savedPath = process.env.PATH
+  process.env.PATH = binDir
+  try {
+    expect(resolveClaudeBin('linux')).toBe(path.join(binDir, 'claude'))
+  } finally {
+    process.env.PATH = savedPath
+    await fs.rm(binDir, { recursive: true })
+  }
 })
