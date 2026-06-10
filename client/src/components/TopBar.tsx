@@ -25,11 +25,15 @@ interface Props {
   onLeaveConfirm: () => void
   onLeaveCancel: () => void
   onDismissSaveError: () => void
+  onTestRun: () => void
+  onToggleRuns: () => void
+  runActive: boolean
 }
 
 export function TopBar({
   workflow, validation, isSaving, saveError, renameError, showLeaveConfirm,
   dispatch, canUndo, canRedo, onUndo, onRedo, previewOpen, onTogglePreview, onExport, onHome, onHelp, onRename, onLeaveConfirm, onLeaveCancel, onDismissSaveError,
+  onTestRun, onToggleRuns, runActive,
 }: Props) {
   const [errorsOpen, setErrorsOpen] = useState(false)
   const [warningsOpen, setWarningsOpen] = useState(false)
@@ -273,6 +277,24 @@ export function TopBar({
             <circle cx="12" cy="12" r="3" />
           </svg>
           Preview
+        </button>
+
+        <button
+          className={`top-bar__preview-btn ${runActive ? 'top-bar__preview-btn--active' : ''}`}
+          onClick={onTestRun}
+          type="button"
+          title="Run this workflow headlessly"
+        >
+          {runActive ? '● Running…' : '▶ Test Run'}
+        </button>
+
+        <button
+          className="top-bar__preview-btn"
+          onClick={onToggleRuns}
+          type="button"
+          title="Run history"
+        >
+          Runs
         </button>
 
         <button

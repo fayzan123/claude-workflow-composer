@@ -14,6 +14,9 @@ import { TopBar } from './components/TopBar.tsx'
 import { OrchestratorPreview } from './components/OrchestratorPreview.tsx'
 import { ExportFlow } from './components/ExportFlow.tsx'
 import { HelpModal } from './components/HelpModal.tsx'
+import { RunModal } from './components/RunModal.tsx'
+import { useRunEvents } from './hooks/useRunEvents.ts'
+import { slugify } from '../../src/slugify.ts'
 import './App.css'
 
 type Screen = 'home' | 'editor'
@@ -33,11 +36,15 @@ export default function App() {
   const [showExport, setShowExport] = useState(false)
   const [showPreview, setShowPreview] = useState(false)
   const [showHelp, setShowHelp] = useState(false)
+  const [showRunModal, setShowRunModal] = useState(false)
+  const [_showRuns, setShowRuns] = useState(false)
   const [saveError, setSaveError] = useState<Error | null>(null)
   const [renameError, setRenameError] = useState<string | null>(null)
   const [showLeaveConfirm, setShowLeaveConfirm] = useState(false)
 
   const { workflow: editorWorkflow, dispatch, canUndo, canRedo } = useWorkflow(workflow ?? undefined)
+  const runState = useRunEvents(editorWorkflow.meta.id)
+  const workflowSlug = 'cwc-' + slugify(editorWorkflow.meta.name)
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null)
   const validation = validateWorkflow(editorWorkflow)
@@ -155,6 +162,9 @@ export default function App() {
         onExport={() => setShowExport(true)}
         onHelp={() => setShowHelp(true)}
         onHome={handleHomeClick}
+        onTestRun={() => setShowRunModal(true)}
+        onToggleRuns={() => setShowRuns(s => !s)}
+        runActive={runState.activeRun !== null}
         onRename={handleRename}
         onLeaveConfirm={goHome}
         onLeaveCancel={() => setShowLeaveConfirm(false)}
@@ -210,6 +220,14 @@ export default function App() {
           workflow={editorWorkflow}
           dispatch={dispatch}
           onClose={() => setShowExport(false)}
+        />
+      )}
+      {showRunModal && (
+        <RunModal
+          workflowId={editorWorkflow.meta.id}
+          workflowSlug={workflowSlug}
+          onStarted={() => setShowRuns(true)}
+          onClose={() => setShowRunModal(false)}
         />
       )}
       {showHelp && <HelpModal onClose={() => setShowHelp(false)} />}
