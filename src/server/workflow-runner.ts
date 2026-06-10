@@ -18,7 +18,19 @@ export interface WorkflowRunResult {
 
 export interface RunningWorkflow {
   child: ChildProcess
+  stop: () => void
   done: Promise<WorkflowRunResult>
+}
+
+// On Windows the spawned process is a cmd.exe shim wrapping the real node process;
+// killing only the shim leaves the workflow running (and its stdio pipes open, so
+// execFile's callback never fires). Kill the whole tree there.
+function killTree(child: ChildProcess): void {
+  if (process.platform === 'win32' && child.pid) {
+    execFile('taskkill', ['/pid', String(child.pid), '/T', '/F'], () => { /* best effort */ })
+  } else {
+    child.kill('SIGTERM')
+  }
 }
 
 /**
@@ -31,32 +43,40 @@ export function runWorkflowSkill(opts: RunWorkflowOptions): RunningWorkflow {
   const timeoutMs = opts.timeoutMs ?? 30 * 60_000
   if (!bin) {
     const child = null as unknown as ChildProcess
-    return { child, done: Promise.resolve({ status: 'error', message: 'Claude Code CLI not found.' }) }
+    return { child, stop: () => {}, done: Promise.resolve({ status: 'error', message: 'Claude Code CLI not found.' }) }
   }
   const isWinShim = /\.(cmd|bat)$/i.test(bin)
   const args = ['-p', '--output-format', 'json', '--permission-mode', 'acceptEdits']
   let settled = false
   let timedOut = false
+  let stopped = false
   let resolveDone: (r: WorkflowRunResult) => void
   const done = new Promise<WorkflowRunResult>(res => { resolveDone = res })
 
+  // No execFile `timeout` option: its SIGTERM only hits the shim on Windows.
+  // We own the timeout below and tree-kill instead.
   const child = execFile(
     isWinShim ? `"${bin}"` : bin,
     args,
     {
       cwd: opts.cwd,
-      timeout: timeoutMs,
       maxBuffer: 10 * 1024 * 1024,
       shell: isWinShim,
     },
     (err, stdout, stderr) => {
       if (settled) return
       settled = true
+      if (timedOut) {
+        resolveDone({ status: 'error', message: `Run timed out after ${Math.round(timeoutMs / 60_000)} minutes.` })
+        return
+      }
+      if (stopped) {
+        resolveDone({ status: 'aborted', message: 'Run stopped.' })
+        return
+      }
       if (err) {
         const e = err as NodeJS.ErrnoException & { killed?: boolean; signal?: string }
-        if (timedOut) {
-          resolveDone({ status: 'error', message: `Run timed out after ${Math.round(timeoutMs / 60_000)} minutes.` })
-        } else if (e.killed || e.signal === 'SIGTERM') {
+        if (e.killed || e.signal === 'SIGTERM') {
           resolveDone({ status: 'aborted', message: 'Run stopped.' })
         } else {
           resolveDone({ status: 'error', message: stderr?.toString().trim() || err.message })
@@ -75,10 +95,9 @@ export function runWorkflowSkill(opts: RunWorkflowOptions): RunningWorkflow {
       }
     },
   )
-  // execFile's own timeout kills with SIGTERM, which we'd misreport as user-aborted —
-  // track it so the timeout case wins.
-  const timer = setTimeout(() => { timedOut = true }, timeoutMs - 50)
+  const timer = setTimeout(() => { timedOut = true; killTree(child) }, timeoutMs)
   child.on('exit', () => clearTimeout(timer))
   child.stdin?.end(`/${opts.slug}\nUse run id ${opts.runId} when logging run events.`)
-  return { child, done }
+  const stop = () => { stopped = true; killTree(child) }
+  return { child, stop, done }
 }

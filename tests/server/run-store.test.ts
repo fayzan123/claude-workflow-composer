@@ -81,13 +81,14 @@ describe('RunStore', () => {
     expect(seen).toEqual(['run_started'])
   })
 
-  it('tracks child processes and active test runs per workflow', async () => {
-    const fakeChild = { kill: () => true } as unknown as import('node:child_process').ChildProcess
-    store.registerChild('run-1', 'wf-1', fakeChild)
-    expect(store.getChild('run-1')).toBe(fakeChild)
+  it('tracks active test runs per workflow and stops them by runId', async () => {
+    let stops = 0
+    store.registerRun('run-1', 'wf-1', () => { stops++ })
     expect(store.hasActiveTestRun('wf-1')).toBe(true)
-    store.releaseChild('run-1')
-    expect(store.getChild('run-1')).toBeUndefined()
+    expect(store.stopRun('run-1')).toBe(true)
+    expect(stops).toBe(1)
+    store.releaseRun('run-1')
+    expect(store.stopRun('run-1')).toBe(false)
     expect(store.hasActiveTestRun('wf-1')).toBe(false)
   })
 })

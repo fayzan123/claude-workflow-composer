@@ -1,7 +1,6 @@
 // src/server/run-store.ts
 import * as fs from 'node:fs/promises'
 import * as path from 'node:path'
-import type { ChildProcess } from 'node:child_process'
 import type { RunEvent, RunStatus } from '../run-events.js'
 
 export const STALE_AFTER_MS = 15 * 60_000
@@ -23,15 +22,15 @@ export interface RunStore {
   getEvents(workflowId: string, runId: string): Promise<RunEvent[] | null>
   listRuns(workflowId: string): Promise<RunSummary[]>
   onEvent(listener: (e: RunEvent) => void): () => void
-  registerChild(runId: string, workflowId: string, child: ChildProcess): void
-  getChild(runId: string): ChildProcess | undefined
-  releaseChild(runId: string): void
+  registerRun(runId: string, workflowId: string, stop: () => void): void
+  stopRun(runId: string): boolean
+  releaseRun(runId: string): void
   hasActiveTestRun(workflowId: string): boolean
 }
 
 export function createRunStore(runsDir: string): RunStore {
   const listeners = new Set<(e: RunEvent) => void>()
-  const children = new Map<string, { workflowId: string; child: ChildProcess }>()
+  const activeRuns = new Map<string, { workflowId: string; stop: () => void }>()
 
   function runFile(workflowId: string, runId: string): string {
     return path.join(runsDir, workflowId, `${runId}.jsonl`)
@@ -100,11 +99,16 @@ export function createRunStore(runsDir: string): RunStore {
       return () => listeners.delete(listener)
     },
 
-    registerChild(runId, workflowId, child) { children.set(runId, { workflowId, child }) },
-    getChild(runId) { return children.get(runId)?.child },
-    releaseChild(runId) { children.delete(runId) },
+    registerRun(runId, workflowId, stop) { activeRuns.set(runId, { workflowId, stop }) },
+    stopRun(runId) {
+      const entry = activeRuns.get(runId)
+      if (!entry) return false
+      entry.stop()
+      return true
+    },
+    releaseRun(runId) { activeRuns.delete(runId) },
     hasActiveTestRun(workflowId) {
-      for (const v of children.values()) if (v.workflowId === workflowId) return true
+      for (const v of activeRuns.values()) if (v.workflowId === workflowId) return true
       return false
     },
   }

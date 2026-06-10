@@ -33,8 +33,8 @@ beforeEach(async () => {
 })
 afterEach(async () => {
   server?.close()
-  await fs.rm(runsDir, { recursive: true })
-  await fs.rm(cwd, { recursive: true })
+  await fs.rm(runsDir, { recursive: true, maxRetries: 5, retryDelay: 200 })
+  await fs.rm(cwd, { recursive: true, maxRetries: 5, retryDelay: 200 })
 })
 
 function startApp(binPath: string) {

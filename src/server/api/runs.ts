@@ -60,12 +60,12 @@ export function runsRouter(opts: RunsRouterOptions): Router {
       return
     }
     const runId = `run-${randomUUID().slice(0, 13)}`
-    const { child, done } = runWorkflowSkill({ slug: workflowSlug, runId, cwd, binPath: opts.claudeBinPath })
-    store.registerChild(runId, workflowId, child)
+    const { stop, done } = runWorkflowSkill({ slug: workflowSlug, runId, cwd, binPath: opts.claudeBinPath })
+    store.registerRun(runId, workflowId, stop)
     const now = () => new Date().toISOString()
     await ingest({ runId, workflowId, workflowSlug, type: 'run_started', ts: now(), source: 'test', cwd, message: 'Test run started from CWC' })
     void done.then(async result => {
-      store.releaseChild(runId)
+      store.releaseRun(runId)
       await ingest({
         runId, workflowId, workflowSlug, type: 'run_completed', ts: now(),
         status: result.status, message: result.message, costUsd: result.costUsd, source: 'test',
@@ -75,12 +75,10 @@ export function runsRouter(opts: RunsRouterOptions): Router {
   })
 
   router.post('/:runId/stop', (req, res) => {
-    const child = store.getChild(req.params.runId)
-    if (!child) {
+    if (!store.stopRun(req.params.runId)) {
       res.status(404).json({ error: 'no active test run with that id' })
       return
     }
-    child.kill('SIGTERM')
     res.json({ stopped: true })
   })
 
