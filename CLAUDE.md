@@ -37,6 +37,12 @@ This is a full-stack TypeScript app: an Express server (`src/`) serving a React 
 - `conflict-detector.ts` — reads ownership HTML comments (`<!-- cwc:node:ID:workflow:ID -->`) to determine whether a file is safe to overwrite
 - `skill-resolver.ts` — resolves skill slugs against `~/.claude/skills/` (user) and `~/.claude/plugins/cache/` (plugins)
 - `slugify.ts` — slug normalization shared by server and core
+- `run-events.ts` — `RunEvent` type + `validateRunEvent()` for the runs API
+
+**Runs subsystem** (`src/server/`) — observability for exported workflows:
+- `run-store.ts` — JSONL persistence under `~/.cwc/runs/<workflowId>/`, run summaries (running/stale/final), in-memory child-process registry, event fan-out to SSE subscribers
+- `workflow-runner.ts` — spawns `claude -p "/<slug>" --permission-mode acceptEdits` for Test Runs (prompt via stdin; SIGTERM → aborted, timeout → error)
+- `api/runs.ts` — `POST /events` (ingest from exported skills' curl instructions), `GET /` (summaries), `GET /:runId/events`, `GET /stream` (SSE), `POST /test` (spawn), `POST /:runId/stop`
 
 **Client** (`client/src/`) — React 19 + React Flow (`@xyflow/react`). State lives in `useWorkflow.ts` (a `useReducer` over `CwcFile`), persisted via `useAutoSave.ts` (500ms debounce to `/api/workflows`). Components: `Canvas.tsx` (React Flow canvas), `Sidebar.tsx` (agents/skills tabs), `TopBar.tsx` (validation + export trigger), `ExportFlow.tsx` (multi-step export modal), `WorkflowNode.tsx` (custom node renderer), `panels/NodePanel.tsx` and `panels/EdgePanel.tsx` (right-side editors).
 
@@ -45,6 +51,7 @@ This is a full-stack TypeScript app: an Express server (`src/`) serving a React 
 ~/.cwc/
   recents.json          # Last 10 opened workflow paths
   workflows/            # .cwc JSON files
+  runs/<workflowId>/    # Run event logs, one .jsonl per run
 ~/.claude/
   agents/*.md           # Agent definitions (read + written by exporter)
   skills/*/SKILL.md     # User skills (sidebar reads these)
@@ -76,4 +83,4 @@ This is a full-stack TypeScript app: an Express server (`src/`) serving a React 
 
 Tests live in `tests/` (server tests in `tests/server/`, core tests at `tests/*.test.ts`). No client-side tests. Tests use real temp filesystems (via `fs.mkdtemp`) rather than mocks — don't introduce mocks for filesystem operations. Run a single file with `npx vitest run tests/<file>.test.ts`.
 
-The `AppOptions` interface in `src/server/index.ts` accepts `workflowsDir`, `userHomeDir`, and `recentsPath` overrides specifically for test injection — use these instead of mocking.
+The `AppOptions` interface in `src/server/index.ts` accepts `workflowsDir`, `userHomeDir`, `recentsPath`, `runsDir`, and `claudeBinPath` overrides specifically for test injection — use these instead of mocking. Fake `claude` binaries for runner tests are built with `tests/helpers/make-bin.ts` (platform-aware: plain shebang script on POSIX, `.cmd` shim on Windows).

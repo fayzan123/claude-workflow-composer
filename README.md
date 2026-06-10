@@ -104,6 +104,9 @@ The orchestrator skill delegates every implementation step to sub-agents via the
 - **Markdown preview** — click any agent or skill card to view its source file
 - **Open in editor** — view any agent or skill file in your system editor
 - **Claude Code detection** — warns on startup if `~/.claude/` is missing
+- **▶ Test Run** — launch an exported workflow headlessly from the UI (`--permission-mode acceptEdits`, user-chosen working directory) and stop it mid-run
+- **Live run view** — the active node pulses on the canvas, completed nodes get a check, and events stream into a timeline panel
+- **Run history** — every run of every exported workflow (started from CWC *or* any terminal) persists to `~/.cwc/runs/` with status, duration, source, and cost
 
 ---
 
@@ -118,8 +121,10 @@ Client (React + React Flow)       Server (Express :3579)
 │ Canvas (React Flow)      │ ──►  │ /api/skills         │
 │ NodePanel / EdgePanel    │ ──►  │ /api/export         │
 │ ExportFlow (modal)       │ ──►  │ /api/export/preview │
-│ useWorkflow (reducer)    │      │ /api/export/delete  │
+│ RunModal / RunPanel      │ ──►  │ /api/export/delete  │
+│ useWorkflow (reducer)    │      │ /api/runs (+SSE)    │
 │ useAutoSave (debounced)  │      │ /api/health         │
+│ useRunEvents (SSE)       │ ◄──  │                     │
 └─────────────────────────┘       └─────────────────────┘
                                           │
                                           ▼
@@ -137,6 +142,7 @@ Storage:
   ~/.cwc/
     recents.json          Recent file paths (max 10)
     workflows/            Saved .cwc workflow files
+    runs/<workflowId>/    Run event logs (one .jsonl per run)
     server.pid            PID of running server
   ~/.claude/
     agents/*.md           Agent definitions (read + written)
