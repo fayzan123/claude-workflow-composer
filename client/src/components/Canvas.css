@@ -199,6 +199,26 @@
   flex-shrink: 0;
 }
 
+/* Run state highlighting */
+.workflow-node--run-active {
+  animation: cwc-run-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes cwc-run-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgb(59 130 246 / 0.55); }
+  50% { box-shadow: 0 0 0 8px rgb(59 130 246 / 0); }
+}
+
+.workflow-node--run-done {
+  outline: 1px solid rgb(52 211 153 / 0.6);
+}
+
+.workflow-node__run-check {
+  color: var(--color-success, #34d399);
+  font-size: 12px;
+  flex-shrink: 0;
+}
+
 /* ReactFlow overrides */
 .react-flow__controls {
   box-shadow: var(--shadow-md);

@@ -15,6 +15,7 @@ import { OrchestratorPreview } from './components/OrchestratorPreview.tsx'
 import { ExportFlow } from './components/ExportFlow.tsx'
 import { HelpModal } from './components/HelpModal.tsx'
 import { RunModal } from './components/RunModal.tsx'
+import { RunPanel } from './components/RunPanel.tsx'
 import { useRunEvents } from './hooks/useRunEvents.ts'
 import { slugify } from '../../src/slugify.ts'
 import './App.css'
@@ -37,7 +38,7 @@ export default function App() {
   const [showPreview, setShowPreview] = useState(false)
   const [showHelp, setShowHelp] = useState(false)
   const [showRunModal, setShowRunModal] = useState(false)
-  const [_showRuns, setShowRuns] = useState(false)
+  const [showRuns, setShowRuns] = useState(false)
   const [saveError, setSaveError] = useState<Error | null>(null)
   const [renameError, setRenameError] = useState<string | null>(null)
   const [showLeaveConfirm, setShowLeaveConfirm] = useState(false)
@@ -45,6 +46,13 @@ export default function App() {
   const { workflow: editorWorkflow, dispatch, canUndo, canRedo } = useWorkflow(workflow ?? undefined)
   const runState = useRunEvents(editorWorkflow.meta.id)
   const workflowSlug = 'cwc-' + slugify(editorWorkflow.meta.name)
+  const nodeRunStates: Record<string, 'active' | 'done'> = {}
+  if (runState.activeRun) {
+    for (const e of runState.liveEvents) {
+      if (e.type === 'step_started' && e.nodeId) nodeRunStates[e.nodeId] = 'active'
+      if (e.type === 'step_completed' && e.nodeId) nodeRunStates[e.nodeId] = 'done'
+    }
+  }
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null)
   const validation = validateWorkflow(editorWorkflow)
@@ -181,6 +189,7 @@ export default function App() {
             onSelectEdge={handleSelectEdge}
             selectedNodeId={selectedNodeId}
             selectedEdgeId={selectedEdgeId}
+            nodeRunStates={nodeRunStates}
           />
         </ReactFlowProvider>
         {selectedNode && (
@@ -212,6 +221,15 @@ export default function App() {
           <OrchestratorPreview
             workflow={editorWorkflow}
             onClose={() => setShowPreview(false)}
+          />
+        )}
+        {!selectedNode && !selectedEdge && !showPreview && showRuns && (
+          <RunPanel
+            workflowId={editorWorkflow.meta.id}
+            runs={runState.runs}
+            liveEvents={runState.liveEvents}
+            activeRun={runState.activeRun}
+            onClose={() => setShowRuns(false)}
           />
         )}
       </div>

@@ -31,9 +31,10 @@ interface Props {
   onSelectEdge: (edgeId: string | null) => void
   selectedNodeId: string | null
   selectedEdgeId: string | null
+  nodeRunStates: Record<string, 'active' | 'done'>
 }
 
-export function Canvas({ workflow, dispatch, validation, onSelectNode, onSelectEdge, selectedNodeId, selectedEdgeId }: Props) {
+export function Canvas({ workflow, dispatch, validation, onSelectNode, onSelectEdge, selectedNodeId, selectedEdgeId, nodeRunStates }: Props) {
   const { screenToFlowPosition } = useReactFlow()
 
   const rfNodes = useMemo(() => workflow.nodes.map((n) => ({
@@ -45,9 +46,10 @@ export function Canvas({ workflow, dispatch, validation, onSelectNode, onSelectE
       warnings: validation.warnings.filter((w) => w.nodeId === n.id),
       errors: validation.errors.filter((e) => e.nodeId === n.id),
       isSelected: n.id === selectedNodeId,
+      runState: nodeRunStates[n.id],
     },
     selected: n.id === selectedNodeId,
-  })), [workflow.nodes, validation, selectedNodeId])
+  })), [workflow.nodes, validation, selectedNodeId, nodeRunStates])
 
   const [nodes, setNodes] = useState<Node[]>(rfNodes)
   const isDragging = useRef(false)

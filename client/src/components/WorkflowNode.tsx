@@ -23,6 +23,7 @@ export interface WorkflowNodeData {
   warnings: ValidationWarning[]
   errors: ValidationError[]
   isSelected: boolean
+  runState?: 'active' | 'done'
 }
 
 export function WorkflowNode({ data }: NodeProps) {
@@ -35,7 +36,7 @@ export function WorkflowNode({ data }: NodeProps) {
 
   return (
     <div
-      className={`workflow-node ${isRef ? 'workflow-node--ref' : ''} ${hasErrors ? 'workflow-node--error' : hasIssues ? 'workflow-node--warning' : ''} ${nodeData.isSelected ? 'workflow-node--selected' : ''}`}
+      className={`workflow-node ${isRef ? 'workflow-node--ref' : ''} ${hasErrors ? 'workflow-node--error' : hasIssues ? 'workflow-node--warning' : ''} ${nodeData.isSelected ? 'workflow-node--selected' : ''} ${nodeData.runState === 'active' ? 'workflow-node--run-active' : ''} ${nodeData.runState === 'done' ? 'workflow-node--run-done' : ''}`}
       style={{ '--node-accent': accentColor } as React.CSSProperties}
     >
       <Handle type="target" position={Position.Left} />
@@ -47,6 +48,7 @@ export function WorkflowNode({ data }: NodeProps) {
           {isRouter && <span className="workflow-node__router-indicator" title="Conditional branch: one outgoing edge fires based on result">⬦ Router</span>}
           {hasErrors && <span className="workflow-node__status-badge workflow-node__status-badge--error" title={nodeData.errors.map(e => e.message).join('\n')}>!</span>}
           {!hasErrors && hasIssues && <span className="workflow-node__status-badge workflow-node__status-badge--warning" title={nodeData.warnings.map(w => w.message).join('\n')}>!</span>}
+          {nodeData.runState === 'done' && <span className="workflow-node__run-check">✓</span>}
         </div>
       </div>
       {nodeData.agent.description && (
