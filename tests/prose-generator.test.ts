@@ -192,3 +192,41 @@ describe('generateOrchestratorBody', () => {
     })
   })
 })
+
+describe('run logging instrumentation', () => {
+  const nodes = [
+    { id: 'n1', position: { x: 0, y: 0 }, exportedSlug: 'researcher', agent: { name: 'Researcher', description: '', completionCriteria: 'done' } },
+    { id: 'n2', position: { x: 1, y: 0 }, exportedSlug: 'writer', agent: { name: 'Writer', description: '', completionCriteria: 'done' } },
+  ]
+  const edges = [
+    { id: 'e1', from: 'n1', to: 'n2', trigger: 'Research is complete.' },
+    { id: 'e2', from: 'n2', to: null, trigger: 'Draft delivered.', terminalType: 'complete' as const },
+  ]
+  const obs = { workflowId: 'wf-abc', workflowSlug: 'cwc-pipeline' }
+
+  it('emits a Run Logging section with the curl template and run id rule', () => {
+    const body = generateOrchestratorBody(nodes as never, edges as never, 'Pipeline', {}, { observability: obs })
+    expect(body).toContain('## Run Logging')
+    expect(body).toContain('http://localhost:3579/api/runs/events')
+    expect(body).toContain('-m 1')
+    expect(body).toContain('|| true')
+    expect(body).toContain('"workflowId":"wf-abc"')
+    expect(body).toContain('"workflowSlug":"cwc-pipeline"')
+    expect(body).toMatch(/run-\$\(date \+%s\)/)
+  })
+
+  it('lists every node with its id and slug for step events', () => {
+    const body = generateOrchestratorBody(nodes as never, edges as never, 'Pipeline', {}, { observability: obs })
+    expect(body).toContain('`n1` → agent `researcher`')
+    expect(body).toContain('`n2` → agent `writer`')
+    expect(body).toContain('step_started')
+    expect(body).toContain('step_completed')
+    expect(body).toContain('run_completed')
+  })
+
+  it('emits nothing when observability is not passed', () => {
+    const body = generateOrchestratorBody(nodes as never, edges as never, 'Pipeline', {})
+    expect(body).not.toContain('## Run Logging')
+    expect(body).not.toContain('/api/runs/events')
+  })
+})

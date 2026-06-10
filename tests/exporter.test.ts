@@ -1,8 +1,10 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import * as fs from 'node:fs/promises'
+import * as os from 'node:os'
 import * as path from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { exportWorkflow, ExportTarget } from '../src/exporter.js'
+import type { CwcFile } from '../src/schema.js'
 import matter from 'gray-matter'
 
 // We'll write to a real temp dir, cleaned up after each test
@@ -266,5 +268,37 @@ describe('exportWorkflow — renamed node', () => {
       ),
     }
     await expect(exportWorkflow(modified, target, opts)).resolves.not.toThrow()
+  })
+})
+
+describe('observability instrumentation', () => {
+  function obsCwc(observability?: { enabled: boolean }): CwcFile {
+    const now = new Date().toISOString()
+    return {
+      meta: { id: 'wf-obs', name: 'Obs Flow', description: '', version: 1, created: now, updated: now, ...(observability ? { observability } : {}) },
+      nodes: [{
+        id: 'n1', position: { x: 0, y: 0 }, exportedSlug: null,
+        agent: { name: 'Solo Agent', description: 'does the thing', completionCriteria: 'thing done' },
+      }],
+      edges: [{ id: 'e1', from: 'n1', to: null, trigger: 'Done.', terminalType: 'complete' }],
+    }
+  }
+
+  it('exported workflow skill contains run logging by default', async () => {
+    const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'cwc-obs-'))
+    await exportWorkflow(obsCwc(), { type: 'user', userDir: tmp }, { skillsDir: path.join(tmp, 'skills') })
+    const skill = await fs.readFile(path.join(tmp, 'skills', 'cwc-obs-flow', 'SKILL.md'), 'utf-8')
+    expect(skill).toContain('## Run Logging')
+    expect(skill).toContain('"workflowId":"wf-obs"')
+    expect(skill).toContain('"workflowSlug":"cwc-obs-flow"')
+    await fs.rm(tmp, { recursive: true })
+  })
+
+  it('exported workflow skill omits run logging when disabled', async () => {
+    const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'cwc-obs-off-'))
+    await exportWorkflow(obsCwc({ enabled: false }), { type: 'user', userDir: tmp }, { skillsDir: path.join(tmp, 'skills') })
+    const skill = await fs.readFile(path.join(tmp, 'skills', 'cwc-obs-flow', 'SKILL.md'), 'utf-8')
+    expect(skill).not.toContain('## Run Logging')
+    await fs.rm(tmp, { recursive: true })
   })
 })

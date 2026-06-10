@@ -164,6 +164,17 @@ export function ExportFlow({ workflow, dispatch, onClose }: Props) {
               </div>
             </div>
 
+            <label className="export-flow__obs-toggle">
+              <input
+                type="checkbox"
+                checked={workflow.meta.observability?.enabled !== false}
+                onChange={(e) =>
+                  dispatch({ type: 'SET_META', payload: { observability: { enabled: e.target.checked } } })
+                }
+              />
+              Report run progress to CWC (adds run logging to the exported skill)
+            </label>
+
             {hasBeenExported && (
               <div className="export-flow-danger-zone">
                 <p className="export-flow-danger-zone__label">Danger Zone</p>

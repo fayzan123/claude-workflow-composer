@@ -133,7 +133,11 @@ export async function exportWorkflow(
   }
 
   // Generate workflow skill
-  const orchestratorBody = generateOrchestratorBody(cwc.nodes, cwc.edges, cwc.meta.name, nodeOverrides)
+  const observabilityEnabled = cwc.meta.observability?.enabled !== false
+  const orchestratorBody = generateOrchestratorBody(
+    updatedNodes, cwc.edges, cwc.meta.name, nodeOverrides,
+    observabilityEnabled ? { observability: { workflowId: cwc.meta.id, workflowSlug } } : {},
+  )
   const skillContent = buildWorkflowSkillContent(cwc.meta.name, cwc.meta.description, orchestratorBody, workflowId)
   const skillDir = path.join(opts.skillsDir, workflowSlug)
   await ensureDir(skillDir)

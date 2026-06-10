@@ -38,6 +38,10 @@ export interface OverrideInfo {
   completionCriteria?: string
 }
 
+export interface GenerateOptions {
+  observability?: { workflowId: string; workflowSlug: string }
+}
+
 /**
  * Collect per-node configuration overrides for reference nodes. A ref node points
  * at an existing agent file, so any model/skills/tools/prompt/criteria set on it
@@ -93,6 +97,7 @@ export function generateOrchestratorBody(
   edges: CwcEdge[],
   workflowName: string,
   nodeOverrides: Record<string, OverrideInfo> = {},
+  opts: GenerateOptions = {},
 ): string {
   const agentNames = nodes.map(n => n.agent.name)
   const nodeMap = new Map(nodes.map(n => [n.id, n]))
@@ -191,6 +196,31 @@ export function generateOrchestratorBody(
         emitted.add(ae.edge.id)
       }
     }
+  }
+
+  if (opts.observability) {
+    const { workflowId, workflowSlug } = opts.observability
+    const ids = `"workflowId":"${workflowId}","workflowSlug":"${workflowSlug}"`
+    lines.push(
+      '',
+      '## Run Logging',
+      '',
+      'This workflow reports progress to the local Claude Workflow Composer if it is running. Logging is strictly best-effort: every logging command must end with `|| true`, and a failed or skipped log must never block, delay, or fail the workflow.',
+      '',
+      `At the start of the workflow set a run id: use the run id provided in the invocation if one was given, otherwise generate one with \`run-$(date +%s)-$(printf '%04x' $RANDOM)\`. Then log \`run_started\`.`,
+      '',
+      'Log an event by running (single line, fill the placeholders):',
+      '',
+      '```',
+      `curl -s -m 1 -X POST http://localhost:3579/api/runs/events -H 'Content-Type: application/json' -d '{"runId":"<RUN_ID>",${ids},"type":"<TYPE>","ts":"<ISO_TIMESTAMP>","nodeId":"<NODE_ID>","agentSlug":"<AGENT_SLUG>","message":"<SHORT_NOTE>"}' >/dev/null 2>&1 || true`,
+      '```',
+      '',
+      'Around **every** Agent-tool delegation in the Pipeline above: log `step_started` (with the node id and agent slug) immediately before invoking the agent, and `step_completed` (with a one-line summary as the message) immediately after it returns. If a step\'s handoff declares file artifacts, log one `artifact_produced` event per artifact with its path in `artifactPath`. When the workflow reaches a terminal step, log `run_completed` with `status` set to `complete`, `escalated`, or `aborted` to match the outcome (omit `nodeId`/`agentSlug`).',
+      '',
+      'Node ids for step events:',
+      '',
+      ...nodes.map(n => `- \`${n.id}\` → agent \`${nodeSlug(n)}\``),
+    )
   }
 
   lines.push(

@@ -14,6 +14,7 @@ export interface CwcMeta {
   version: number
   created: string
   updated: string
+  observability?: { enabled: boolean }   // absent = enabled
 }
 
 export interface CwcAgent {

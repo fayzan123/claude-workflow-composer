@@ -482,3 +482,14 @@
   background: var(--color-surface-hover);
   color: var(--color-text);
 }
+
+.export-flow__obs-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 16px;
+  font-size: var(--text-sm);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  user-select: none;
+}
