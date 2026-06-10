@@ -12,46 +12,47 @@ let emptyBin: string
 let errorBin: string
 let stdinEchoBin: string
 
+// Windows cannot spawn extension-less shebang scripts, so each fake binary is a
+// Node script plus a .cmd shim there — which also exercises the runner's shell path.
+async function makeBin(dir: string, name: string, source: string): Promise<string> {
+  if (process.platform === 'win32') {
+    await fs.writeFile(path.join(dir, `${name}.js`), source)
+    const cmd = path.join(dir, `${name}.cmd`)
+    await fs.writeFile(cmd, `@echo off\r\nnode "%~dp0${name}.js" %*\r\n`)
+    return cmd
+  }
+  const bin = path.join(dir, name)
+  await fs.writeFile(bin, `#!/usr/bin/env node\n${source}`, { mode: 0o755 })
+  return bin
+}
+
 beforeAll(async () => {
   tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'cwc-claude-bin-'))
-  fakeBin = path.join(tmpDir, 'claude')
   // Fake claude: echoes a JSON envelope; appends its argv to a log file.
-  const script = `#!/usr/bin/env node
-const fs = require('fs')
+  fakeBin = await makeBin(tmpDir, 'claude', `const fs = require('fs')
 if (process.env.CLAUDE_ARGS_LOG) fs.appendFileSync(process.env.CLAUDE_ARGS_LOG, JSON.stringify(process.argv.slice(2)) + "\\n")
 process.stdout.write(JSON.stringify({ type: 'result', result: 'HELLO BODY', session_id: 'sess-123' }))
-`
-  await fs.writeFile(fakeBin, script, { mode: 0o755 })
+`)
 
-  failBin = path.join(tmpDir, 'claude-fail')
-  await fs.writeFile(failBin, `#!/usr/bin/env node
-process.stderr.write('boom')
+  failBin = await makeBin(tmpDir, 'claude-fail', `process.stderr.write('boom')
 process.exit(1)
-`, { mode: 0o755 })
+`)
 
-  garbageBin = path.join(tmpDir, 'claude-garbage')
-  await fs.writeFile(garbageBin, `#!/usr/bin/env node
-process.stdout.write('not json at all')
-`, { mode: 0o755 })
+  garbageBin = await makeBin(tmpDir, 'claude-garbage', `process.stdout.write('not json at all')
+`)
 
-  emptyBin = path.join(tmpDir, 'claude-empty')
-  await fs.writeFile(emptyBin, `#!/usr/bin/env node
-process.stdout.write(JSON.stringify({ result: '' }))
-`, { mode: 0o755 })
+  emptyBin = await makeBin(tmpDir, 'claude-empty', `process.stdout.write(JSON.stringify({ result: '' }))
+`)
 
-  errorBin = path.join(tmpDir, 'claude-iserror')
-  await fs.writeFile(errorBin, `#!/usr/bin/env node
-process.stdout.write(JSON.stringify({ result: 'I cannot do that', is_error: true, session_id: 'x' }))
-`, { mode: 0o755 })
+  errorBin = await makeBin(tmpDir, 'claude-iserror', `process.stdout.write(JSON.stringify({ result: 'I cannot do that', is_error: true, session_id: 'x' }))
+`)
 
-  stdinEchoBin = path.join(tmpDir, 'claude-stdin-echo')
   // Echoes whatever arrives on stdin back as the result.
-  await fs.writeFile(stdinEchoBin, `#!/usr/bin/env node
-const fs = require('fs')
+  stdinEchoBin = await makeBin(tmpDir, 'claude-stdin-echo', `const fs = require('fs')
 if (process.env.CLAUDE_ARGS_LOG) fs.appendFileSync(process.env.CLAUDE_ARGS_LOG, JSON.stringify(process.argv.slice(2)) + "\\n")
 const input = fs.readFileSync(0, 'utf-8')
 process.stdout.write(JSON.stringify({ type: 'result', result: input, session_id: 'sess-stdin' }))
-`, { mode: 0o755 })
+`)
 })
 
 afterAll(async () => { await fs.rm(tmpDir, { recursive: true }) })
