@@ -6,6 +6,8 @@ import type { SkillEntry } from '../../../src/server/api/skills.ts'
 import type { ExportTarget, ExportResult } from '../../../src/exporter.ts'
 import type { DeleteExportResult } from '../../../src/server/api/export-delete.ts'
 import type { ExportedWorkflowEntry } from '../../../src/server/api/exported-workflows.ts'
+import type { RunEvent } from '../../../src/run-events.ts'
+import type { RunSummary } from '../../../src/server/run-store.ts'
 
 const BASE = '/api'
 
@@ -100,4 +102,15 @@ export const api = {
 
   openFile: (filePath: string) =>
     req<{ opened: boolean }>('POST', '/open-file', { path: filePath }),
+
+  runs: {
+    list: (workflowId: string) =>
+      req<RunSummary[]>('GET', `/runs?workflowId=${encodeURIComponent(workflowId)}`),
+    events: (workflowId: string, runId: string) =>
+      req<RunEvent[]>('GET', `/runs/${encodeURIComponent(runId)}/events?workflowId=${encodeURIComponent(workflowId)}`),
+    start: (workflowId: string, workflowSlug: string, cwd: string) =>
+      reqWithError<{ runId: string }>('POST', '/runs/test', { workflowId, workflowSlug, cwd }),
+    stop: (runId: string) =>
+      reqWithError<{ stopped: boolean }>('POST', `/runs/${encodeURIComponent(runId)}/stop`),
+  },
 }
