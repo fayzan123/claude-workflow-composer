@@ -18,6 +18,8 @@ import { openFileRouter } from './api/open-file.js'
 import { exportedWorkflowsRouter } from './api/exported-workflows.js'
 import type { ClaudeRunner } from './claude-runner.js'
 import { agentsGenerateRouter } from './api/agents-generate.js'
+import { runsRouter } from './api/runs.js'
+import { createRunStore } from './run-store.js'
 
 export interface AppOptions {
   staticDir: string | null
@@ -25,6 +27,8 @@ export interface AppOptions {
   userHomeDir?: string
   recentsPath?: string
   claudeRunner?: ClaudeRunner
+  runsDir?: string
+  claudeBinPath?: string
 }
 
 export function createApp(opts: AppOptions): express.Express {
@@ -53,6 +57,10 @@ export function createApp(opts: AppOptions): express.Express {
   app.use('/api/file-content', fileContentRouter(homeDir))
   app.use('/api/open-file', openFileRouter())
   app.use('/api/exported-workflows', exportedWorkflowsRouter(homeDir))
+
+  const runsDir = opts.runsDir ?? path.join(os.homedir(), '.cwc', 'runs')
+  const runStore = createRunStore(runsDir)
+  app.use('/api/runs', runsRouter({ store: runStore, claudeBinPath: opts.claudeBinPath }))
 
   if (opts.staticDir && fs.existsSync(opts.staticDir)) {
     app.use(express.static(opts.staticDir))
