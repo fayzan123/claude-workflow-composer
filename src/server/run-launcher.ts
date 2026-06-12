@@ -111,6 +111,7 @@ export async function sweepOrphanWorktrees(store: RunStore, runsDirPath: string,
     }
   }
   for (const runId of entries) {
+    if (!runId.startsWith('run-')) continue   // only CWC-created run dirs — never delete other content under worktreesRoot
     if (live.has(runId)) continue
     const wtPath = path.join(worktreesRoot, runId)
     // resolve the owning repo via the worktree's git linkage; fall back to plain rm

@@ -77,8 +77,9 @@ export function createApp(opts: AppOptions): express.Express {
   const runStore = createRunStore(runsDir)
   const autoState = createAutomationState(statePath)
 
-  // Sweep orphan worktrees on startup (paused/running runs keep theirs)
-  void sweepOrphanWorktrees(runStore, runsDir, worktreesRoot)
+  // Sweep orphan worktrees on real server start only (paused/running runs keep theirs).
+  // Gated on enableScheduler so test apps with default paths never touch ~/.cwc/worktrees.
+  if (opts.enableScheduler) void sweepOrphanWorktrees(runStore, runsDir, worktreesRoot)
 
   const isWorkflowBusy = async (workflowId: string, triggerId: string) => {
     if (runStore.hasActiveTestRun(workflowId)) return 'running' as const

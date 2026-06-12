@@ -13,6 +13,7 @@ let okBin: string
 let hangBin: string
 let runsDir: string
 let cwd: string
+let wtRoot: string
 let server: http.Server
 let base: string
 
@@ -30,15 +31,21 @@ afterAll(async () => { await fs.rm(binDir, { recursive: true }) })
 beforeEach(async () => {
   runsDir = await fs.mkdtemp(path.join(os.tmpdir(), 'cwc-testrun-runs-'))
   cwd = await fs.mkdtemp(path.join(os.tmpdir(), 'cwc-testrun-cwd-'))
+  wtRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'cwc-testrun-wt-'))
 })
 afterEach(async () => {
   server?.close()
   await fs.rm(runsDir, { recursive: true, maxRetries: 5, retryDelay: 200 })
   await fs.rm(cwd, { recursive: true, maxRetries: 5, retryDelay: 200 })
+  await fs.rm(wtRoot, { recursive: true, maxRetries: 5, retryDelay: 200 })
 })
 
 function startApp(binPath: string) {
-  const app = createApp({ staticDir: null, runsDir, claudeBinPath: binPath, worktreesRoot: os.tmpdir() })
+  const app = createApp({
+    staticDir: null, runsDir, claudeBinPath: binPath, worktreesRoot: wtRoot,
+    automationStatePath: path.join(runsDir, 'astate.json'), configPath: path.join(runsDir, 'config.json'),
+    enableNotifier: false,
+  })
   server = app.listen(0)
   base = `http://localhost:${(server.address() as AddressInfo).port}`
 }

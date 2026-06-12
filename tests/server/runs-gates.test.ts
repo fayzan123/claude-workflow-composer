@@ -92,15 +92,11 @@ function startApp(binPath: string) {
   // Set env so gate bins can find the run JSONL at runtime
   process.env.CWC_RUNS_DIR = runsDir
   process.env.CWC_WF_ID = 'wf-1'
-  const app = createApp({ staticDir: null, runsDir, claudeBinPath: binPath, worktreesRoot: wtRoot })
-  server = app.listen(0)
-  base = `http://localhost:${(server.address() as AddressInfo).port}`
-}
-
-function startAppWithBin(binPath: string) {
-  process.env.CWC_RUNS_DIR = runsDir
-  process.env.CWC_WF_ID = 'wf-1'
-  const app = createApp({ staticDir: null, runsDir, claudeBinPath: binPath, worktreesRoot: wtRoot })
+  const app = createApp({
+    staticDir: null, runsDir, claudeBinPath: binPath, worktreesRoot: wtRoot,
+    automationStatePath: path.join(runsDir, 'astate.json'), configPath: path.join(runsDir, 'config.json'),
+    enableNotifier: false,
+  })
   server = app.listen(0)
   base = `http://localhost:${(server.address() as AddressInfo).port}`
 }
@@ -167,7 +163,11 @@ describe('gate endpoints', () => {
 
     // Switch to okBin for the resume (approve spawns okBin which completes instantly)
     server.close()
-    const app2 = createApp({ staticDir: null, runsDir, claudeBinPath: okBin, worktreesRoot: wtRoot })
+    const app2 = createApp({
+      staticDir: null, runsDir, claudeBinPath: okBin, worktreesRoot: wtRoot,
+      automationStatePath: path.join(runsDir, 'astate.json'), configPath: path.join(runsDir, 'config.json'),
+      enableNotifier: false,
+    })
     server = app2.listen(0)
     base = `http://localhost:${(server.address() as AddressInfo).port}`
 
