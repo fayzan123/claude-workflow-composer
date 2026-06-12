@@ -6,8 +6,7 @@ import { validateRunEvent, type RunEvent } from '../../run-events.js'
 import type { RunStore, RunSummary } from '../run-store.js'
 import { runWorkflowSkill } from '../workflow-runner.js'
 import { fireWorkflow, classifyAndFinish } from '../run-launcher.js'
-import { isGitRepo, removeWorktree } from '../run-isolation.js'
-import { getDiff } from '../run-isolation.js'
+import { isGitRepo, removeWorktree, getDiff } from '../run-isolation.js'
 
 export interface RunsRouterOptions {
   store: RunStore
