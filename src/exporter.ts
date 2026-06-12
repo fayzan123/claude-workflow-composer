@@ -101,6 +101,11 @@ export async function exportWorkflow(
       continue
     }
 
+    if (node.nodeType === 'gate') {
+      updatedNodes.push({ ...node })   // gates own no files and no slug
+      continue
+    }
+
     const newSlug = agentSlug(node.agent.name)
     const agentPath = path.join(agentsDir, `${newSlug}.md`)
 

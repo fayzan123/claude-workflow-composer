@@ -70,3 +70,38 @@ describe('validateWorkflow', () => {
     expect(canExport).toBe(true)
   })
 })
+
+describe('gate validation', () => {
+  function gateNode(id: string) {
+    return { id, position: { x: 0, y: 0 }, exportedSlug: null, nodeType: 'gate' as const, agent: { name: 'Gate', description: '', completionCriteria: '' } }
+  }
+  function agentNode(id: string, name: string) {
+    return { id, position: { x: 0, y: 0 }, exportedSlug: null, agent: { name, description: '', completionCriteria: 'done' } }
+  }
+  function wf(nodes: unknown[], edges: unknown[]) {
+    const now = new Date().toISOString()
+    return { meta: { id: 'w', name: 'W', description: '', version: 1, created: now, updated: now }, nodes, edges } as never
+  }
+
+  it('a gate as entry node is an error', () => {
+    const r = validateWorkflow(wf([gateNode('g1'), agentNode('a1', 'A')], [{ id: 'e1', from: 'g1', to: 'a1', trigger: 't' }]))
+    expect(r.errors.some(e => e.type === 'gate-entry' && e.nodeId === 'g1')).toBe(true)
+  })
+
+  it('two directly adjacent gates are an error', () => {
+    const r = validateWorkflow(wf(
+      [agentNode('a1', 'A'), gateNode('g1'), gateNode('g2')],
+      [{ id: 'e1', from: 'a1', to: 'g1', trigger: 't' }, { id: 'e2', from: 'g1', to: 'g2', trigger: 't' }],
+    ))
+    expect(r.errors.some(e => e.type === 'gate-adjacent')).toBe(true)
+  })
+
+  it('gates are exempt from duplicate-slug and completion-criteria checks', () => {
+    const r = validateWorkflow(wf(
+      [agentNode('a1', 'Gate'), gateNode('g1'), agentNode('a2', 'B')],
+      [{ id: 'e1', from: 'a1', to: 'g1', trigger: 't' }, { id: 'e2', from: 'g1', to: 'a2', trigger: 't' }, { id: 'e3', from: 'a2', to: null, trigger: 'd', terminalType: 'complete' }],
+    ))
+    expect(r.errors.filter(e => e.type === 'duplicate-slug')).toHaveLength(0)   // agent "Gate" vs gate node: no clash — gates own no slug
+    expect(r.warnings.filter(w => w.nodeId === 'g1' && w.type === 'missing-completion-criteria')).toHaveLength(0)
+  })
+})

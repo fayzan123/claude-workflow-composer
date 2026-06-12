@@ -302,3 +302,27 @@ describe('observability instrumentation', () => {
     await fs.rm(tmp, { recursive: true })
   })
 })
+
+describe('exportWorkflow — gate nodes', () => {
+  it('writes no agent file for gate nodes and leaves their exportedSlug null', async () => {
+    const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'cwc-gate-exp-'))
+    const now = new Date().toISOString()
+    const cwc: CwcFile = {
+      meta: { id: 'wf-g', name: 'Gate Flow', description: '', version: 1, created: now, updated: now },
+      nodes: [
+        { id: 'n1', position: { x: 0, y: 0 }, exportedSlug: null, agent: { name: 'Solo', description: '', completionCriteria: 'done' } },
+        { id: 'g1', position: { x: 1, y: 0 }, exportedSlug: null, nodeType: 'gate', agent: { name: 'Check', description: '', completionCriteria: '' } },
+      ],
+      edges: [
+        { id: 'e1', from: 'n1', to: 'g1', trigger: 'go' },
+        { id: 'e2', from: 'g1', to: null, trigger: 'Done.', terminalType: 'complete' },
+      ],
+    }
+    const { updatedCwc } = await exportWorkflow(cwc, { type: 'user', userDir: tmp }, { skillsDir: path.join(tmp, 'skills') })
+    await expect(fs.access(path.join(tmp, '.claude', 'agents', 'check.md'))).rejects.toThrow()
+    expect(updatedCwc.nodes.find(n => n.id === 'g1')!.exportedSlug).toBeNull()
+    const skill = await fs.readFile(path.join(tmp, 'skills', 'cwc-gate-flow', 'SKILL.md'), 'utf-8')
+    expect(skill).toContain('Approval gate "Check"')
+    await fs.rm(tmp, { recursive: true })
+  })
+})

@@ -230,3 +230,36 @@ describe('run logging instrumentation', () => {
     expect(body).not.toContain('/api/runs/events')
   })
 })
+
+describe('approval gates', () => {
+  const nodes = [
+    { id: 'n1', position: { x: 0, y: 0 }, exportedSlug: 'researcher', agent: { name: 'Researcher', description: '', completionCriteria: 'done' } },
+    { id: 'g1', position: { x: 1, y: 0 }, exportedSlug: null, nodeType: 'gate' as const, agent: { name: 'Review plan', description: 'summarize the planned changes', completionCriteria: '' } },
+    { id: 'n2', position: { x: 2, y: 0 }, exportedSlug: 'writer', agent: { name: 'Writer', description: '', completionCriteria: 'done' } },
+  ]
+  const edges = [
+    { id: 'e1', from: 'n1', to: 'g1', trigger: 'Research is complete.' },
+    { id: 'e2', from: 'g1', to: 'n2', trigger: 'Write the report.' },
+    { id: 'e3', from: 'n2', to: null, trigger: 'Done.', terminalType: 'complete' as const },
+  ]
+
+  it('emits pause prose for the gate instead of an Agent invocation', () => {
+    const body = generateOrchestratorBody(nodes as never, edges as never, 'Flow', {})
+    expect(body).toContain('Approval gate "Review plan"')
+    expect(body).toContain('commit all work so far')
+    expect(body).toContain('awaiting_approval')
+    expect(body).toContain('END YOUR TURN')
+    expect(body).not.toContain('subagent_type: "review-plan"')
+    expect(body).toContain('summarize the planned changes')   // reviewer instructions included
+  })
+
+  it('marks steps after the gate as post-approval continuations', () => {
+    const body = generateOrchestratorBody(nodes as never, edges as never, 'Flow', {})
+    expect(body).toMatch(/After this gate is approved[\s\S]*Writer/)
+  })
+
+  it('gate event prose includes node id when observability is on', () => {
+    const body = generateOrchestratorBody(nodes as never, edges as never, 'Flow', {}, { observability: { workflowId: 'wf-1', workflowSlug: 'cwc-flow' } })
+    expect(body).toContain('`g1`')
+  })
+})

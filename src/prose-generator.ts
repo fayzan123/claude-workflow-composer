@@ -30,6 +30,16 @@ function nodeSlug(node: CwcNode): string {
   return node.agentRef ?? node.exportedSlug ?? agentSlug(node.agent.name)
 }
 
+function gateProse(node: CwcNode, obs: GenerateOptions['observability']): string {
+  const instructions = node.agent.description?.trim()
+    ? node.agent.description.trim()
+    : 'what was done so far and what the next steps will do'
+  const eventClause = obs
+    ? ` (log it with \`"nodeId":"${node.id}"\` using the Run Logging instructions below)`
+    : ''
+  return `**Approval gate "${node.agent.name}"**: commit all work so far with a descriptive message, then log an \`awaiting_approval\` event whose message covers: ${instructions}${eventClause}. Then END YOUR TURN immediately — do not proceed past this gate in this session. When the session is resumed with approval, continue from here (a reviewer note, if any, takes precedence).`
+}
+
 export interface OverrideInfo {
   model?: string
   skills?: string[]
@@ -145,8 +155,12 @@ export function generateOrchestratorBody(
           if (!target) continue
           const condition = ae.edge.trigger.trim() || `Branch to **${target.agent.name}**.`
           const ctx = formatContextClause(ae.edge.context)
-          const overrides = formatOverrideAnnotation(ae.edge.to!, nodeOverrides)
-          lines.push(`   - If ${condition} invoke **${target.agent.name}** (\`subagent_type: "${nodeSlug(target)}"\`).${ctx}${overrides}`)
+          if (target.nodeType === 'gate') {
+            lines.push(`   - If ${condition} ${gateProse(target, opts.observability)}${ctx}`)
+          } else {
+            const overrides = formatOverrideAnnotation(ae.edge.to!, nodeOverrides)
+            lines.push(`   - If ${condition} invoke **${target.agent.name}** (\`subagent_type: "${nodeSlug(target)}"\`).${ctx}${overrides}`)
+          }
           emitted.add(ae.edge.id)
         }
       } else {
@@ -158,8 +172,12 @@ export function generateOrchestratorBody(
           if (!target) continue
           const trigger = ae.edge.trigger.trim() || `Activate **${target.agent.name}**.`
           const ctx = formatContextClause(ae.edge.context)
-          const overrides = formatOverrideAnnotation(ae.edge.to!, nodeOverrides)
-          lines.push(`   - **${target.agent.name}** (\`subagent_type: "${nodeSlug(target)}"\`): ${trigger}${ctx}${overrides}`)
+          if (target.nodeType === 'gate') {
+            lines.push(`   - **${target.agent.name}**: ${trigger} ${gateProse(target, opts.observability)}${ctx}`)
+          } else {
+            const overrides = formatOverrideAnnotation(ae.edge.to!, nodeOverrides)
+            lines.push(`   - **${target.agent.name}** (\`subagent_type: "${nodeSlug(target)}"\`): ${trigger}${ctx}${overrides}`)
+          }
           emitted.add(ae.edge.id)
         }
       }
@@ -171,17 +189,27 @@ export function generateOrchestratorBody(
           const raw = ae.edge.trigger.trim() || `Invoke **${target.agent.name}**.`
           const trigger = boldWrapAgentNames(raw, agentNames)
           const ctx = formatContextClause(ae.edge.context)
-          const overrides = formatOverrideAnnotation(ae.edge.to!, nodeOverrides)
-          lines.push(`${stepNum++}. ${trigger} Use the Agent tool with \`subagent_type: "${nodeSlug(target)}"\`.${ctx}${overrides}`)
+          if (target.nodeType === 'gate') {
+            lines.push(`${stepNum++}. ${trigger} ${gateProse(target, opts.observability)}`)
+          } else if (step.node.nodeType === 'gate') {
+            const overrides = formatOverrideAnnotation(ae.edge.to!, nodeOverrides)
+            lines.push(`${stepNum++}. After this gate is approved, ${trigger} Use the Agent tool with \`subagent_type: "${nodeSlug(target)}"\` to invoke **${target.agent.name}**.${ctx}${overrides}`)
+          } else {
+            const overrides = formatOverrideAnnotation(ae.edge.to!, nodeOverrides)
+            lines.push(`${stepNum++}. ${trigger} Use the Agent tool with \`subagent_type: "${nodeSlug(target)}"\`.${ctx}${overrides}`)
+          }
         }
         emitted.add(ae.edge.id)
       }
     }
 
+    const isGateStep = step.node.nodeType === 'gate'
+
     for (const ae of terminalEdges) {
       if (!emitted.has(ae.edge.id)) {
         const raw = ae.edge.trigger.trim() || `**${step.node.agent.name}** completes the workflow.`
-        lines.push(`${stepNum++}. ${boldWrapAgentNames(raw, agentNames)}`)
+        const line = boldWrapAgentNames(raw, agentNames)
+        lines.push(`${stepNum++}. ${isGateStep ? `After this gate is approved, ${line}` : line}`)
         emitted.add(ae.edge.id)
       }
     }

@@ -17,14 +17,15 @@ export function validateWorkflow(cwc: CwcFile): ValidationResult {
   for (const node of cwc.nodes) {
     if (!node.agent.name.trim()) {
       errors.push({ type: 'missing-name', nodeId: node.id, message: 'Agent needs a name before export' })
-    } else {
-      if (!node.agentRef && !node.agent.completionCriteria?.trim()) {
-        warnings.push({ type: 'missing-completion-criteria', nodeId: node.id, message: 'Add completion criteria so the agent knows when to stop' })
-      }
-      const slug = node.agentRef ?? slugify(node.agent.name)
-      const existing = slugCounts.get(slug) ?? []
-      slugCounts.set(slug, [...existing, node.id])
+      continue
     }
+    if (node.nodeType === 'gate') continue
+    if (!node.agentRef && !node.agent.completionCriteria?.trim()) {
+      warnings.push({ type: 'missing-completion-criteria', nodeId: node.id, message: 'Add completion criteria so the agent knows when to stop' })
+    }
+    const slug = node.agentRef ?? slugify(node.agent.name)
+    const existing = slugCounts.get(slug) ?? []
+    slugCounts.set(slug, [...existing, node.id])
   }
 
   for (const [, nodeIds] of slugCounts) {
@@ -32,6 +33,19 @@ export function validateWorkflow(cwc: CwcFile): ValidationResult {
       nodeIds.forEach((nodeId) =>
         errors.push({ type: 'duplicate-slug', nodeId, message: 'Two agents produce the same filename — rename one' })
       )
+    }
+  }
+
+  const incoming = new Set(cwc.edges.filter((e) => e.to).map((e) => e.to!))
+  for (const node of cwc.nodes) {
+    if (node.nodeType !== 'gate') continue
+    if (!incoming.has(node.id)) {
+      errors.push({ type: 'gate-entry', nodeId: node.id, message: 'A gate cannot start the workflow — connect an agent before it' })
+    }
+    for (const e of cwc.edges) {
+      if (e.from === node.id && e.to && cwc.nodes.find((n) => n.id === e.to)?.nodeType === 'gate') {
+        errors.push({ type: 'gate-adjacent', nodeId: node.id, message: 'Two gates in a row — merge them into one' })
+      }
     }
   }
 
