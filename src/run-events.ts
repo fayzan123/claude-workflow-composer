@@ -1,5 +1,5 @@
 // src/run-events.ts
-export const RUN_EVENT_TYPES = ['run_started', 'step_started', 'step_completed', 'artifact_produced', 'run_completed'] as const
+export const RUN_EVENT_TYPES = ['run_started', 'step_started', 'step_completed', 'artifact_produced', 'run_completed', 'awaiting_approval', 'run_paused'] as const
 export type RunEventType = (typeof RUN_EVENT_TYPES)[number]
 
 export const RUN_STATUSES = ['complete', 'escalated', 'aborted', 'error'] as const
@@ -19,6 +19,11 @@ export interface RunEvent {
   costUsd?: number
   source?: 'test' | 'external'   // server-set on ground-truth events
   cwd?: string                   // server-set on test-run run_started
+  sessionId?: string
+  worktreePath?: string
+  branch?: string
+  baseSha?: string
+  trigger?: string
 }
 
 // runId/workflowId become path segments under ~/.cwc/runs/ — keep them path-safe.

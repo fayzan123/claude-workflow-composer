@@ -92,3 +92,21 @@ describe('RunStore', () => {
     expect(store.hasActiveTestRun('wf-1')).toBe(false)
   })
 })
+
+describe('paused runs', () => {
+  it('a run whose last event is awaiting_approval is paused, never stale', async () => {
+    const old = new Date(Date.now() - 60 * 60_000).toISOString()
+    await store.append(ev({ type: 'run_started', ts: old }))
+    await store.append(ev({ type: 'awaiting_approval', ts: old, message: 'review me' }))
+    const [run] = await store.listRuns('wf-1')
+    expect(run.status).toBe('paused')
+  })
+  it('a run whose last event is run_paused is paused and summary carries branch/trigger', async () => {
+    await store.append(ev({ type: 'run_started', branch: 'cwc/x/run-1', trigger: 'trig-9' }))
+    await store.append(ev({ type: 'run_paused', sessionId: 's-1' }))
+    const [run] = await store.listRuns('wf-1')
+    expect(run.status).toBe('paused')
+    expect(run.branch).toBe('cwc/x/run-1')
+    expect(run.trigger).toBe('trig-9')
+  })
+})

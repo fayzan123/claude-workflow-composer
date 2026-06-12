@@ -10,11 +10,13 @@ export interface RunSummary {
   workflowId: string
   workflowSlug: string
   source: 'test' | 'external'
-  status: RunStatus | 'running' | 'stale'
+  status: RunStatus | 'running' | 'stale' | 'paused'
   startedAt: string
   lastEventAt: string
   durationMs: number
   cwd?: string
+  branch?: string
+  trigger?: string
 }
 
 export interface RunStore {
@@ -51,6 +53,8 @@ export function createRunStore(runsDir: string): RunStore {
     let status: RunSummary['status']
     if (last.type === 'run_completed' && last.status) {
       status = last.status
+    } else if (last.type === 'run_paused' || last.type === 'awaiting_approval') {
+      status = 'paused'                       // gates can wait days — stale window does not apply
     } else if (Date.now() - Date.parse(last.ts) > STALE_AFTER_MS) {
       status = 'stale'
     } else {
@@ -66,6 +70,8 @@ export function createRunStore(runsDir: string): RunStore {
       lastEventAt: last.ts,
       durationMs: Math.max(0, Date.parse(last.ts) - Date.parse(first.ts)),
       cwd: first.cwd,
+      branch: first.branch,
+      trigger: first.trigger,
     }
   }
 

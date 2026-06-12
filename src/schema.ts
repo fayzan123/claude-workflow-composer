@@ -7,6 +7,21 @@ export interface CwcArtifact {
   path?: string  // required when type === 'file'
 }
 
+export interface CwcTrigger {
+  id: string                            // trig-<8 hex>
+  type: 'cron' | 'webhook'
+  schedule?: string                     // cron expression (type 'cron')
+  token?: string                        // uuid (type 'webhook')
+  cwd: string
+  isolation: 'worktree' | 'in-place'
+  baseRef?: string                      // worktree base, default 'HEAD'
+  precondition?: string                 // shell; non-zero exit → skip firing
+  setupCommand?: string                 // shell, runs in run cwd before spawn; non-zero → run fails
+  catchUp: boolean
+  maxRunsPerDay: number
+  enabled: boolean
+}
+
 export interface CwcMeta {
   id: string
   name: string
@@ -15,6 +30,7 @@ export interface CwcMeta {
   created: string
   updated: string
   observability?: { enabled: boolean }   // absent = enabled
+  triggers?: CwcTrigger[]
 }
 
 export interface CwcAgent {
@@ -36,6 +52,7 @@ export interface CwcNode {
   dispatchMode?: 'parallel' | 'conditional'
   agent: CwcAgent
   agentRef?: string
+  nodeType?: 'agent' | 'gate'           // absent = 'agent'
 }
 
 export interface CwcEdge {

@@ -53,3 +53,20 @@ describe('validateRunEvent', () => {
     if (r.ok) expect(r.event.nodeId).toBe('node-1')
   })
 })
+
+describe('automation event types', () => {
+  it('accepts awaiting_approval from external ingestion', () => {
+    expect(validateRunEvent({ ...base, type: 'awaiting_approval' }).ok).toBe(true)
+  })
+  it('accepts run_paused with sessionId and passes new optional fields through', () => {
+    const r = validateRunEvent({
+      ...base, type: 'run_paused', sessionId: 's-1',
+      worktreePath: '/tmp/wt', branch: 'cwc/x/run-1', baseSha: 'abc123', trigger: 'trig-1',
+    })
+    expect(r.ok).toBe(true)
+    if (r.ok) {
+      expect(r.event.sessionId).toBe('s-1')
+      expect(r.event.baseSha).toBe('abc123')
+    }
+  })
+})
