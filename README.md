@@ -87,6 +87,22 @@ From any Claude Code session, invoke the workflow by its skill name:
 
 The orchestrator skill delegates every implementation step to sub-agents via the Agent tool. Each step references an agent by name; Claude Code resolves it to the agent's `.md` file and loads its system prompt, tools, and completion criteria.
 
+### Automate
+
+Open the **Node Panel** for any node and switch to the **Triggers** tab to add a schedule:
+
+- **Cron** — enter a cron expression (e.g. `0 9 * * 1-5` for weekdays at 9 am) and optionally a day/time window.
+- **Webhook** — CWC generates an inbound URL; post to it to fire the workflow.
+- **Precondition** — a shell command run before the workflow starts; if it exits non-zero the run is skipped.
+
+Add a **gate node** (drag from the "Gate" section of the sidebar) at any point in the workflow. When the run reaches a gate it:
+1. Commits all changes to a `cwc/<runId>` branch and pauses.
+2. Posts a diff of the working branch to the inbox in the Run panel.
+3. Waits — the reviewer reads the diff, writes an optional note, and clicks **Approve** or **Reject**.
+4. On approval, the run resumes in the same Claude Code session from the gate point.
+
+The **Run panel** header has an **Automations** toggle that globally suspends all scheduled runs without disarming triggers, and a **⚙** gear that opens notification settings (macOS banners and/or a webhook URL).
+
 ### Delete
 
 `POST /api/export/delete` scans every exported file, checks its ownership comment, and only removes files owned by the current workflow. Reference nodes have nothing to delete — they didn't write any files.
@@ -104,9 +120,14 @@ The orchestrator skill delegates every implementation step to sub-agents via the
 - **Markdown preview** — click any agent or skill card to view its source file
 - **Open in editor** — view any agent or skill file in your system editor
 - **Claude Code detection** — warns on startup if `~/.claude/` is missing
-- **▶ Test Run** — launch an exported workflow headlessly from the UI (`--permission-mode acceptEdits`, user-chosen working directory) and stop it mid-run
+- **▶ Test Run** — launch an exported workflow headlessly from the UI (`--permission-mode acceptEdits`, user-chosen working directory, worktree or in-place isolation) and stop it mid-run
 - **Live run view** — the active node pulses on the canvas, completed nodes get a check, and events stream into a timeline panel
 - **Run history** — every run of every exported workflow (started from CWC *or* any terminal) persists to `~/.cwc/runs/` with status, duration, source, and cost
+- **Triggers & preconditions** — attach cron schedules, webhook URLs, or manual triggers to a workflow; add a shell command as a precondition guard and a day/time window to restrict when it fires
+- **Approval gates** — insert a gate node into any workflow; when reached the run pauses and posts a diff of its working branch, a reviewer approves or rejects from the inbox (or terminal), the run resumes on the same session
+- **Isolated runs** — Test Run (and scheduler-fired runs) create a git worktree on a `cwc/<runId>` branch so the main checkout is always untouched; the worktree is removed after the run completes
+- **Notifications** — macOS banner + optional webhook on run complete, gate pause, and approval request; configured from the settings gear in the Run panel
+- **Global pause** — one toggle in the Run panel suspends all scheduled automation runs without disarming triggers
 
 ---
 
@@ -123,31 +144,46 @@ Client (React + React Flow)       Server (Express :3579)
 │ ExportFlow (modal)       │ ──►  │ /api/export/preview │
 │ RunModal / RunPanel      │ ──►  │ /api/export/delete  │
 │ useWorkflow (reducer)    │      │ /api/runs (+SSE)    │
-│ useAutoSave (debounced)  │      │ /api/health         │
-│ useRunEvents (SSE)       │ ◄──  │                     │
+│ useAutoSave (debounced)  │      │ /api/automations    │
+│ useRunEvents (SSE)       │ ◄──  │ /api/triggers       │
 └─────────────────────────┘       └─────────────────────┘
                                           │
                                           ▼
-Core Library                     ┌─────────────────────┐
-                                  │ bfs.ts               │
-                                  │ conflict-detector.ts │
-                                  │ exporter.ts          │
-                                  │ file-writer.ts       │
-                                  │ prose-generator.ts   │
-                                  │ skill-resolver.ts    │
-                                  │ slugify.ts           │
-                                  └─────────────────────┘
+Core Library                     ┌─────────────────────────┐
+                                  │ bfs.ts                   │
+                                  │ conflict-detector.ts     │
+                                  │ exporter.ts              │
+                                  │ file-writer.ts           │
+                                  │ prose-generator.ts       │
+                                  │ skill-resolver.ts        │
+                                  │ slugify.ts               │
+                                  │ run-events.ts            │
+                                  └─────────────────────────┘
+
+Server modules                   ┌─────────────────────────┐
+                                  │ run-store.ts             │
+                                  │ workflow-runner.ts       │
+                                  │ run-isolation.ts         │
+                                  │ run-launcher.ts          │
+                                  │ automation-state.ts      │
+                                  │ automation-scheduler.ts  │
+                                  │ notifier.ts              │
+                                  │ config.ts                │
+                                  └─────────────────────────┘
 
 Storage:
   ~/.cwc/
-    recents.json          Recent file paths (max 10)
-    workflows/            Saved .cwc workflow files
-    runs/<workflowId>/    Run event logs (one .jsonl per run)
-    server.pid            PID of running server
+    recents.json              Recent file paths (max 10)
+    workflows/                Saved .cwc workflow files
+    runs/<workflowId>/        Run event logs (one .jsonl per run)
+    worktrees/                Git worktrees for isolated runs (auto-cleaned)
+    automation-state.json     Global pause flag + per-trigger arm state
+    config.json               Notification settings (macos, webhookUrl)
+    server.pid                PID of running server
   ~/.claude/
-    agents/*.md           Agent definitions (read + written)
-    skills/*/SKILL.md     User skills (read by sidebar)
-    plugins/cache/...     Plugin skills (read by sidebar)
+    agents/*.md               Agent definitions (read + written)
+    skills/*/SKILL.md         User skills (read by sidebar)
+    plugins/cache/...         Plugin skills (read by sidebar)
 ```
 
 ---
@@ -164,6 +200,9 @@ Storage:
 | **Ownership comment**  | HTML comment appended to every exported file: `<!-- cwc:node:<id>:workflow:<id> -->`                         |
 | **Orchestrator skill** | The workflow skill generated on export — a Claude Code skill that delegates via Agent tool                   |
 | **Conflict detection** | Reads the ownership comment from a file on disk to determine if this workflow can safely overwrite/delete it |
+| **Gate node**          | A `nodeType: 'gate'` node that pauses a run at a checkpoint, diffs the branch, and waits for approval       |
+| **Trigger**            | A cron / webhook / manual definition attached to a workflow node; scheduler evaluates it on each tick        |
+| **Isolation**          | Worktree mode creates a `cwc/<runId>` branch so the main checkout is never modified by an automated run     |
 
 ---
 
@@ -185,7 +224,7 @@ npm run build               # Production build (server + client)
 
 ### Tests
 
-195 tests across 25 files (run `npm test` for the current count) covering:
+308 tests across 38 files (run `npm test` for the current count) covering:
 
 - **BFS traversal**: linear chains, back-edges, fan-out, multi-root, terminal edges
 - **Prose generation**: start triggers, bold wrapping, context artifacts, Oxford comma, back-edge ordering
@@ -193,12 +232,18 @@ npm run build               # Production build (server + client)
 - **Exporter**: full integration with real temp filesystem, rename cleanup, skill resolution, re-export, conflict warnings
 - **Validation**: empty workflows, missing names, duplicate slugs, disconnected nodes
 - **Graph layout**: horizontal spacing, fan-out vertical spacing, back-edge stability
-- **HTTP endpoints**: all 12 API routes tested with real server instances
+- **HTTP endpoints**: all API routes tested with real server instances
 - **Slugify**: special chars, truncation, hyphen collapse, empty input
 - **Conflict detection**: owned, foreign, absent, malformed states
 - **Skill resolution**: namespaced (plugin) and non-namespaced (user) skill lookup
 - **Claude runner**: binary resolution (incl. Windows shims), stdin prompt delivery, timeout/error envelopes
 - **Undo history**: coalescing, redo-stack clearing, edge cascade on node delete, history cap
+- **Run isolation**: worktree create/remove, diff generation, git detection
+- **Run launcher**: fireWorkflow lifecycle, worktree + in-place paths, classifyAndFinish
+- **Automation scheduler**: cron firing, precondition checks, daily cap, global pause gate
+- **Automation state**: arm/disarm, paused flag persistence, trigger hashing
+- **Gate endpoints**: approve (resume), reject, 409 on wrong state, diff response
+- **Notifier**: macOS toast, webhook POST, event filtering
 
 ---
 

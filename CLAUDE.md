@@ -40,22 +40,33 @@ This is a full-stack TypeScript app: an Express server (`src/`) serving a React 
 - `run-events.ts` — `RunEvent` type + `validateRunEvent()` for the runs API
 
 **Runs subsystem** (`src/server/`) — observability for exported workflows:
-- `run-store.ts` — JSONL persistence under `~/.cwc/runs/<workflowId>/`, run summaries (running/stale/final), in-memory child-process registry, event fan-out to SSE subscribers
-- `workflow-runner.ts` — spawns `claude -p "/<slug>" --permission-mode acceptEdits` for Test Runs (prompt via stdin; SIGTERM → aborted, timeout → error)
-- `api/runs.ts` — `POST /events` (ingest from exported skills' curl instructions), `GET /` (summaries), `GET /:runId/events`, `GET /stream` (SSE), `POST /test` (spawn), `POST /:runId/stop`
+- `run-store.ts` — JSONL persistence under `~/.cwc/runs/<workflowId>/`, run summaries (running/stale/paused/final), in-memory child-process registry, event fan-out to SSE subscribers
+- `workflow-runner.ts` — spawns `claude -p "/<slug>" --permission-mode acceptEdits` for Test Runs (prompt via stdin; SIGTERM → aborted, timeout → error; supports `resume` session ID for gate continuation)
+- `run-isolation.ts` — git worktree helpers: `createWorktree`, `removeWorktree`, `getDiff`, `isGitRepo`, `resolveBaseSha`; runs use an isolated branch so the main checkout is untouched
+- `run-launcher.ts` — `fireWorkflow()` assembles the full run lifecycle (isolation setup, process spawn, classifyAndFinish); `sweepOrphanWorktrees()` cleans up stale worktrees on server start
+- `automation-state.ts` — persistent state at `~/.cwc/automation-state.json`: global paused flag, per-trigger arm state, daily run counts, last-skip reason
+- `automation-scheduler.ts` — cron-based trigger evaluation: reads all `.cwc` files, checks preconditions (shell guards, day/time window), calls `fireWorkflow` respecting the global pause and concurrency cap
+- `notifier.ts` — listens to `RunStore.onEvent`; fires macOS `osascript` toast and/or webhook POST on `run_completed`, `run_paused`, and `awaiting_approval`
+- `config.ts` — `CwcConfig` (notification settings) persisted at `~/.cwc/config.json`; loaded synchronously so `createApp()` stays sync
+- `api/runs.ts` — `POST /events` (ingest), `GET /` (summaries), `GET /:runId/events`, `GET /stream` (SSE), `POST /test` (spawn with isolation), `POST /:runId/stop`, `GET /paused` (global inbox), `GET /:runId/diff`, `POST /:runId/approve`, `POST /:runId/reject`
+- `api/triggers.ts` — `POST /fire` (manual trigger fire), `POST /webhook/:id` (inbound webhook trigger)
+- `api/automations.ts` — `GET/PUT /state` (global pause), `POST /arm`, `POST /trigger-status`, `GET/PUT /config` (notification settings)`
 
 **Client** (`client/src/`) — React 19 + React Flow (`@xyflow/react`). State lives in `useWorkflow.ts` (a `useReducer` over `CwcFile`), persisted via `useAutoSave.ts` (500ms debounce to `/api/workflows`). Components: `Canvas.tsx` (React Flow canvas), `Sidebar.tsx` (agents/skills tabs), `TopBar.tsx` (validation + export trigger), `ExportFlow.tsx` (multi-step export modal), `WorkflowNode.tsx` (custom node renderer), `panels/NodePanel.tsx` and `panels/EdgePanel.tsx` (right-side editors).
 
 **Storage layout:**
 ```
 ~/.cwc/
-  recents.json          # Last 10 opened workflow paths
-  workflows/            # .cwc JSON files
-  runs/<workflowId>/    # Run event logs, one .jsonl per run
+  recents.json              # Last 10 opened workflow paths
+  workflows/                # .cwc JSON files
+  runs/<workflowId>/        # Run event logs, one .jsonl per run
+  worktrees/                # Git worktrees created for isolated runs (swept on server start)
+  automation-state.json     # Global pause flag + per-trigger arm state / run counts
+  config.json               # CwcConfig: notification settings (macos, webhookUrl)
 ~/.claude/
-  agents/*.md           # Agent definitions (read + written by exporter)
-  skills/*/SKILL.md     # User skills (sidebar reads these)
-  plugins/cache/...     # Plugin skills (sidebar reads these)
+  agents/*.md               # Agent definitions (read + written by exporter)
+  skills/*/SKILL.md         # User skills (sidebar reads these)
+  plugins/cache/...         # Plugin skills (sidebar reads these)
 ```
 
 ## Key Data Model
@@ -66,6 +77,7 @@ This is a full-stack TypeScript app: an Express server (`src/`) serving a React 
 - **`CwcEdge`** has `from`/`to` node IDs (`to: null` = terminal edge), a `trigger` string, optional `label`, optional `context` artifacts, and optional `terminalType`.
 - **Reference node** — `agentRef` is set; exporter writes nothing and uses `agentRef` as the slug in the orchestrator.
 - **Bespoke node** — no `agentRef`; exporter writes an agent `.md` file with an ownership comment.
+- **Gate node** — `nodeType: 'gate'` nodes pause a run at a defined checkpoint; the exported skill emits an `awaiting_approval` event and a resumable `run_paused` event, then waits for approve/reject via the CWC inbox or terminal.
 
 ## Export Flow
 
@@ -83,4 +95,4 @@ This is a full-stack TypeScript app: an Express server (`src/`) serving a React 
 
 Tests live in `tests/` (server tests in `tests/server/`, core tests at `tests/*.test.ts`). No client-side tests. Tests use real temp filesystems (via `fs.mkdtemp`) rather than mocks — don't introduce mocks for filesystem operations. Run a single file with `npx vitest run tests/<file>.test.ts`.
 
-The `AppOptions` interface in `src/server/index.ts` accepts `workflowsDir`, `userHomeDir`, `recentsPath`, `runsDir`, and `claudeBinPath` overrides specifically for test injection — use these instead of mocking. Fake `claude` binaries for runner tests are built with `tests/helpers/make-bin.ts` (platform-aware: plain shebang script on POSIX, `.cmd` shim on Windows).
+The `AppOptions` interface in `src/server/index.ts` accepts `workflowsDir`, `userHomeDir`, `recentsPath`, `runsDir`, `claudeBinPath`, `worktreesRoot`, `automationStatePath`, `configPath`, `enableScheduler`, and `enableNotifier` overrides specifically for test injection — use these instead of mocking. Fake `claude` binaries for runner tests are built with `tests/helpers/make-bin.ts` (platform-aware: plain shebang script on POSIX, `.cmd` shim on Windows).
