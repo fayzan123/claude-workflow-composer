@@ -199,6 +199,54 @@
   flex-shrink: 0;
 }
 
+/* Gate node */
+.workflow-node--gate {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  min-width: 0;
+  width: auto;
+  border-style: dashed;
+  border-color: var(--color-warning, #fbbf24);
+}
+
+.workflow-node__gate-icon {
+  font-size: 14px;
+  flex-shrink: 0;
+}
+
+.workflow-node__gate-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text);
+  white-space: nowrap;
+}
+
+/* Trigger pills on entry nodes */
+.workflow-node__trigger-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  margin-bottom: 6px;
+}
+
+.workflow-node__trigger-pill {
+  display: inline-block;
+  font-size: 0.5rem;
+  font-family: var(--font-mono);
+  font-weight: 500;
+  padding: 1px 5px;
+  border-radius: var(--radius-sm);
+  background: oklch(0.93 0.04 80);
+  color: oklch(0.45 0.12 80);
+  border: 1px solid oklch(0.82 0.08 80);
+  white-space: nowrap;
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 /* Run state highlighting */
 .workflow-node--run-active {
   animation: cwc-run-pulse 1.4s ease-in-out infinite;

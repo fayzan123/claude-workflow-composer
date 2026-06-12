@@ -134,6 +134,25 @@
   font-family: var(--font-mono);
 }
 
+.my-agents__quick-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: var(--space-sm);
+  padding-bottom: var(--space-sm);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.my-agents__card--gate {
+  border-color: var(--color-warning, #fbbf24);
+}
+
+.my-agents__card--gate:hover {
+  background: oklch(0.97 0.04 80);
+  border-color: var(--color-warning, #fbbf24);
+  box-shadow: 0 2px 8px oklch(0.85 0.1 80 / 0.4);
+}
+
 .my-agents__generate {
   margin: var(--space-sm); padding: var(--space-sm) var(--space-md);
   background: var(--color-primary); color: var(--color-text-inverse);

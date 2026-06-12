@@ -18,16 +18,30 @@ export interface WorkflowNodeData {
     skills?: string[]
   }
   agentRef?: string
+  nodeType?: 'agent' | 'gate'
   startTrigger?: string
   dispatchMode?: 'parallel' | 'conditional'
   warnings: ValidationWarning[]
   errors: ValidationError[]
   isSelected: boolean
   runState?: 'active' | 'done'
+  triggerPills?: string[]
 }
 
 export function WorkflowNode({ data }: NodeProps) {
   const nodeData = data as unknown as WorkflowNodeData
+
+  if (nodeData.nodeType === 'gate') {
+    return (
+      <div className={`workflow-node workflow-node--gate ${nodeData.isSelected ? 'workflow-node--selected' : ''} ${nodeData.runState === 'active' ? 'workflow-node--run-active' : ''}`}>
+        <Handle type="target" position={Position.Left} />
+        <span className="workflow-node__gate-icon">🚦</span>
+        <span className="workflow-node__gate-label">{nodeData.agent.name || 'Approval Gate'}</span>
+        <Handle type="source" position={Position.Right} />
+      </div>
+    )
+  }
+
   const hasIssues = nodeData.warnings.length > 0 || nodeData.errors.length > 0
   const hasErrors = nodeData.errors.length > 0
   const accentColor = nodeData.agent.color ?? 'oklch(0.47 0.20 255)'
@@ -40,6 +54,11 @@ export function WorkflowNode({ data }: NodeProps) {
       style={{ '--node-accent': accentColor } as React.CSSProperties}
     >
       <Handle type="target" position={Position.Left} />
+      {nodeData.triggerPills && nodeData.triggerPills.length > 0 && (
+        <div className="workflow-node__trigger-pills">
+          {nodeData.triggerPills.map((p, i) => <span key={i} className="workflow-node__trigger-pill">{p}</span>)}
+        </div>
+      )}
       <div className="workflow-node__accent" />
       <div className="workflow-node__header">
         <div className="workflow-node__name-row">

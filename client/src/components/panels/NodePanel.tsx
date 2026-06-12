@@ -123,6 +123,42 @@ export function NodePanel({ node, isEntryNode, terminalEdge, dispatch, onClose, 
     )
     .slice(0, 8)
 
+  const isGate = node.nodeType === 'gate'
+
+  if (isGate) {
+    return (
+      <aside className="node-panel">
+        <div className="node-panel__header">
+          <span className="node-panel__title">Approval Gate</span>
+          <button className="node-panel__delete" onClick={onDelete} aria-label="Delete node">Delete</button>
+          <button className="node-panel__close" onClick={onClose} aria-label="Close panel">×</button>
+        </div>
+        <div className="node-panel__body">
+          <div className="node-panel__field">
+            <label className="node-panel__label">Gate label</label>
+            <input
+              className="node-panel__input"
+              type="text"
+              value={node.agent.name}
+              onChange={handleNameChange}
+              placeholder="Gate name"
+            />
+          </div>
+          <div className="node-panel__field">
+            <label className="node-panel__label">Reviewer instructions</label>
+            <textarea
+              className="node-panel__textarea"
+              value={node.agent.description}
+              onChange={handleDescChange}
+              placeholder="What should the summary cover? What should the reviewer check?"
+              rows={4}
+            />
+          </div>
+        </div>
+      </aside>
+    )
+  }
+
   return (
     <aside className="node-panel">
       <div className="node-panel__header">

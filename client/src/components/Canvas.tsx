@@ -37,19 +37,25 @@ interface Props {
 export function Canvas({ workflow, dispatch, validation, onSelectNode, onSelectEdge, selectedNodeId, selectedEdgeId, nodeRunStates }: Props) {
   const { screenToFlowPosition } = useReactFlow()
 
-  const rfNodes = useMemo(() => workflow.nodes.map((n) => ({
-    id: n.id,
-    type: 'workflowNode',
-    position: n.position,
-    data: {
-      ...n,
-      warnings: validation.warnings.filter((w) => w.nodeId === n.id),
-      errors: validation.errors.filter((e) => e.nodeId === n.id),
-      isSelected: n.id === selectedNodeId,
-      runState: nodeRunStates[n.id],
-    },
-    selected: n.id === selectedNodeId,
-  })), [workflow.nodes, validation, selectedNodeId, nodeRunStates])
+  const rfNodes = useMemo(() => {
+    const hasIncoming = new Set(workflow.edges.filter((e) => e.to).map((e) => e.to!))
+    return workflow.nodes.map((n) => ({
+      id: n.id,
+      type: 'workflowNode',
+      position: n.position,
+      data: {
+        ...n,
+        warnings: validation.warnings.filter((w) => w.nodeId === n.id),
+        errors: validation.errors.filter((e) => e.nodeId === n.id),
+        isSelected: n.id === selectedNodeId,
+        runState: nodeRunStates[n.id],
+        triggerPills: !hasIncoming.has(n.id)
+          ? (workflow.meta.triggers ?? []).map((t) => t.type === 'cron' ? `⏰ ${t.schedule}` : '⚡ webhook')
+          : undefined,
+      },
+      selected: n.id === selectedNodeId,
+    }))
+  }, [workflow.nodes, workflow.edges, workflow.meta.triggers, validation, selectedNodeId, nodeRunStates])
 
   const [nodes, setNodes] = useState<Node[]>(rfNodes)
   const isDragging = useRef(false)
@@ -154,6 +160,20 @@ export function Canvas({ workflow, dispatch, validation, onSelectNode, onSelectE
 
   const onDrop = useCallback((event: React.DragEvent) => {
     event.preventDefault()
+
+    const gateData = event.dataTransfer.getData('application/cwc-gate')
+    if (gateData) {
+      const position = screenToFlowPosition({ x: event.clientX, y: event.clientY })
+      dispatch({
+        type: 'ADD_NODE',
+        payload: {
+          agent: { name: 'Approval Gate', description: '', completionCriteria: '', systemPrompt: '', tools: [], skills: [] },
+          position,
+          nodeType: 'gate',
+        },
+      })
+      return
+    }
 
     const agentRefData = event.dataTransfer.getData('application/cwc-agent-ref')
     if (agentRefData) {

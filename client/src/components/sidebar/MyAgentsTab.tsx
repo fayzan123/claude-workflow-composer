@@ -66,6 +66,33 @@ export function MyAgentsTab() {
         />
       </div>
       <div className="my-agents__list">
+        <div className="my-agents__quick-cards">
+          <div
+            className="my-agents__card my-agents__card--quick"
+            draggable
+            onDragStart={(e) => {
+              e.dataTransfer.setData(
+                'application/cwc-agent',
+                JSON.stringify({ name: 'New Agent', description: '', completionCriteria: '', systemPrompt: '', tools: [], skills: [] })
+              )
+              e.dataTransfer.effectAllowed = 'copy'
+            }}
+          >
+            <strong className="my-agents__name">+ New Agent</strong>
+            <span className="my-agents__slug">drag to canvas</span>
+          </div>
+          <div
+            className="my-agents__card my-agents__card--quick my-agents__card--gate"
+            draggable
+            onDragStart={(e) => {
+              e.dataTransfer.setData('application/cwc-gate', JSON.stringify({}))
+              e.dataTransfer.effectAllowed = 'copy'
+            }}
+          >
+            <strong className="my-agents__name">🚦 Approval Gate</strong>
+            <span className="my-agents__slug">Pauses the run for your sign-off</span>
+          </div>
+        </div>
         {grouped.size === 0 && (
           <div className="my-agents__status">
             {search ? 'No agents match your search.' : 'No agents found. Add .md agent files to ~/.claude/agents/.'}
