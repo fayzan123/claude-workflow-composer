@@ -133,3 +133,54 @@ describe('POST /api/triggers/:unknown', () => {
     expect(res.status).toBe(404)
   })
 })
+
+describe('POST /api/automations/trigger-status', () => {
+  const trigger = {
+    id: 'trig-status-1',
+    type: 'cron' as const,
+    schedule: '0 9 * * 1-5',
+    cwd: '/tmp/test',
+    isolation: 'in-place' as const,
+    catchUp: true,
+    maxRunsPerDay: 10,
+    enabled: true,
+  }
+
+  it('returns armed: false for a fresh trigger', async () => {
+    const res = await fetch(`${base}/api/automations/trigger-status`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ trigger }),
+    })
+    expect(res.status).toBe(200)
+    const body = await res.json() as Record<string, unknown>
+    expect(body.armed).toBe(false)
+    expect(typeof body.skippedCount).toBe('number')
+  })
+
+  it('returns armed: true after arming', async () => {
+    // arm first
+    await fetch(`${base}/api/automations/arm`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ trigger }),
+    })
+    const res = await fetch(`${base}/api/automations/trigger-status`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ trigger }),
+    })
+    expect(res.status).toBe(200)
+    const body = await res.json() as Record<string, unknown>
+    expect(body.armed).toBe(true)
+  })
+
+  it('returns 400 when trigger is missing', async () => {
+    const res = await fetch(`${base}/api/automations/trigger-status`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+    })
+    expect(res.status).toBe(400)
+  })
+})

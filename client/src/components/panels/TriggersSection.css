@@ -1,0 +1,200 @@
+.triggers-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+}
+
+.triggers-section h4 {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: var(--text-sm);
+  color: var(--color-text);
+  margin: 0;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.triggers-section__empty {
+  font-size: var(--text-xs);
+  color: var(--color-text-tertiary);
+  margin: 0;
+}
+
+.triggers-section__card {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-secondary);
+  padding: var(--space-md);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+  transition: opacity var(--transition-fast);
+}
+
+.triggers-section__card--off {
+  opacity: 0.5;
+}
+
+.triggers-section__card-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.triggers-section__card-header span {
+  flex: 1;
+}
+
+.triggers-section__card-header button {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 13px;
+  padding: 2px 4px;
+  border-radius: var(--radius-sm);
+  color: var(--color-text-tertiary);
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+
+.triggers-section__card-header button:hover {
+  background: var(--color-error);
+  color: var(--color-text-inverse);
+}
+
+.triggers-section__field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-weight: 500;
+  font-size: var(--text-xs);
+  color: var(--color-text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.triggers-section__input {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: 6px 8px;
+  font-size: var(--text-sm);
+  color: var(--color-text);
+  background: var(--color-surface);
+  outline: none;
+  font-family: inherit;
+  transition: border-color var(--transition-fast);
+}
+
+.triggers-section__input:focus {
+  border-color: var(--color-primary);
+}
+
+.triggers-section__input--number {
+  width: 80px;
+}
+
+.triggers-section__select {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: 6px 8px;
+  font-size: var(--text-sm);
+  color: var(--color-text);
+  background: var(--color-surface);
+  outline: none;
+  cursor: pointer;
+  font-family: inherit;
+  transition: border-color var(--transition-fast);
+}
+
+.triggers-section__select:focus {
+  border-color: var(--color-primary);
+}
+
+.triggers-section__code {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  background: var(--color-surface-hover);
+  padding: 4px 6px;
+  border-radius: var(--radius-sm);
+  word-break: break-all;
+}
+
+.triggers-section__hint {
+  font-size: var(--text-xs);
+  color: var(--color-text-tertiary);
+  font-weight: normal;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.triggers-section__inline-label {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: var(--text-sm);
+  color: var(--color-text-secondary);
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: 0;
+  cursor: pointer;
+}
+
+.triggers-section__btn-row {
+  display: flex;
+  gap: var(--space-xs);
+}
+
+.triggers-section__btn {
+  padding: 5px 10px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transition: border-color var(--transition-fast), background var(--transition-fast);
+}
+
+.triggers-section__btn:hover {
+  border-color: var(--color-primary);
+  background: var(--color-primary-light);
+  color: var(--color-primary);
+}
+
+.triggers-section__card-footer {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  flex-wrap: wrap;
+  padding-top: var(--space-xs);
+  border-top: 1px solid var(--color-border);
+}
+
+.triggers-section__arm {
+  padding: 5px 12px;
+  background: var(--color-warning, #fbbf24);
+  color: #7c4a00;
+  border: none;
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm);
+  font-weight: 500;
+  cursor: pointer;
+  transition: opacity var(--transition-fast);
+}
+
+.triggers-section__arm:hover {
+  opacity: 0.85;
+}
+
+.triggers-section__armed {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--color-success, #34d399);
+}
+
+.triggers-section__add {
+  display: flex;
+  gap: var(--space-sm);
+}

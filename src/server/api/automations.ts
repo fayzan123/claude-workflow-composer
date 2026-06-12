@@ -24,6 +24,11 @@ export function automationsRouter(opts: AutomationsRouterOptions): Router {
     res.json({ armed: true })
   })
   router.get('/trigger-state/:id', (req, res) => { res.json(opts.state.getTriggerState(req.params.id)) })
+  router.post('/trigger-status', (req, res) => {
+    const trigger = (req.body ?? {}).trigger as CwcTrigger | undefined
+    if (!trigger?.id) return void res.status(400).json({ error: 'trigger required' })
+    res.json({ armed: opts.state.isArmed(trigger), ...opts.state.getTriggerState(trigger.id) })
+  })
   router.get('/config', (_req, res) => { res.json(loadConfig(opts.configPath)) })
   router.put('/config', async (req, res) => {
     const c = req.body as CwcConfig

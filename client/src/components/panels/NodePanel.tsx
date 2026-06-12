@@ -1,10 +1,11 @@
 import React, { useEffect, useState } from 'react'
-import type { CwcNode, CwcAgent, CwcEdge, TerminalType } from '../../../../src/schema.ts'
+import type { CwcNode, CwcAgent, CwcEdge, TerminalType, CwcFile } from '../../../../src/schema.ts'
 import type { WorkflowAction } from '../../hooks/useWorkflow.ts'
 import type { SkillEntry } from '../../../../src/server/api/skills.ts'
 import { slugify } from '../../../../src/slugify.ts'
 import { CLAUDE_MODELS } from '../../lib/models.ts'
 import { api } from '../../lib/api.ts'
+import { TriggersSection } from './TriggersSection.tsx'
 import './NodePanel.css'
 
 const AVAILABLE_TOOLS = ['Read', 'Write', 'Edit', 'Bash', 'Glob', 'Grep', 'WebSearch', 'WebFetch', 'Agent', 'Skill', 'Task', 'TodoWrite', 'NotebookEdit', 'LSP']
@@ -13,12 +14,13 @@ interface Props {
   node: CwcNode
   isEntryNode: boolean
   terminalEdge: CwcEdge | null
+  workflow: CwcFile
   dispatch: React.Dispatch<WorkflowAction>
   onClose: () => void
   onDelete: () => void
 }
 
-export function NodePanel({ node, isEntryNode, terminalEdge, dispatch, onClose, onDelete }: Props) {
+export function NodePanel({ node, isEntryNode, terminalEdge, workflow, dispatch, onClose, onDelete }: Props) {
   const [promptExpanded, setPromptExpanded] = useState(false)
   const [newSkill, setNewSkill] = useState('')
   const [skillFocused, setSkillFocused] = useState(false)
@@ -168,6 +170,9 @@ export function NodePanel({ node, isEntryNode, terminalEdge, dispatch, onClose, 
       </div>
 
       <div className="node-panel__body">
+        {isEntryNode && !isGate && (
+          <TriggersSection workflow={workflow} dispatch={dispatch} />
+        )}
         {isRef && (
           <div className="node-panel__ref-badge">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>

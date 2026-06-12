@@ -1,4 +1,4 @@
-import type { CwcFile } from '../types.ts'
+import type { CwcFile, CwcTrigger } from '../types.ts'
 import type { AgentEntry } from '../../../src/server/api/agents.ts'
 import type { AgentSpec } from '../../../src/agent-generator.ts'
 import type { SkillSpec } from '../../../src/skill-generator.ts'
@@ -112,5 +112,15 @@ export const api = {
       reqWithError<{ runId: string }>('POST', '/runs/test', { workflowId, workflowSlug, cwd }),
     stop: (runId: string) =>
       reqWithError<{ stopped: boolean }>('POST', `/runs/${encodeURIComponent(runId)}/stop`),
+  },
+
+  automations: {
+    state: () => req<{ paused: boolean }>('GET', '/automations/state'),
+    setPaused: (paused: boolean) => req<{ paused: boolean }>('PUT', '/automations/state', { paused }),
+    arm: (trigger: CwcTrigger) => reqWithError<{ armed: boolean }>('POST', '/automations/arm', { trigger }),
+    triggerStatus: (trigger: CwcTrigger) =>
+      req<{ armed: boolean; lastFiredAt?: string; skippedCount: number; lastSkip?: { ts: string; reason: string } }>('POST', '/automations/trigger-status', { trigger }),
+    config: () => req<{ notifications: { macos: boolean; webhookUrl?: string } }>('GET', '/automations/config'),
+    setConfig: (c: { notifications: { macos: boolean; webhookUrl?: string } }) => req<typeof c>('PUT', '/automations/config', c),
   },
 }

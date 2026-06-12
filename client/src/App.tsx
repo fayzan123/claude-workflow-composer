@@ -197,6 +197,7 @@ export default function App() {
             node={selectedNode}
             isEntryNode={isEntryNode}
             terminalEdge={terminalEdge}
+            workflow={editorWorkflow}
             dispatch={dispatch}
             onClose={() => handleSelectNode(null)}
             onDelete={() => {
