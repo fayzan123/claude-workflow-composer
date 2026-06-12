@@ -1,0 +1,283 @@
+// tests/server/runs-gates.test.ts
+import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from 'vitest'
+import * as fs from 'node:fs/promises'
+import * as os from 'node:os'
+import * as path from 'node:path'
+import * as http from 'node:http'
+import { execFileSync } from 'node:child_process'
+import type { AddressInfo } from 'node:net'
+import { createApp } from '../../src/server/index.js'
+import { makeBin } from '../helpers/make-bin.js'
+
+let binDir: string
+let okBin: string      // fast-completing bin (used for approve resume)
+
+let runsDir: string, wtRoot: string, repo: string
+let server: http.Server
+let base: string
+
+// Gate bins are created per-beforeEach since they encode runsDir and workflowId.
+let gateBin: string
+let gateNoSessBin: string
+let gateDiffBin: string
+
+beforeAll(async () => {
+  binDir = await fs.mkdtemp(path.join(os.tmpdir(), 'cwc-gates-bin-'))
+  okBin = await makeBin(binDir, 'claude-ok', `const fs=require('fs')
+fs.readFileSync(0,'utf-8')
+process.stdout.write(JSON.stringify({ type:'result', result:'workflow approved and complete', session_id:'s-resumed', total_cost_usd:0.02 }))
+`)
+})
+afterAll(async () => { await fs.rm(binDir, { recursive: true }) })
+
+beforeEach(async () => {
+  runsDir = await fs.mkdtemp(path.join(os.tmpdir(), 'cwc-gates-runs-'))
+  wtRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'cwc-gates-wt-'))
+  repo = await fs.mkdtemp(path.join(os.tmpdir(), 'cwc-gates-repo-'))
+  execFileSync('git', ['-C', repo, 'init', '-b', 'main'])
+  execFileSync('git', ['-C', repo, 'config', 'user.email', 't@t'])
+  execFileSync('git', ['-C', repo, 'config', 'user.name', 't'])
+  await fs.writeFile(path.join(repo, 'f.txt'), 'x')
+  execFileSync('git', ['-C', repo, 'add', '-A'])
+  execFileSync('git', ['-C', repo, 'commit', '-m', 'init'])
+
+  // Create gate bins that use CWC_RUNS_DIR env var to find the run JSONL dynamically.
+  // The bins read this env var at runtime to locate the run JSONL.
+  const makeGate = async (name: string, withSession: boolean, commitChange = false) => {
+    const commitBlock = commitChange ? `
+const { execFileSync } = require('child_process')
+const path2 = require('path')
+const changeFile = path2.join(process.cwd(), 'gate-change.txt')
+require('fs').writeFileSync(changeFile, 'changed by gate\\n')
+execFileSync('git', ['-C', process.cwd(), 'add', '-A'])
+execFileSync('git', ['-C', process.cwd(), 'commit', '-m', 'gate change'])
+` : ''
+    const resultObj = withSession
+      ? `{ type:'result', result:'paused at gate', session_id:'s-gate' }`
+      : `{ type:'result', result:'paused' }`
+    // Reads CWC_RUNS_DIR (injected via process.env before server start) to scan for the latest JSONL.
+    const src = `const fs=require('fs')
+const path=require('path')
+fs.readFileSync(0,'utf-8')
+const runsDir = process.env.CWC_RUNS_DIR
+const workflowId = process.env.CWC_WF_ID
+const dir = path.join(runsDir, workflowId)
+const files = fs.readdirSync(dir).filter(f => f.endsWith('.jsonl')).sort()
+const jsonl = path.join(dir, files[files.length - 1])
+const firstLine = JSON.parse(fs.readFileSync(jsonl, 'utf-8').trim().split('\\n')[0])
+const runId = firstLine.runId
+${commitBlock}
+fs.appendFileSync(jsonl, JSON.stringify({ runId, workflowId, workflowSlug: 'cwc-x', type: 'awaiting_approval', ts: new Date().toISOString(), message: 'plan ready' }) + '\\n')
+process.stdout.write(JSON.stringify(${resultObj}))
+`
+    return makeBin(binDir, name, src)
+  }
+
+  const suffix = Date.now().toString(36)
+  gateBin = await makeGate(`gate-s-${suffix}`, true)
+  gateNoSessBin = await makeGate(`gate-ns-${suffix}`, false)
+  gateDiffBin = await makeGate(`gate-diff-${suffix}`, true, true)
+})
+afterEach(async () => {
+  server?.close()
+  // Clean up env vars
+  delete process.env.CWC_RUNS_DIR
+  delete process.env.CWC_WF_ID
+  for (const d of [runsDir, wtRoot, repo]) {
+    await fs.rm(d, { recursive: true, maxRetries: 5, retryDelay: 200 }).catch(() => { /* already gone */ })
+  }
+})
+
+function startApp(binPath: string) {
+  // Set env so gate bins can find the run JSONL at runtime
+  process.env.CWC_RUNS_DIR = runsDir
+  process.env.CWC_WF_ID = 'wf-1'
+  const app = createApp({ staticDir: null, runsDir, claudeBinPath: binPath, worktreesRoot: wtRoot })
+  server = app.listen(0)
+  base = `http://localhost:${(server.address() as AddressInfo).port}`
+}
+
+function startAppWithBin(binPath: string) {
+  process.env.CWC_RUNS_DIR = runsDir
+  process.env.CWC_WF_ID = 'wf-1'
+  const app = createApp({ staticDir: null, runsDir, claudeBinPath: binPath, worktreesRoot: wtRoot })
+  server = app.listen(0)
+  base = `http://localhost:${(server.address() as AddressInfo).port}`
+}
+
+async function waitForStatus(workflowId: string, runId: string, want: string, ms = 8000): Promise<Record<string, unknown>> {
+  const deadline = Date.now() + ms
+  while (Date.now() < deadline) {
+    const runs = (await (await fetch(`${base}/api/runs?workflowId=${workflowId}`)).json()) as Record<string, unknown>[]
+    const run = runs.find(r => r.runId === runId)
+    if (run && run.status === want) return run
+    await new Promise(r => setTimeout(r, 100))
+  }
+  throw new Error(`run ${runId} never reached status ${want}`)
+}
+
+describe('gate endpoints', () => {
+  it('1. paused run appears in GET /api/runs/paused + GET /api/runs?workflowId', async () => {
+    startApp(gateBin)
+    const res = await fetch(`${base}/api/runs/test`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ workflowId: 'wf-1', workflowSlug: 'cwc-x', cwd: repo }),
+    })
+    expect(res.status).toBe(200)
+    const { runId } = (await res.json()) as { runId: string }
+    await waitForStatus('wf-1', runId, 'paused')
+
+    // GET /api/runs/paused (global)
+    const paused = (await (await fetch(`${base}/api/runs/paused`)).json()) as Record<string, unknown>[]
+    const entry = paused.find(r => r.runId === runId)
+    expect(entry).toBeDefined()
+    expect(entry?.workflowId).toBe('wf-1')
+    expect(entry?.status).toBe('paused')
+
+    // GET /api/runs?workflowId
+    const runs = (await (await fetch(`${base}/api/runs?workflowId=wf-1`)).json()) as Record<string, unknown>[]
+    const run = runs.find(r => r.runId === runId)
+    expect(run?.status).toBe('paused')
+  })
+
+  it('2. GET /api/runs/:runId/diff returns committed change from gate fixture', async () => {
+    startApp(gateDiffBin)
+    const res = await fetch(`${base}/api/runs/test`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ workflowId: 'wf-1', workflowSlug: 'cwc-x', cwd: repo }),
+    })
+    const { runId } = (await res.json()) as { runId: string }
+    await waitForStatus('wf-1', runId, 'paused')
+
+    const diffRes = await fetch(`${base}/api/runs/${runId}/diff?workflowId=wf-1`)
+    expect(diffRes.status).toBe(200)
+    const diffBody = (await diffRes.json()) as Record<string, unknown>
+    expect(diffBody.branch).toContain(runId)
+    expect(diffBody.diff).toContain('gate-change.txt')
+  })
+
+  it('3. POST /approve resumes run; run ends complete; branch kept', async () => {
+    startApp(gateBin)
+    const res = await fetch(`${base}/api/runs/test`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ workflowId: 'wf-1', workflowSlug: 'cwc-x', cwd: repo }),
+    })
+    const { runId } = (await res.json()) as { runId: string }
+    await waitForStatus('wf-1', runId, 'paused')
+
+    // Switch to okBin for the resume (approve spawns okBin which completes instantly)
+    server.close()
+    const app2 = createApp({ staticDir: null, runsDir, claudeBinPath: okBin, worktreesRoot: wtRoot })
+    server = app2.listen(0)
+    base = `http://localhost:${(server.address() as AddressInfo).port}`
+
+    const approveRes = await fetch(`${base}/api/runs/${runId}/approve`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ workflowId: 'wf-1', note: 'LGTM' }),
+    })
+    expect(approveRes.status).toBe(200)
+    expect((await approveRes.json())).toMatchObject({ resumed: true })
+
+    await waitForStatus('wf-1', runId, 'complete')
+
+    // branch kept
+    const branches = execFileSync('git', ['-C', repo, 'branch', '--list', `cwc/cwc-x/${runId}`], { encoding: 'utf-8' })
+    expect(branches).toContain(runId)
+  })
+
+  it('4a. Approve on a non-paused run → 409', async () => {
+    startApp(okBin)
+    const res = await fetch(`${base}/api/runs/test`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ workflowId: 'wf-1', workflowSlug: 'cwc-x', cwd: repo }),
+    })
+    const { runId } = (await res.json()) as { runId: string }
+    await waitForStatus('wf-1', runId, 'complete')
+
+    const approveRes = await fetch(`${base}/api/runs/${runId}/approve`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ workflowId: 'wf-1' }),
+    })
+    expect(approveRes.status).toBe(409)
+    const body = (await approveRes.json()) as { error: string }
+    expect(body.error).toContain('not paused')
+  })
+
+  it('4b. Approve on no-session paused run → 409 cannot resume', async () => {
+    startApp(gateNoSessBin)
+    const res = await fetch(`${base}/api/runs/test`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ workflowId: 'wf-1', workflowSlug: 'cwc-x', cwd: repo }),
+    })
+    const { runId } = (await res.json()) as { runId: string }
+    await waitForStatus('wf-1', runId, 'paused')
+
+    const approveRes = await fetch(`${base}/api/runs/${runId}/approve`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ workflowId: 'wf-1' }),
+    })
+    expect(approveRes.status).toBe(409)
+    const body = (await approveRes.json()) as { error: string }
+    expect(body.error).toContain('cannot resume')
+  })
+
+  it('5. POST /reject on paused run → aborted + worktree gone + branch deleted', async () => {
+    startApp(gateBin)
+    const res = await fetch(`${base}/api/runs/test`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ workflowId: 'wf-1', workflowSlug: 'cwc-x', cwd: repo }),
+    })
+    const { runId } = (await res.json()) as { runId: string }
+    await waitForStatus('wf-1', runId, 'paused')
+
+    const events = (await (await fetch(`${base}/api/runs/${runId}/events?workflowId=wf-1`)).json()) as Record<string, unknown>[]
+    const started = events.find(e => e.type === 'run_started') as Record<string, unknown>
+    const worktreePath = started.worktreePath as string
+
+    const rejectRes = await fetch(`${base}/api/runs/${runId}/reject`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ workflowId: 'wf-1', note: 'not ready' }),
+    })
+    expect(rejectRes.status).toBe(200)
+    expect((await rejectRes.json())).toMatchObject({ rejected: true })
+    await waitForStatus('wf-1', runId, 'aborted')
+
+    // worktree gone
+    await expect(fs.access(worktreePath)).rejects.toThrow()
+    // branch deleted
+    const branches = execFileSync('git', ['-C', repo, 'branch', '--list', `cwc/cwc-x/${runId}`], { encoding: 'utf-8' }).trim()
+    expect(branches).toBe('')
+  })
+
+  it('5b. POST /reject on no-session paused run also works', async () => {
+    startApp(gateNoSessBin)
+    const res = await fetch(`${base}/api/runs/test`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ workflowId: 'wf-1', workflowSlug: 'cwc-x', cwd: repo }),
+    })
+    const { runId } = (await res.json()) as { runId: string }
+    await waitForStatus('wf-1', runId, 'paused')
+
+    const rejectRes = await fetch(`${base}/api/runs/${runId}/reject`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ workflowId: 'wf-1', note: 'rejected no-session' }),
+    })
+    expect(rejectRes.status).toBe(200)
+    await waitForStatus('wf-1', runId, 'aborted')
+  })
+
+  it('6. Reject/approve on unknown run → 404', async () => {
+    startApp(okBin)
+    const rejectRes = await fetch(`${base}/api/runs/ghost-run/reject`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ workflowId: 'wf-1' }),
+    })
+    expect(rejectRes.status).toBe(404)
+
+    const approveRes = await fetch(`${base}/api/runs/ghost-run/approve`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ workflowId: 'wf-1' }),
+    })
+    expect(approveRes.status).toBe(404)
+  })
+})
