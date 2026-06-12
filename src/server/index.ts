@@ -29,6 +29,7 @@ export interface AppOptions {
   claudeRunner?: ClaudeRunner
   runsDir?: string
   claudeBinPath?: string
+  worktreesRoot?: string
 }
 
 export function createApp(opts: AppOptions): express.Express {
@@ -59,8 +60,9 @@ export function createApp(opts: AppOptions): express.Express {
   app.use('/api/exported-workflows', exportedWorkflowsRouter(homeDir))
 
   const runsDir = opts.runsDir ?? path.join(os.homedir(), '.cwc', 'runs')
+  const worktreesRoot = opts.worktreesRoot ?? path.join(os.homedir(), '.cwc', 'worktrees')
   const runStore = createRunStore(runsDir)
-  app.use('/api/runs', runsRouter({ store: runStore, claudeBinPath: opts.claudeBinPath }))
+  app.use('/api/runs', runsRouter({ store: runStore, claudeBinPath: opts.claudeBinPath, worktreesRoot, runsDirPath: runsDir }))
 
   if (opts.staticDir && fs.existsSync(opts.staticDir)) {
     app.use(express.static(opts.staticDir))

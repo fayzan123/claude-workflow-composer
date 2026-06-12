@@ -38,7 +38,7 @@ afterEach(async () => {
 })
 
 function startApp(binPath: string) {
-  const app = createApp({ staticDir: null, runsDir, claudeBinPath: binPath })
+  const app = createApp({ staticDir: null, runsDir, claudeBinPath: binPath, worktreesRoot: os.tmpdir() })
   server = app.listen(0)
   base = `http://localhost:${(server.address() as AddressInfo).port}`
 }

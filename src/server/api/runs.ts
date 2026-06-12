@@ -1,14 +1,19 @@
 // src/server/api/runs.ts
 import { Router } from 'express'
 import * as fs from 'node:fs'
-import { randomUUID } from 'node:crypto'
+import * as fsPromises from 'node:fs/promises'
 import { validateRunEvent, type RunEvent } from '../../run-events.js'
-import type { RunStore } from '../run-store.js'
+import type { RunStore, RunSummary } from '../run-store.js'
 import { runWorkflowSkill } from '../workflow-runner.js'
+import { fireWorkflow, classifyAndFinish } from '../run-launcher.js'
+import { isGitRepo, removeWorktree } from '../run-isolation.js'
+import { getDiff } from '../run-isolation.js'
 
 export interface RunsRouterOptions {
   store: RunStore
   claudeBinPath?: string   // test injection
+  worktreesRoot: string
+  runsDirPath: string
 }
 
 export function runsRouter(opts: RunsRouterOptions): Router {
@@ -46,7 +51,9 @@ export function runsRouter(opts: RunsRouterOptions): Router {
   })
 
   router.post('/test', async (req, res) => {
-    const { workflowId, workflowSlug, cwd } = (req.body ?? {}) as { workflowId?: string; workflowSlug?: string; cwd?: string }
+    const { workflowId, workflowSlug, cwd, isolation: isolationBody } = (req.body ?? {}) as {
+      workflowId?: string; workflowSlug?: string; cwd?: string; isolation?: 'worktree' | 'in-place'
+    }
     if (!workflowId || !workflowSlug || !cwd) {
       res.status(400).json({ error: 'workflowId, workflowSlug, and cwd are required' })
       return
@@ -59,19 +66,33 @@ export function runsRouter(opts: RunsRouterOptions): Router {
       res.status(409).json({ error: 'a test run for this workflow is already active' })
       return
     }
-    const runId = `run-${randomUUID().slice(0, 13)}`
-    const { stop, done } = runWorkflowSkill({ slug: workflowSlug, runId, cwd, binPath: opts.claudeBinPath })
-    store.registerRun(runId, workflowId, stop)
-    const now = () => new Date().toISOString()
-    await ingest({ runId, workflowId, workflowSlug, type: 'run_started', ts: now(), source: 'test', cwd, message: 'Test run started from CWC' })
-    void done.then(async result => {
-      store.releaseRun(runId)
-      await ingest({
-        runId, workflowId, workflowSlug, type: 'run_completed', ts: now(),
-        status: result.status, message: result.message, costUsd: result.costUsd, source: 'test',
-      }).catch(() => { /* run dir may be gone in teardown */ })
+    // Default isolation: worktree if git repo, else in-place
+    let isolation: 'worktree' | 'in-place'
+    if (isolationBody) {
+      isolation = isolationBody
+    } else {
+      isolation = (await isGitRepo(cwd)) ? 'worktree' : 'in-place'
+    }
+    const outcome = await fireWorkflow({
+      workflowId, workflowSlug, cwd, isolation, trigger: 'manual',
+      store, worktreesRoot: opts.worktreesRoot, binPath: opts.claudeBinPath,
     })
-    res.json({ runId })
+    if (!outcome.fired) {
+      res.status(400).json({ error: outcome.reason })
+      return
+    }
+    res.json({ runId: outcome.runId })
+  })
+
+  // GET /paused — global inbox. MUST be registered before '/:runId/events'.
+  router.get('/paused', async (_req, res) => {
+    const all: RunSummary[] = []
+    let dirs: string[] = []
+    try { dirs = await fsPromises.readdir(opts.runsDirPath) } catch { /* none yet */ }
+    for (const wf of dirs) {
+      for (const run of await store.listRuns(wf)) if (run.status === 'paused') all.push(run)
+    }
+    res.json(all.sort((a, b) => Date.parse(b.lastEventAt) - Date.parse(a.lastEventAt)))
   })
 
   router.post('/:runId/stop', (req, res) => {
@@ -94,6 +115,66 @@ export function runsRouter(opts: RunsRouterOptions): Router {
       return
     }
     res.json(events)
+  })
+
+  router.get('/:runId/diff', async (req, res) => {
+    const workflowId = req.query.workflowId as string | undefined
+    if (!workflowId) return void res.status(400).json({ error: 'workflowId required' })
+    const events = await store.getEvents(workflowId, req.params.runId)
+    if (!events) return void res.status(404).json({ error: 'run not found' })
+    const started = events.find(e => e.type === 'run_started')
+    const dir = started?.worktreePath ?? started?.cwd
+    if (!started?.baseSha || !dir) return void res.json({ diff: null, status: null, branch: started?.branch ?? null })
+    try {
+      const d = await getDiff(dir, started.baseSha)
+      res.json({ ...d, branch: started.branch ?? null })
+    } catch (err) {
+      res.json({ diff: null, status: null, branch: started.branch ?? null, error: err instanceof Error ? err.message : String(err) })
+    }
+  })
+
+  router.post('/:runId/approve', async (req, res) => {
+    const { workflowId, note } = (req.body ?? {}) as { workflowId?: string; note?: string }
+    if (!workflowId) return void res.status(400).json({ error: 'workflowId required' })
+    const events = await store.getEvents(workflowId, req.params.runId)
+    if (!events) return void res.status(404).json({ error: 'run not found' })
+    const last = events[events.length - 1]
+    if (last.type !== 'run_paused' && last.type !== 'awaiting_approval') return void res.status(409).json({ error: 'run is not paused' })
+    if (last.type !== 'run_paused' || !last.sessionId) return void res.status(409).json({ error: 'cannot resume this run from CWC (no session) — resume it in your terminal, or reject it' })
+    const started = events.find(e => e.type === 'run_started')!
+    const runCwd = last.worktreePath ?? started.worktreePath ?? started.cwd!
+    const wt = started.worktreePath && started.branch
+      ? { worktreePath: started.worktreePath, branch: started.branch, baseSha: started.baseSha ?? '' }
+      : null
+    const prompt = `Approved — continue the workflow from the gate.${note ? `\nNote from the reviewer: ${note}` : ''}`
+    // Human action: bypasses the scheduler queue/cap by design (Addendum 2).
+    const { stop, done } = runWorkflowSkill({ slug: started.workflowSlug, runId: req.params.runId, cwd: runCwd, binPath: opts.claudeBinPath, resume: last.sessionId, promptOverride: prompt })
+    store.registerRun(req.params.runId, workflowId, stop)
+    void done.then(result => classifyAndFinish({
+      workflowId, workflowSlug: started.workflowSlug, cwd: started.cwd ?? runCwd,
+      isolation: wt ? 'worktree' : 'in-place', trigger: started.trigger ?? 'manual',
+      store, worktreesRoot: opts.worktreesRoot, runId: req.params.runId, wt, result,
+    }))
+    res.json({ resumed: true })
+  })
+
+  router.post('/:runId/reject', async (req, res) => {
+    const { workflowId, note } = (req.body ?? {}) as { workflowId?: string; note?: string }
+    if (!workflowId) return void res.status(400).json({ error: 'workflowId required' })
+    const events = await store.getEvents(workflowId, req.params.runId)
+    if (!events) return void res.status(404).json({ error: 'run not found' })
+    const last = events[events.length - 1]
+    if (last.type !== 'run_paused' && last.type !== 'awaiting_approval') return void res.status(409).json({ error: 'run is not paused' })
+    const started = events.find(e => e.type === 'run_started')
+    await store.append({
+      runId: req.params.runId, workflowId, workflowSlug: started?.workflowSlug ?? '', type: 'run_completed',
+      ts: new Date().toISOString(), status: 'aborted', source: started?.source ?? 'external',
+      message: `Rejected by reviewer${note ? `: ${note}` : ''}`,
+    })
+    if (started?.worktreePath && started.branch && started.cwd) {
+      await removeWorktree(started.cwd, started.worktreePath, started.branch, { keepBranch: false })
+    }
+    res.json({ rejected: true })
   })
 
   router.get('/', async (req, res) => {

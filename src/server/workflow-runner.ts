@@ -10,6 +10,7 @@ export interface RunWorkflowOptions {
   timeoutMs?: number    // default 30 min
   resume?: string          // session id → adds --resume <id>
   promptOverride?: string  // replaces the default "/<slug>\nUse run id ..." stdin prompt
+  env?: Record<string, string>  // extra env vars merged into process.env for the child
 }
 
 export interface WorkflowRunResult {
@@ -66,6 +67,7 @@ export function runWorkflowSkill(opts: RunWorkflowOptions): RunningWorkflow {
       cwd: opts.cwd,
       maxBuffer: 10 * 1024 * 1024,
       shell: isWinShim,
+      env: { ...process.env, ...(opts.env ?? {}) },
     },
     (err, stdout, stderr) => {
       if (settled) return
