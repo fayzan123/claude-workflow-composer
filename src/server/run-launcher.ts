@@ -1,6 +1,8 @@
 // src/server/run-launcher.ts
 import { execFile } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
+import * as fsp from 'node:fs/promises'
+import * as path from 'node:path'
 import type { RunStore } from './run-store.js'
 import type { RunEvent } from '../run-events.js'
 import { runWorkflowSkill, type WorkflowRunResult } from './workflow-runner.js'
@@ -94,6 +96,33 @@ export async function fireWorkflow(opts: FireOptions): Promise<FireOutcome> {
 
   const settled = done.then(result => classifyAndFinish({ ...opts, runId, wt, result }))
   return { fired: true, runId, settled }
+}
+
+/** On server start: remove worktrees whose runs are finished (or unknown); paused/running runs keep theirs. */
+export async function sweepOrphanWorktrees(store: RunStore, runsDirPath: string, worktreesRoot: string): Promise<void> {
+  let entries: string[] = []
+  try { entries = await fsp.readdir(worktreesRoot) } catch { return }
+  const live = new Set<string>()
+  let wfs: string[] = []
+  try { wfs = await fsp.readdir(runsDirPath) } catch { /* none */ }
+  for (const wf of wfs) {
+    for (const run of await store.listRuns(wf)) {
+      if (run.status === 'paused' || run.status === 'running') live.add(run.runId)
+    }
+  }
+  for (const runId of entries) {
+    if (live.has(runId)) continue
+    const wtPath = path.join(worktreesRoot, runId)
+    // resolve the owning repo via the worktree's git linkage; fall back to plain rm
+    await new Promise<void>(resolve => {
+      execFile('git', ['-C', wtPath, 'rev-parse', '--path-format=absolute', '--git-common-dir'], (err, stdout) => {
+        const finish = () => void fsp.rm(wtPath, { recursive: true, force: true }).catch(() => {}).then(() => resolve())
+        if (err) return finish()
+        const repo = path.dirname(stdout.toString().trim())   // <repo>/.git → <repo>
+        execFile('git', ['-C', repo, 'worktree', 'remove', '--force', wtPath], () => finish())
+      })
+    })
+  }
 }
 
 /** Addendum 8 precedence. Also used by the approve (resume) path. */

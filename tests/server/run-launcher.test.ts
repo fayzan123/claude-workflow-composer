@@ -5,7 +5,7 @@ import * as os from 'node:os'
 import * as path from 'node:path'
 import { execFileSync } from 'node:child_process'
 import { createRunStore, type RunStore } from '../../src/server/run-store.js'
-import { fireWorkflow, classifyAndFinish } from '../../src/server/run-launcher.js'
+import { fireWorkflow, classifyAndFinish, sweepOrphanWorktrees } from '../../src/server/run-launcher.js'
 import { makeBin } from '../helpers/make-bin.js'
 
 let binDir: string, okBin: string, gateBin: string, gateNoSessionBin: string
@@ -134,5 +134,39 @@ describe('fireWorkflow', () => {
     const events = await lastEvents(r.runId)
     expect(events[0].baseSha).toMatch(/^[0-9a-f]{40}$/)
     expect(events[0].worktreePath).toBeUndefined()
+  })
+})
+
+describe('sweepOrphanWorktrees', () => {
+  it('removes worktree dir for completed run, keeps dir for paused run', async () => {
+    // Set up a paused run (JSONL ends with run_paused)
+    const pausedRunId = 'run-paused-sweep'
+    await fs.mkdir(path.join(runsDir, 'wf-1'), { recursive: true })
+    const pausedJSONL = [
+      JSON.stringify({ runId: pausedRunId, workflowId: 'wf-1', workflowSlug: 'cwc-x', type: 'run_started', ts: new Date().toISOString(), source: 'test' }),
+      JSON.stringify({ runId: pausedRunId, workflowId: 'wf-1', workflowSlug: 'cwc-x', type: 'run_paused', ts: new Date().toISOString(), source: 'test' }),
+    ].join('\n') + '\n'
+    await fs.writeFile(path.join(runsDir, 'wf-1', `${pausedRunId}.jsonl`), pausedJSONL)
+
+    // Set up a completed run (JSONL ends with run_completed status: complete)
+    const doneRunId = 'run-done-sweep'
+    const doneJSONL = [
+      JSON.stringify({ runId: doneRunId, workflowId: 'wf-1', workflowSlug: 'cwc-x', type: 'run_started', ts: new Date().toISOString(), source: 'test' }),
+      JSON.stringify({ runId: doneRunId, workflowId: 'wf-1', workflowSlug: 'cwc-x', type: 'run_completed', ts: new Date().toISOString(), status: 'complete', source: 'test' }),
+    ].join('\n') + '\n'
+    await fs.writeFile(path.join(runsDir, 'wf-1', `${doneRunId}.jsonl`), doneJSONL)
+
+    // Create plain directories in wtRoot named after each run
+    const pausedWtPath = path.join(wtRoot, pausedRunId)
+    const doneWtPath = path.join(wtRoot, doneRunId)
+    await fs.mkdir(pausedWtPath, { recursive: true })
+    await fs.mkdir(doneWtPath, { recursive: true })
+
+    await sweepOrphanWorktrees(store, runsDir, wtRoot)
+
+    // paused run's worktree must survive
+    await expect(fs.access(pausedWtPath)).resolves.toBeUndefined()
+    // completed run's worktree must be removed
+    await expect(fs.access(doneWtPath)).rejects.toThrow()
   })
 })

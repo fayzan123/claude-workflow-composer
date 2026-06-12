@@ -20,6 +20,13 @@ import type { ClaudeRunner } from './claude-runner.js'
 import { agentsGenerateRouter } from './api/agents-generate.js'
 import { runsRouter } from './api/runs.js'
 import { createRunStore } from './run-store.js'
+import { triggersRouter } from './api/triggers.js'
+import { automationsRouter } from './api/automations.js'
+import { createAutomationState } from './automation-state.js'
+import { createScheduler } from './automation-scheduler.js'
+import { startNotifier } from './notifier.js'
+import { loadConfig } from './config.js'
+import { sweepOrphanWorktrees, fireWorkflow } from './run-launcher.js'
 
 export interface AppOptions {
   staticDir: string | null
@@ -30,6 +37,10 @@ export interface AppOptions {
   runsDir?: string
   claudeBinPath?: string
   worktreesRoot?: string
+  automationStatePath?: string    // default ~/.cwc/automation-state.json
+  configPath?: string             // default ~/.cwc/config.json
+  enableScheduler?: boolean       // default false; bin/cwc start passes true
+  enableNotifier?: boolean        // default true; tests pass false
 }
 
 export function createApp(opts: AppOptions): express.Express {
@@ -42,7 +53,6 @@ export function createApp(opts: AppOptions): express.Express {
 
   const wfDir = opts.workflowsDir ?? path.join(os.homedir(), '.cwc', 'workflows')
   const recPath = opts.recentsPath ?? path.join(os.homedir(), '.cwc', 'recents.json')
-  app.use('/api/workflows', workflowsRouter(wfDir, recPath))
 
   const homeDir = opts.userHomeDir ?? os.homedir()
   app.use('/api/agents/generate', agentsGenerateRouter(opts.claudeRunner))
@@ -61,8 +71,47 @@ export function createApp(opts: AppOptions): express.Express {
 
   const runsDir = opts.runsDir ?? path.join(os.homedir(), '.cwc', 'runs')
   const worktreesRoot = opts.worktreesRoot ?? path.join(os.homedir(), '.cwc', 'worktrees')
+  const statePath = opts.automationStatePath ?? path.join(os.homedir(), '.cwc', 'automation-state.json')
+  const configPath = opts.configPath ?? path.join(os.homedir(), '.cwc', 'config.json')
+
   const runStore = createRunStore(runsDir)
+  const autoState = createAutomationState(statePath)
+
+  // Sweep orphan worktrees on startup (paused/running runs keep theirs)
+  void sweepOrphanWorktrees(runStore, runsDir, worktreesRoot)
+
+  const isWorkflowBusy = async (workflowId: string, triggerId: string) => {
+    if (runStore.hasActiveTestRun(workflowId)) return 'running' as const
+    const runs = await runStore.listRuns(workflowId)
+    if (runs.some(r => r.status === 'paused' && r.trigger === triggerId)) return 'paused-same-trigger' as const
+    return false as const
+  }
+
   app.use('/api/runs', runsRouter({ store: runStore, claudeBinPath: opts.claudeBinPath, worktreesRoot, runsDirPath: runsDir }))
+  app.use('/api/triggers', triggersRouter({ workflowsDir: wfDir, state: autoState, store: runStore, worktreesRoot, claudeBinPath: opts.claudeBinPath, isWorkflowBusy }))
+
+  let config = loadConfig(configPath)
+  app.use('/api/automations', automationsRouter({ state: autoState, configPath, onConfigChanged: (c) => { config = c } }))
+  if (opts.enableNotifier !== false) startNotifier({ store: runStore, getConfig: () => config })
+
+  let scheduler: ReturnType<typeof createScheduler> | null = null
+  if (opts.enableScheduler) {
+    scheduler = createScheduler({
+      workflowsDir: wfDir, state: autoState, isWorkflowBusy,
+      fire: async (workflowId, workflowSlug, t) => {
+        const outcome = await fireWorkflow({
+          workflowId, workflowSlug, cwd: t.cwd, isolation: t.isolation, baseRef: t.baseRef,
+          precondition: t.precondition, setupCommand: t.setupCommand, trigger: t.id,
+          store: runStore, worktreesRoot, binPath: opts.claudeBinPath,
+        })
+        if (outcome.fired === false) await autoState.recordSkip(t.id, outcome.reason, new Date())
+        else await outcome.settled   // hold the concurrency slot until the run finishes
+      },
+    })
+    scheduler.start()
+  }
+  // workflowsRouter call gains the third arg for scheduler rescan on save
+  app.use('/api/workflows', workflowsRouter(wfDir, recPath, () => { void scheduler?.rescan() }))
 
   if (opts.staticDir && fs.existsSync(opts.staticDir)) {
     app.use(express.static(opts.staticDir))
@@ -75,7 +124,7 @@ export function createApp(opts: AppOptions): express.Express {
 }
 
 export function startServer(port: number, staticDir: string | null): Promise<void> {
-  const app = createApp({ staticDir })
+  const app = createApp({ staticDir, enableScheduler: true })
   return new Promise((resolve, reject) => {
     const server = app.listen(port, () => {
       console.log(`CWC server running on http://localhost:${port}`)
