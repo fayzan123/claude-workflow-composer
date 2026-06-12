@@ -8,12 +8,15 @@ export interface RunWorkflowOptions {
   cwd: string
   binPath?: string
   timeoutMs?: number    // default 30 min
+  resume?: string          // session id → adds --resume <id>
+  promptOverride?: string  // replaces the default "/<slug>\nUse run id ..." stdin prompt
 }
 
 export interface WorkflowRunResult {
   status: 'complete' | 'error' | 'aborted'
   message: string       // final result text or error description
   costUsd?: number
+  sessionId?: string
 }
 
 export interface RunningWorkflow {
@@ -47,6 +50,7 @@ export function runWorkflowSkill(opts: RunWorkflowOptions): RunningWorkflow {
   }
   const isWinShim = /\.(cmd|bat)$/i.test(bin)
   const args = ['-p', '--output-format', 'json', '--permission-mode', 'acceptEdits']
+  if (opts.resume) args.push('--resume', opts.resume)
   let settled = false
   let timedOut = false
   let stopped = false
@@ -84,11 +88,11 @@ export function runWorkflowSkill(opts: RunWorkflowOptions): RunningWorkflow {
         return
       }
       try {
-        const parsed = JSON.parse(stdout.toString()) as { result?: string; is_error?: boolean; total_cost_usd?: number }
+        const parsed = JSON.parse(stdout.toString()) as { result?: string; is_error?: boolean; total_cost_usd?: number; session_id?: string }
         if (parsed.is_error) {
           resolveDone({ status: 'error', message: parsed.result || 'claude returned an error result.' })
         } else {
-          resolveDone({ status: 'complete', message: parsed.result ?? '', costUsd: parsed.total_cost_usd })
+          resolveDone({ status: 'complete', message: parsed.result ?? '', costUsd: parsed.total_cost_usd, sessionId: parsed.session_id })
         }
       } catch {
         resolveDone({ status: 'error', message: 'claude returned malformed JSON output.' })
@@ -97,7 +101,7 @@ export function runWorkflowSkill(opts: RunWorkflowOptions): RunningWorkflow {
   )
   const timer = setTimeout(() => { timedOut = true; killTree(child) }, timeoutMs)
   child.on('exit', () => clearTimeout(timer))
-  child.stdin?.end(`/${opts.slug}\nUse run id ${opts.runId} when logging run events.`)
+  child.stdin?.end(opts.promptOverride ?? `/${opts.slug}\nUse run id ${opts.runId} when logging run events.`)
   const stop = () => { stopped = true; killTree(child) }
   return { child, stop, done }
 }
