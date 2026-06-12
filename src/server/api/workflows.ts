@@ -5,7 +5,7 @@ import * as os from 'node:os'
 import type { CwcFile } from '../../schema.js'
 import { slugify } from '../../slugify.js'
 
-export function workflowsRouter(workflowsDir: string, recentsPath: string) {
+export function workflowsRouter(workflowsDir: string, recentsPath: string, onSaved?: () => void) {
   const router = createRouter()
 
   router.get('/default-path', (req, res) => {
@@ -55,6 +55,7 @@ export function workflowsRouter(workflowsDir: string, recentsPath: string) {
     try {
       await fs.mkdir(path.dirname(filePath), { recursive: true })
       await fs.writeFile(filePath, JSON.stringify(content, null, 2), 'utf-8')
+      onSaved?.()
       res.json({ saved: true })
     } catch (err) {
       res.status(500).json({ error: String(err) })

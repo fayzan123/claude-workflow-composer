@@ -62,6 +62,7 @@ export function createAutomationState(filePath: string): AutomationState {
       await save()
     },
     canFire(t, now) {
+      if (t.maxRunsPerDay === 0) return false
       const e = entry(t.id)
       if (e.runsOnDate !== dateKey(now)) return true
       return e.runsCount < t.maxRunsPerDay

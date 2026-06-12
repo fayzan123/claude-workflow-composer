@@ -41,6 +41,7 @@
   "dependencies": {
     "@xyflow/react": "^12.10.2",
     "cors": "^2.8.6",
+    "croner": "^8.1.2",
     "express": "^5.2.1",
     "gray-matter": "^4.0.3",
     "open": "^11.0.0",
