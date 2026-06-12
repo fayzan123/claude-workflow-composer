@@ -28,12 +28,13 @@ interface Props {
   onTestRun: () => void
   onToggleRuns: () => void
   runActive: boolean
+  pausedCount: number
 }
 
 export function TopBar({
   workflow, validation, isSaving, saveError, renameError, showLeaveConfirm,
   dispatch, canUndo, canRedo, onUndo, onRedo, previewOpen, onTogglePreview, onExport, onHome, onHelp, onRename, onLeaveConfirm, onLeaveCancel, onDismissSaveError,
-  onTestRun, onToggleRuns, runActive,
+  onTestRun, onToggleRuns, runActive, pausedCount,
 }: Props) {
   const [errorsOpen, setErrorsOpen] = useState(false)
   const [warningsOpen, setWarningsOpen] = useState(false)
@@ -289,12 +290,12 @@ export function TopBar({
         </button>
 
         <button
-          className="top-bar__preview-btn"
+          className={`top-bar__preview-btn${pausedCount > 0 ? ' top-bar__preview-btn--attention' : ''}`}
           onClick={onToggleRuns}
           type="button"
           title="Run history"
         >
-          Runs
+          {`Runs${pausedCount > 0 ? ` (${pausedCount})` : ''}`}
         </button>
 
         <button

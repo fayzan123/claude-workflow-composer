@@ -24,6 +24,7 @@ function saveRecentCwd(cwd: string) {
 export function RunModal({ workflowId, workflowSlug, onStarted, onClose }: Props) {
   const recents = loadRecentCwds()
   const [cwd, setCwd] = useState(recents[0] ?? '')
+  const [isolation, setIsolation] = useState<'worktree' | 'in-place'>('worktree')
   const [error, setError] = useState<string | null>(null)
   const [starting, setStarting] = useState(false)
 
@@ -37,7 +38,7 @@ export function RunModal({ workflowId, workflowSlug, onStarted, onClose }: Props
     setError(null)
     setStarting(true)
     try {
-      const { runId } = await api.runs.start(workflowId, workflowSlug, cwd.trim())
+      const { runId } = await api.runs.start(workflowId, workflowSlug, cwd.trim(), isolation)
       saveRecentCwd(cwd.trim())
       onStarted(runId)
       onClose()
@@ -70,6 +71,16 @@ export function RunModal({ workflowId, workflowSlug, onStarted, onClose }: Props
             ))}
           </div>
         )}
+        <label className="run-modal__label">
+          Isolation
+          <select value={isolation} onChange={e => setIsolation(e.target.value as 'worktree' | 'in-place')} className="run-modal__select">
+            <option value="worktree">Worktree (isolated branch)</option>
+            <option value="in-place">In-place (current checkout)</option>
+          </select>
+        </label>
+        <p className="run-modal__isolation-hint">
+          Worktree: the run works on an isolated branch — your checkout is untouched.
+        </p>
         <p className="run-modal__consent">
           ⚠ The run executes with <strong>acceptEdits</strong>: agents may create and modify files in this
           directory without asking. Other permissions still follow your Claude Code settings.

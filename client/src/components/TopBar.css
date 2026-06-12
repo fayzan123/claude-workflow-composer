@@ -267,6 +267,19 @@
   border-color: var(--color-primary);
 }
 
+.top-bar__preview-btn--attention {
+  color: var(--color-warning-dark, #7c5c00);
+  background: var(--color-warning-light);
+  border-color: var(--color-warning);
+  font-weight: 600;
+}
+
+.top-bar__preview-btn--attention:hover {
+  color: var(--color-warning-dark, #7c5c00);
+  background: var(--color-warning-light);
+  border-color: var(--color-warning);
+}
+
 .top-bar__badge-wrap {
   position: relative;
 }

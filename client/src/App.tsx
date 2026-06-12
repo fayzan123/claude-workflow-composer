@@ -173,6 +173,7 @@ export default function App() {
         onTestRun={() => setShowRunModal(true)}
         onToggleRuns={() => setShowRuns(s => !s)}
         runActive={runState.activeRun !== null}
+        pausedCount={runState.pausedRuns.length}
         onRename={handleRename}
         onLeaveConfirm={goHome}
         onLeaveCancel={() => setShowLeaveConfirm(false)}
@@ -230,7 +231,9 @@ export default function App() {
             runs={runState.runs}
             liveEvents={runState.liveEvents}
             activeRun={runState.activeRun}
+            pausedRuns={runState.pausedRuns}
             onClose={() => setShowRuns(false)}
+            onChanged={runState.refresh}
           />
         )}
       </div>

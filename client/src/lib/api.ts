@@ -108,8 +108,16 @@ export const api = {
       req<RunSummary[]>('GET', `/runs?workflowId=${encodeURIComponent(workflowId)}`),
     events: (workflowId: string, runId: string) =>
       req<RunEvent[]>('GET', `/runs/${encodeURIComponent(runId)}/events?workflowId=${encodeURIComponent(workflowId)}`),
-    start: (workflowId: string, workflowSlug: string, cwd: string) =>
-      reqWithError<{ runId: string }>('POST', '/runs/test', { workflowId, workflowSlug, cwd }),
+    paused: () =>
+      req<RunSummary[]>('GET', '/runs/paused'),
+    diff: (workflowId: string, runId: string) =>
+      req<{ diff: string | null; status: string | null; branch: string | null }>('GET', `/runs/${encodeURIComponent(runId)}/diff?workflowId=${encodeURIComponent(workflowId)}`),
+    approve: (workflowId: string, runId: string, note?: string) =>
+      reqWithError<{ resumed: boolean }>('POST', `/runs/${encodeURIComponent(runId)}/approve`, { workflowId, note }),
+    reject: (workflowId: string, runId: string, note?: string) =>
+      reqWithError<{ rejected: boolean }>('POST', `/runs/${encodeURIComponent(runId)}/reject`, { workflowId, note }),
+    start: (workflowId: string, workflowSlug: string, cwd: string, isolation?: 'worktree' | 'in-place') =>
+      reqWithError<{ runId: string }>('POST', '/runs/test', { workflowId, workflowSlug, cwd, isolation }),
     stop: (runId: string) =>
       reqWithError<{ stopped: boolean }>('POST', `/runs/${encodeURIComponent(runId)}/stop`),
   },
