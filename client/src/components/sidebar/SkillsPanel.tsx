@@ -62,7 +62,8 @@ export function SkillsPanel() {
   return (
     <div className="skills-panel">
       <button className="skills-panel__generate" onClick={() => setGenerating(true)}>
-        + Generate skill
+        <span className="skills-panel__generate-label">✨ Generate skill</span>
+        <span className="skills-panel__generate-sub">Describe it in plain English — AI builds it</span>
       </button>
       <div className="skills-panel__search-wrap">
         <input
