@@ -1,6 +1,7 @@
 import React from 'react'
 import type { CwcEdge, CwcNode, CwcArtifact, ArtifactType, TerminalType } from '../../../../src/schema.ts'
 import type { WorkflowAction } from '../../hooks/useWorkflow.ts'
+import { FieldHint } from '../common/FieldHint.tsx'
 import './EdgePanel.css'
 
 interface Props {
@@ -100,6 +101,7 @@ export function EdgePanel({ edge, nodes, dispatch, onClose, onDelete }: Props) {
 
         <div className="edge-panel__field">
           <label className="edge-panel__label edge-panel__label--required">Trigger *</label>
+          <FieldHint id="edge.trigger" />
           <textarea
             className="edge-panel__textarea"
             value={edge.trigger}
@@ -111,6 +113,7 @@ export function EdgePanel({ edge, nodes, dispatch, onClose, onDelete }: Props) {
 
         <div className="edge-panel__field">
           <label className="edge-panel__label">Label</label>
+          <FieldHint id="edge.label" />
           <input
             className="edge-panel__input"
             type="text"
@@ -138,7 +141,7 @@ export function EdgePanel({ edge, nodes, dispatch, onClose, onDelete }: Props) {
 
         <div className="edge-panel__field">
           <label className="edge-panel__label">Context / Artifacts</label>
-          <p className="edge-panel__hint">Tells the next agent what to expect — it doesn't move files. Use it to name what's handed off (e.g. a report, a path, JSON).</p>
+          <FieldHint id="edge.context" />
           <div className="edge-panel__artifacts">
             {(edge.context ?? []).map((artifact, index) => (
               <div key={`${artifact.name}-${artifact.type}-${index}`} className="edge-panel__artifact">

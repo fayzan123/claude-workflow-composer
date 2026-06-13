@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { api } from '../lib/api.ts'
+import { FieldHint } from './common/FieldHint.tsx'
 import './RunModal.css'
 
 interface Props {
@@ -91,6 +92,7 @@ export function RunModal({ workflowId, workflowSlug, onStarted, onClose, onExpor
         )}
         <label className="run-modal__label">
           Working directory
+          <FieldHint id="run.cwd" />
           <input
             value={cwd}
             onChange={e => setCwd(e.target.value)}
@@ -107,6 +109,7 @@ export function RunModal({ workflowId, workflowSlug, onStarted, onClose, onExpor
         )}
         <label className="run-modal__label">
           Isolation
+          <FieldHint id="run.isolation" />
           <select value={isolation} onChange={e => setIsolation(e.target.value as 'worktree' | 'in-place')} className="run-modal__select">
             <option value="worktree">Worktree (isolated branch)</option>
             <option value="in-place">In-place (current checkout)</option>

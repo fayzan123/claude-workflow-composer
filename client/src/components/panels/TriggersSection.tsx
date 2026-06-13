@@ -3,6 +3,8 @@ import { Cron } from 'croner'
 import type { CwcFile, CwcTrigger } from '../../types.ts'
 import type { WorkflowAction } from '../../hooks/useWorkflow.ts'
 import { api } from '../../lib/api.ts'
+import { FieldHint } from '../common/FieldHint.tsx'
+import { Term } from '../common/Term.tsx'
 import './TriggersSection.css'
 
 interface Props { workflow: CwcFile; dispatch: React.Dispatch<WorkflowAction> }
@@ -66,13 +68,14 @@ export function TriggersSection({ workflow, dispatch }: Props) {
             </header>
 
             {t.type === 'cron' && (
-              <label className="triggers-section__field">Cron expression
+              <label className="triggers-section__field"><Term name="cron">cron</Term> expression
+                <FieldHint id="trigger.schedule" />
                 <input className="triggers-section__input" value={t.schedule ?? ''} onChange={e => update(t.id, { schedule: e.target.value })} />
                 <small className="triggers-section__hint">{nextRunPreview(t.schedule ?? '')}</small>
               </label>
             )}
             {t.type === 'webhook' && (
-              <label className="triggers-section__field">Webhook URL
+              <label className="triggers-section__field"><Term name="webhook">webhook</Term> URL
                 <code className="triggers-section__code">POST http://localhost:3579/api/triggers/{t.token}</code>
                 <span className="triggers-section__btn-row">
                   <button type="button" className="triggers-section__btn" onClick={() => navigator.clipboard.writeText(`http://localhost:3579/api/triggers/${t.token}`)}>Copy</button>
@@ -82,6 +85,7 @@ export function TriggersSection({ workflow, dispatch }: Props) {
             )}
 
             <label className="triggers-section__field">Working directory
+              <FieldHint id="trigger.cwd" />
               <input className="triggers-section__input" value={t.cwd} onChange={e => update(t.id, { cwd: e.target.value })} placeholder="/absolute/path/to/project" />
             </label>
             <label className="triggers-section__field">Isolation
@@ -94,9 +98,11 @@ export function TriggersSection({ workflow, dispatch }: Props) {
               <label className="triggers-section__field">Base ref <input className="triggers-section__input" value={t.baseRef ?? ''} onChange={e => update(t.id, { baseRef: e.target.value || undefined })} placeholder="HEAD (or e.g. main)" /></label>
             )}
             <label className="triggers-section__field">Precondition (optional, shell — non-zero exit skips the run)
+              <FieldHint id="trigger.precondition" />
               <input className="triggers-section__input" value={t.precondition ?? ''} onChange={e => update(t.id, { precondition: e.target.value || undefined })} placeholder='test -n "$(gh pr list --json number -q .)"' />
             </label>
             <label className="triggers-section__field">Setup command (optional, shell — runs before Claude)
+              <FieldHint id="trigger.setupCommand" />
               <input className="triggers-section__input" value={t.setupCommand ?? ''} onChange={e => update(t.id, { setupCommand: e.target.value || undefined })} />
             </label>
             {t.type === 'cron' && (
@@ -107,7 +113,7 @@ export function TriggersSection({ workflow, dispatch }: Props) {
             <footer className="triggers-section__card-footer">
               {st?.armed
                 ? <span className="triggers-section__armed">✓ armed</span>
-                : <button type="button" className="triggers-section__arm" onClick={() => void arm(t)} title="Commands in this trigger run on your machine — arming confirms you trust them">Arm trigger</button>}
+                : <button type="button" className="triggers-section__arm" onClick={() => void arm(t)} title="Commands in this trigger run on your machine — arming confirms you trust them"><Term name="arm">Arm</Term> trigger</button>}
               {st?.lastFiredAt && <small className="triggers-section__hint">last fired {new Date(st.lastFiredAt).toLocaleString()}</small>}
               {st?.lastSkip && <small className="triggers-section__hint">last skip: {st.lastSkip.reason}</small>}
             </footer>

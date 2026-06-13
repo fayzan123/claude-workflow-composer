@@ -5,6 +5,7 @@ import type { ExportTarget, ExportResult } from '../../../src/exporter.ts'
 import type { DeleteExportResult } from '../../../src/server/api/export-delete.ts'
 import { slugify } from '../../../src/slugify.ts'
 import { api } from '../lib/api.ts'
+import { FieldHint } from './common/FieldHint.tsx'
 import './ExportFlow.css'
 
 interface Props {
@@ -109,6 +110,7 @@ export function ExportFlow({ workflow, dispatch, onClose }: Props) {
           <div className="export-flow-step">
             <h2 className="export-flow-modal__title">Export Workflow</h2>
             <p className="export-flow-modal__subtitle">Choose where to export your workflow agents.</p>
+            <FieldHint id="export.target" />
 
             {error && (
               <div className="export-flow-error">
@@ -174,6 +176,7 @@ export function ExportFlow({ workflow, dispatch, onClose }: Props) {
               />
               Report run progress to CWC (adds run logging to the exported skill)
             </label>
+            <FieldHint id="export.observability" />
 
             {hasBeenExported && (
               <div className="export-flow-danger-zone">

@@ -6,6 +6,7 @@ import { slugify } from '../../../../src/slugify.ts'
 import { CLAUDE_MODELS } from '../../lib/models.ts'
 import { api } from '../../lib/api.ts'
 import { TriggersSection } from './TriggersSection.tsx'
+import { FieldHint } from '../common/FieldHint.tsx'
 import './NodePanel.css'
 
 const AVAILABLE_TOOLS = ['Read', 'Write', 'Edit', 'Bash', 'Glob', 'Grep', 'WebSearch', 'WebFetch', 'Agent', 'Skill', 'Task', 'TodoWrite', 'NotebookEdit', 'LSP']
@@ -182,6 +183,7 @@ export function NodePanel({ node, isEntryNode, terminalEdge, workflow, dispatch,
 
         <div className="node-panel__field">
           <label className="node-panel__label">Name</label>
+          <FieldHint id="node.name" />
           <input
             className="node-panel__input"
             type="text"
@@ -201,6 +203,7 @@ export function NodePanel({ node, isEntryNode, terminalEdge, workflow, dispatch,
         {!isRef && (
         <div className="node-panel__field">
           <label className="node-panel__label">Description</label>
+          <FieldHint id="node.description" />
           <textarea
             className="node-panel__textarea"
             value={node.agent.description}
@@ -213,6 +216,7 @@ export function NodePanel({ node, isEntryNode, terminalEdge, workflow, dispatch,
 
         <div className="node-panel__field">
           <label className="node-panel__label">Model</label>
+          <FieldHint id="node.model" />
           <select
             className="node-panel__select"
             value={node.agent.model ?? ''}
@@ -227,6 +231,7 @@ export function NodePanel({ node, isEntryNode, terminalEdge, workflow, dispatch,
 
         <div className="node-panel__field">
           <label className="node-panel__label node-panel__label--required">Completion Criteria *</label>
+          <FieldHint id="node.completionCriteria" />
           <textarea
             className="node-panel__textarea"
             value={node.agent.completionCriteria}
@@ -239,6 +244,7 @@ export function NodePanel({ node, isEntryNode, terminalEdge, workflow, dispatch,
         {isEntryNode && (
           <div className="node-panel__field">
             <label className="node-panel__label">Start Trigger</label>
+            <FieldHint id="node.startTrigger" />
             <input
               className="node-panel__input"
               type="text"
@@ -251,6 +257,7 @@ export function NodePanel({ node, isEntryNode, terminalEdge, workflow, dispatch,
 
         <div className="node-panel__field">
           <label className="node-panel__label">Tools</label>
+          <FieldHint id="node.tools" />
           <div className="node-panel__checkboxes">
             {AVAILABLE_TOOLS.map((tool) => (
               <label key={tool} className="node-panel__checkbox-label">
@@ -267,6 +274,7 @@ export function NodePanel({ node, isEntryNode, terminalEdge, workflow, dispatch,
 
         <div className="node-panel__field">
           <label className="node-panel__label">Skills</label>
+          <FieldHint id="node.skills" />
           <div className="node-panel__chips">
             {(node.agent.skills ?? []).map((skill) => (
               <span key={skill} className="node-panel__chip">
@@ -316,6 +324,7 @@ export function NodePanel({ node, isEntryNode, terminalEdge, workflow, dispatch,
 
         <div className="node-panel__field">
           <label className="node-panel__label">Dispatch Mode</label>
+          <FieldHint id="node.dispatchMode" />
           <select
             className="node-panel__select"
             value={node.dispatchMode ?? ''}
@@ -330,6 +339,7 @@ export function NodePanel({ node, isEntryNode, terminalEdge, workflow, dispatch,
 
         <div className="node-panel__field">
           <label className="node-panel__label">Terminal Type</label>
+          <FieldHint id="node.terminalType" />
           <select
             className="node-panel__select"
             value={terminalEdge ? (terminalEdge.terminalType ?? 'complete') : ''}
@@ -349,6 +359,7 @@ export function NodePanel({ node, isEntryNode, terminalEdge, workflow, dispatch,
           >
             {promptExpanded ? '▼' : '▶'} System Prompt
           </button>
+          <FieldHint id="node.systemPrompt" />
           {promptExpanded && (
             <textarea
               className="node-panel__textarea node-panel__textarea--mono"
