@@ -14,58 +14,13 @@
   color: var(--color-text-tertiary);
 }
 
-/* Shared mode header for runs + automate views */
-.workflow-view__mode-header {
+
+/* Action button injected into WorkflowHeader for Runs mode */
+.workflow-view__action-btn {
   display: flex;
   align-items: center;
-  gap: var(--space-sm);
-  padding: 0 var(--space-lg);
-  height: 52px;
-  background: var(--color-surface);
-  border-bottom: 1px solid var(--color-border);
-  flex-shrink: 0;
-}
-
-.workflow-view__back-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 30px;
-  height: 30px;
-  flex-shrink: 0;
-  color: var(--color-text-secondary);
-  background: transparent;
-  border: 1px solid transparent;
-  border-radius: var(--radius-md);
-  cursor: pointer;
-  transition: background var(--transition-fast), color var(--transition-fast), border-color var(--transition-fast);
-}
-
-.workflow-view__back-btn:hover {
-  background: var(--color-surface-hover);
-  color: var(--color-text);
-  border-color: var(--color-border);
-}
-
-.workflow-view__title {
-  font-size: var(--text-base);
-  font-weight: 600;
-  font-family: var(--font-display);
-  color: var(--color-text);
-  flex: 1;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.workflow-view__mode-tabs {
-  display: flex;
-  gap: 2px;
-  margin-left: auto;
-}
-
-.workflow-view__mode-tab {
-  padding: 4px 14px;
+  gap: 5px;
+  padding: 4px 10px;
   font-size: var(--text-sm);
   font-family: var(--font-sans);
   font-weight: 500;
@@ -78,15 +33,9 @@
   white-space: nowrap;
 }
 
-.workflow-view__mode-tab:hover {
+.workflow-view__action-btn:hover {
   background: var(--color-surface-hover);
   color: var(--color-text);
-}
-
-.workflow-view__mode-tab--active {
-  background: var(--color-primary-lighter);
-  color: var(--color-primary);
-  border-color: var(--color-primary-light);
 }
 
 /* Runs mode */

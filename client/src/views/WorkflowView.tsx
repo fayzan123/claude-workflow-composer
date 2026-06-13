@@ -7,6 +7,8 @@ import { useAutoSave } from '../hooks/useAutoSave.ts'
 import { useRunEvents } from '../hooks/useRunEvents.ts'
 import { slugify } from '../../../src/slugify.ts'
 import { RunPanel } from '../components/RunPanel.tsx'
+import { RunModal } from '../components/RunModal.tsx'
+import { WorkflowHeader } from '../components/shell/WorkflowHeader.tsx'
 import { BuildMode } from './modes/BuildMode.tsx'
 import './WorkflowView.css'
 
@@ -25,7 +27,7 @@ export function WorkflowView() {
   const [loading, setLoading] = useState(true)
   const [saveError, setSaveError] = useState<Error | null>(null)
   const [renameError, setRenameError] = useState<string | null>(null)
-  const [showLeaveConfirm, setShowLeaveConfirm] = useState(false)
+  const [showRunModal, setShowRunModal] = useState(false)
 
   const { workflow, dispatch, canUndo, canRedo } = useWorkflow()
   const { isSaving, isDirty, flush } = useAutoSave(workflow, filePath, {
@@ -66,21 +68,19 @@ export function WorkflowView() {
     }
   }, [filePath, flush])
 
-  function handleHome() {
-    if (isDirty) {
-      setShowLeaveConfirm(true)
-    } else {
-      navigate('/')
-    }
-  }
-
-  function handleLeaveConfirm() {
-    setShowLeaveConfirm(false)
-    navigate('/')
-  }
-
-  function handleLeaveCancel() {
-    setShowLeaveConfirm(false)
+  // Shared props passed into WorkflowHeader for Runs and Automate modes
+  // (BuildMode composes its own WorkflowHeader internally so it can inject build actions)
+  const sharedHeaderProps = {
+    workflow,
+    dispatch,
+    workflowId: id!,
+    pausedCount: runState.pausedRuns.length,
+    isSaving,
+    saveError,
+    renameError,
+    isDirty,
+    onRename: handleRename,
+    onDismissSaveError: () => setSaveError(null),
   }
 
   // Invalid mode → redirect to build
@@ -108,26 +108,21 @@ export function WorkflowView() {
     workflowPath: filePath ?? '',
   }
 
-  const buildProps = {
-    ...modeProps,
-    isSaving,
-    saveError,
-    renameError,
-    isDirty,
-    canUndo,
-    canRedo,
-    onRename: handleRename,
-    onDismissSaveError: () => setSaveError(null),
-    onHome: handleHome,
-    onLeaveConfirm: handleLeaveConfirm,
-    onLeaveCancel: handleLeaveCancel,
-    showLeaveConfirm,
-  }
-
   if (mode === 'build') {
     return (
       <div className="workflow-view">
-        <BuildMode {...buildProps} />
+        <BuildMode
+          {...modeProps}
+          workflowId={id}
+          isSaving={isSaving}
+          saveError={saveError}
+          renameError={renameError}
+          isDirty={isDirty}
+          canUndo={canUndo}
+          canRedo={canRedo}
+          onRename={handleRename}
+          onDismissSaveError={() => setSaveError(null)}
+        />
       </div>
     )
   }
@@ -135,42 +130,20 @@ export function WorkflowView() {
   if (mode === 'runs') {
     return (
       <div className="workflow-view workflow-view--runs">
-        <div className="workflow-view__mode-header">
-          <button
-            className="workflow-view__back-btn"
-            onClick={handleHome}
-            type="button"
-            title="Back to home"
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
-              <polyline points="9 22 9 12 15 12 15 22" />
-            </svg>
-          </button>
-          <span className="workflow-view__title">{workflow.meta.name}</span>
-          <nav className="workflow-view__mode-tabs">
+        <WorkflowHeader
+          {...sharedHeaderProps}
+          activeMode="runs"
+          actions={
             <button
-              className="workflow-view__mode-tab"
-              onClick={() => navigate(`/w/${id}/build`)}
+              className="workflow-view__action-btn"
+              onClick={() => setShowRunModal(true)}
               type="button"
+              title="Run this workflow headlessly"
             >
-              Build
+              {runState.activeRun !== null ? '● Running…' : '▶ Test Run'}
             </button>
-            <button
-              className="workflow-view__mode-tab workflow-view__mode-tab--active"
-              type="button"
-            >
-              Runs {runState.pausedRuns.length > 0 ? `(⏸ ${runState.pausedRuns.length})` : ''}
-            </button>
-            <button
-              className="workflow-view__mode-tab"
-              onClick={() => navigate(`/w/${id}/automate`)}
-              type="button"
-            >
-              Automate
-            </button>
-          </nav>
-        </div>
+          }
+        />
         <div className="workflow-view__runs-body">
           <RunPanel
             workflowId={workflow.meta.id}
@@ -182,6 +155,14 @@ export function WorkflowView() {
             onChanged={runState.refresh}
           />
         </div>
+        {showRunModal && (
+          <RunModal
+            workflowId={workflow.meta.id}
+            workflowSlug={workflowSlug}
+            onStarted={(_runId) => setShowRunModal(false)}
+            onClose={() => setShowRunModal(false)}
+          />
+        )}
       </div>
     )
   }
@@ -190,42 +171,11 @@ export function WorkflowView() {
   const triggers = workflow.meta.triggers ?? []
   return (
     <div className="workflow-view workflow-view--automate">
-      <div className="workflow-view__mode-header">
-        <button
-          className="workflow-view__back-btn"
-          onClick={handleHome}
-          type="button"
-          title="Back to home"
-        >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
-            <polyline points="9 22 9 12 15 12 15 22" />
-          </svg>
-        </button>
-        <span className="workflow-view__title">{workflow.meta.name}</span>
-        <nav className="workflow-view__mode-tabs">
-          <button
-            className="workflow-view__mode-tab"
-            onClick={() => navigate(`/w/${id}/build`)}
-            type="button"
-          >
-            Build
-          </button>
-          <button
-            className="workflow-view__mode-tab"
-            onClick={() => navigate(`/w/${id}/runs`)}
-            type="button"
-          >
-            Runs
-          </button>
-          <button
-            className="workflow-view__mode-tab workflow-view__mode-tab--active"
-            type="button"
-          >
-            Automate
-          </button>
-        </nav>
-      </div>
+      <WorkflowHeader
+        {...sharedHeaderProps}
+        activeMode="automate"
+        actions={null}
+      />
       <div className="workflow-view__automate-body">
         {triggers.length === 0 ? (
           <div className="workflow-view__automate-empty">
