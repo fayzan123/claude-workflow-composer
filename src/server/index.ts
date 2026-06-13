@@ -88,7 +88,7 @@ export function createApp(opts: AppOptions): express.Express {
     return false as const
   }
 
-  app.use('/api/runs', runsRouter({ store: runStore, claudeBinPath: opts.claudeBinPath, worktreesRoot, runsDirPath: runsDir }))
+  app.use('/api/runs', runsRouter({ store: runStore, claudeBinPath: opts.claudeBinPath, worktreesRoot, runsDirPath: runsDir, skillsDir: path.join(homeDir, '.claude', 'skills') }))
   app.use('/api/triggers', triggersRouter({ workflowsDir: wfDir, state: autoState, store: runStore, worktreesRoot, claudeBinPath: opts.claudeBinPath, isWorkflowBusy }))
 
   let config = loadConfig(configPath)

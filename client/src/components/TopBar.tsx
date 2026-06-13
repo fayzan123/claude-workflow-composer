@@ -293,9 +293,9 @@ export function TopBar({
           className={`top-bar__preview-btn${pausedCount > 0 ? ' top-bar__preview-btn--attention' : ''}`}
           onClick={onToggleRuns}
           type="button"
-          title="Run history"
+          title={pausedCount > 0 ? `${pausedCount} run${pausedCount !== 1 ? 's' : ''} waiting for your approval` : 'Run history & automations'}
         >
-          {`Runs${pausedCount > 0 ? ` (${pausedCount})` : ''}`}
+          {pausedCount > 0 ? `⏸ ${pausedCount} to approve` : 'Runs'}
         </button>
 
         <button

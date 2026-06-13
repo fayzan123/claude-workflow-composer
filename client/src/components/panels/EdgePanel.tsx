@@ -138,6 +138,7 @@ export function EdgePanel({ edge, nodes, dispatch, onClose, onDelete }: Props) {
 
         <div className="edge-panel__field">
           <label className="edge-panel__label">Context / Artifacts</label>
+          <p className="edge-panel__hint">Tells the next agent what to expect — it doesn't move files. Use it to name what's handed off (e.g. a report, a path, JSON).</p>
           <div className="edge-panel__artifacts">
             {(edge.context ?? []).map((artifact, index) => (
               <div key={`${artifact.name}-${artifact.type}-${index}`} className="edge-panel__artifact">

@@ -11,8 +11,9 @@ import { makeBin } from '../helpers/make-bin.js'
 
 let binDir: string
 let okBin: string      // fast-completing bin (used for approve resume)
+let slowBin: string    // slow-completing bin: keeps a resume "active" long enough to test double-approve
 
-let runsDir: string, wtRoot: string, repo: string
+let runsDir: string, wtRoot: string, repo: string, homeDir: string
 let server: http.Server
 let base: string
 
@@ -27,6 +28,10 @@ beforeAll(async () => {
 fs.readFileSync(0,'utf-8')
 process.stdout.write(JSON.stringify({ type:'result', result:'workflow approved and complete', session_id:'s-resumed', total_cost_usd:0.02 }))
 `)
+  slowBin = await makeBin(binDir, 'claude-slow', `const fs=require('fs')
+fs.readFileSync(0,'utf-8')
+setTimeout(() => process.stdout.write(JSON.stringify({ type:'result', result:'resumed slow', session_id:'s-done' })), 600)
+`)
 })
 afterAll(async () => { await fs.rm(binDir, { recursive: true }) })
 
@@ -34,6 +39,12 @@ beforeEach(async () => {
   runsDir = await fs.mkdtemp(path.join(os.tmpdir(), 'cwc-gates-runs-'))
   wtRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'cwc-gates-wt-'))
   repo = await fs.mkdtemp(path.join(os.tmpdir(), 'cwc-gates-repo-'))
+
+  // Temp home with an exported skill so the /test export guard passes for slug 'cwc-x'.
+  homeDir = await fs.mkdtemp(path.join(os.tmpdir(), 'cwc-gates-home-'))
+  const skillDir = path.join(homeDir, '.claude', 'skills', 'cwc-x')
+  await fs.mkdir(skillDir, { recursive: true })
+  await fs.writeFile(path.join(skillDir, 'SKILL.md'), '# cwc-x\n<!-- cwc:workflow:wf-1 -->\n')
   execFileSync('git', ['-C', repo, 'init', '-b', 'main'])
   execFileSync('git', ['-C', repo, 'config', 'user.email', 't@t'])
   execFileSync('git', ['-C', repo, 'config', 'user.name', 't'])
@@ -83,7 +94,7 @@ afterEach(async () => {
   // Clean up env vars
   delete process.env.CWC_RUNS_DIR
   delete process.env.CWC_WF_ID
-  for (const d of [runsDir, wtRoot, repo]) {
+  for (const d of [runsDir, wtRoot, repo, homeDir]) {
     await fs.rm(d, { recursive: true, maxRetries: 5, retryDelay: 200 }).catch(() => { /* already gone */ })
   }
 })
@@ -93,7 +104,7 @@ function startApp(binPath: string) {
   process.env.CWC_RUNS_DIR = runsDir
   process.env.CWC_WF_ID = 'wf-1'
   const app = createApp({
-    staticDir: null, runsDir, claudeBinPath: binPath, worktreesRoot: wtRoot,
+    staticDir: null, runsDir, claudeBinPath: binPath, worktreesRoot: wtRoot, userHomeDir: homeDir,
     automationStatePath: path.join(runsDir, 'astate.json'), configPath: path.join(runsDir, 'config.json'),
     enableNotifier: false,
   })
@@ -164,7 +175,7 @@ describe('gate endpoints', () => {
     // Switch to okBin for the resume (approve spawns okBin which completes instantly)
     server.close()
     const app2 = createApp({
-      staticDir: null, runsDir, claudeBinPath: okBin, worktreesRoot: wtRoot,
+      staticDir: null, runsDir, claudeBinPath: okBin, worktreesRoot: wtRoot, userHomeDir: homeDir,
       automationStatePath: path.join(runsDir, 'astate.json'), configPath: path.join(runsDir, 'config.json'),
       enableNotifier: false,
     })
@@ -219,6 +230,48 @@ describe('gate endpoints', () => {
     expect(approveRes.status).toBe(409)
     const body = (await approveRes.json()) as { error: string }
     expect(body.error).toContain('cannot resume')
+  })
+
+  it('4c. Double-click Approve does not spawn a duplicate resume (second → 409)', async () => {
+    startApp(gateBin)
+    const res = await fetch(`${base}/api/runs/test`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ workflowId: 'wf-1', workflowSlug: 'cwc-x', cwd: repo }),
+    })
+    const { runId } = (await res.json()) as { runId: string }
+    await waitForStatus('wf-1', runId, 'paused')
+
+    // Resume with a slow bin so the first approve stays active while the second arrives.
+    server.close()
+    const app2 = createApp({
+      staticDir: null, runsDir, claudeBinPath: slowBin, worktreesRoot: wtRoot, userHomeDir: homeDir,
+      automationStatePath: path.join(runsDir, 'astate.json'), configPath: path.join(runsDir, 'config.json'),
+      enableNotifier: false,
+    })
+    server = app2.listen(0)
+    base = `http://localhost:${(server.address() as AddressInfo).port}`
+
+    const first = await fetch(`${base}/api/runs/${runId}/approve`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ workflowId: 'wf-1' }),
+    })
+    expect(first.status).toBe(200)
+    const second = await fetch(`${base}/api/runs/${runId}/approve`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ workflowId: 'wf-1' }),
+    })
+    expect(second.status).toBe(409)
+    expect(((await second.json()) as { error: string }).error).toContain('already active')
+  })
+
+  it('0. POST /test on an un-exported workflow → 400 (no silent no-op)', async () => {
+    startApp(okBin)
+    const res = await fetch(`${base}/api/runs/test`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ workflowId: 'wf-1', workflowSlug: 'cwc-never-exported', cwd: repo }),
+    })
+    expect(res.status).toBe(400)
+    expect(((await res.json()) as { error: string }).error).toContain('not exported')
   })
 
   it('5. POST /reject on paused run → aborted + worktree gone + branch deleted', async () => {

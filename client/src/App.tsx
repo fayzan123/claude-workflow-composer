@@ -250,6 +250,7 @@ export default function App() {
           workflowSlug={workflowSlug}
           onStarted={() => setShowRuns(true)}
           onClose={() => setShowRunModal(false)}
+          onExport={() => setShowExport(true)}
         />
       )}
       {showHelp && <HelpModal onClose={() => setShowHelp(false)} />}

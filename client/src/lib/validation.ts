@@ -49,6 +49,15 @@ export function validateWorkflow(cwc: CwcFile): ValidationResult {
     }
   }
 
+  // A handoff with no trigger still exports, but the orchestrator falls back to generic
+  // prose to decide when to advance. Warn (don't block) — the field is marked required in
+  // the edge panel, so it should at least surface here instead of silently passing.
+  for (const e of cwc.edges) {
+    if (e.to !== null && !e.trigger?.trim()) {
+      warnings.push({ type: 'missing-trigger', nodeId: e.from, message: 'This handoff has no trigger — the orchestrator will guess when to advance' })
+    }
+  }
+
   if (cwc.edges.length > 0) {
     const nodesWithIncoming = new Set(cwc.edges.filter((e) => e.to).map((e) => e.to!))
     const nodesWithOutgoing = new Set(cwc.edges.map((e) => e.from))

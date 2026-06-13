@@ -303,6 +303,58 @@ describe('observability instrumentation', () => {
   })
 })
 
+describe('exportWorkflow — rename reconciliation', () => {
+  function soloCwc(id: string, name: string): CwcFile {
+    const now = new Date().toISOString()
+    return {
+      meta: { id, name, description: '', version: 1, created: now, updated: now },
+      nodes: [{ id: 'n1', position: { x: 0, y: 0 }, exportedSlug: null, agent: { name: 'Solo', description: '', completionCriteria: 'done' } }],
+      edges: [{ id: 'e1', from: 'n1', to: null, trigger: 'Done.', terminalType: 'complete' }],
+    }
+  }
+
+  it('removes the old workflow skill dir when the workflow is renamed and re-exported', async () => {
+    const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'cwc-rename-exp-'))
+    const skillsDir = path.join(tmp, 'skills')
+    const target: ExportTarget = { type: 'user', userDir: tmp }
+
+    // First export under the original name
+    const first = await exportWorkflow(soloCwc('wf-r', 'Old Name'), target, { skillsDir })
+    await fs.access(path.join(skillsDir, 'cwc-old-name', 'SKILL.md'))
+    expect(first.updatedCwc.meta.exportedWorkflowSlug).toBe('cwc-old-name')
+
+    // Rename and re-export, carrying the updated meta forward (as the app persists it)
+    const renamed: CwcFile = { ...first.updatedCwc, meta: { ...first.updatedCwc.meta, name: 'New Name' } }
+    await exportWorkflow(renamed, target, { skillsDir })
+
+    await expect(fs.access(path.join(skillsDir, 'cwc-old-name'))).rejects.toThrow()  // old dir gone
+    await fs.access(path.join(skillsDir, 'cwc-new-name', 'SKILL.md'))                // new dir present
+    await fs.rm(tmp, { recursive: true })
+  })
+
+  it('does not delete an old-slug skill dir owned by a different workflow', async () => {
+    const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'cwc-rename-foreign-'))
+    const skillsDir = path.join(tmp, 'skills')
+    const target: ExportTarget = { type: 'user', userDir: tmp }
+
+    // A foreign workflow already owns skills/cwc-old-name/
+    const foreignDir = path.join(skillsDir, 'cwc-old-name')
+    await fs.mkdir(foreignDir, { recursive: true })
+    await fs.writeFile(path.join(foreignDir, 'SKILL.md'), '# x\n<!-- cwc:workflow:other-wf -->\n')
+
+    // Our workflow claims it was last exported as cwc-old-name, now renamed
+    const cwc = soloCwc('wf-r', 'New Name')
+    cwc.meta.exportedWorkflowSlug = 'cwc-old-name'
+    await exportWorkflow(cwc, target, { skillsDir })
+
+    // Foreign dir untouched; ours written
+    const foreign = await fs.readFile(path.join(foreignDir, 'SKILL.md'), 'utf-8')
+    expect(foreign).toContain('cwc:workflow:other-wf')
+    await fs.access(path.join(skillsDir, 'cwc-new-name', 'SKILL.md'))
+    await fs.rm(tmp, { recursive: true })
+  })
+})
+
 describe('exportWorkflow — gate nodes', () => {
   it('writes no agent file for gate nodes and leaves their exportedSlug null', async () => {
     const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'cwc-gate-exp-'))

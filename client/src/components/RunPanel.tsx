@@ -33,6 +33,22 @@ const STATUS_LABEL: Record<string, string> = {
   paused: '⏸ paused',
 }
 
+// Plain-English labels for the run timeline. Raw event types like "step_started"
+// leak the data model at people who just want to know what the run is doing.
+const EVENT_LABEL: Record<string, string> = {
+  run_started: 'Run started',
+  step_started: 'Started',
+  step_completed: 'Finished',
+  artifact_produced: 'Produced file',
+  awaiting_approval: 'Waiting for your approval',
+  run_paused: 'Paused for approval',
+  run_completed: 'Run finished',
+}
+
+function eventLabel(type: string): string {
+  return EVENT_LABEL[type] ?? type.replace(/_/g, ' ')
+}
+
 // ----- InboxItem -----
 
 interface InboxItemProps {
@@ -48,22 +64,35 @@ function InboxItem({ run, onChanged }: InboxItemProps) {
   const [actError, setActError] = useState<string | null>(null)
   const [acting, setActing] = useState(false)
 
-  async function expand() {
-    if (expanded) { setExpanded(false); return }
-    setExpanded(true)
-    if (!events) {
-      const [evs, diff] = await Promise.all([
-        api.runs.events(run.workflowId, run.runId).catch(() => [] as RunEvent[]),
-        api.runs.diff(run.workflowId, run.runId).catch(() => ({ diff: null, status: null, branch: null })),
-      ])
+  function expand() {
+    setExpanded(e => !e)
+  }
+
+  // Refetch events + diff whenever the card is open AND whenever the run gets a
+  // new event (lastEventAt changes). A one-shot fetch on expand races the
+  // run_paused event — if the card opens between awaiting_approval and run_paused,
+  // it would cache "no resumable session" forever and wrongly disable Approve.
+  useEffect(() => {
+    if (!expanded) return
+    let cancelled = false
+    void Promise.all([
+      api.runs.events(run.workflowId, run.runId).catch(() => [] as RunEvent[]),
+      api.runs.diff(run.workflowId, run.runId).catch(() => ({ diff: null, status: null, branch: null })),
+    ]).then(([evs, diff]) => {
+      if (cancelled) return
       setEvents(evs)
       setDiffResult(diff)
-    }
-  }
+    })
+    return () => { cancelled = true }
+  }, [expanded, run.workflowId, run.runId, run.lastEventAt])
 
   const hasPausedEvent = events?.some(e => e.type === 'run_paused') ?? false
   const approvalMsg = events?.findLast?.(e => e.type === 'awaiting_approval' || e.type === 'run_paused')?.message
 
+  // On success we deliberately leave `acting` true: the card stays disabled (showing
+  // "Approving…") until the run leaves the paused list and this item unmounts. Only
+  // re-enable on error so the user can retry. This stops the "it wasn't instant so I
+  // kept clicking" double-fire.
   async function doApprove() {
     setActError(null)
     setActing(true)
@@ -72,7 +101,6 @@ function InboxItem({ run, onChanged }: InboxItemProps) {
       onChanged()
     } catch (err) {
       setActError(err instanceof Error ? err.message : 'Failed to approve')
-    } finally {
       setActing(false)
     }
   }
@@ -85,14 +113,13 @@ function InboxItem({ run, onChanged }: InboxItemProps) {
       onChanged()
     } catch (err) {
       setActError(err instanceof Error ? err.message : 'Failed to reject')
-    } finally {
       setActing(false)
     }
   }
 
   const approveDisabled = !hasPausedEvent && events !== null
   const approveTooltip = approveDisabled
-    ? 'started outside CWC — resume it in your terminal, or reject'
+    ? "This run was started from a terminal, so CWC can't resume it here — continue it where you launched it, or reject to clean up."
     : undefined
 
   return (
@@ -113,7 +140,7 @@ function InboxItem({ run, onChanged }: InboxItemProps) {
           {diffResult === null ? (
             <p className="run-panel__inbox-loading">Loading diff…</p>
           ) : diffResult.diff === null ? (
-            <p className="run-panel__inbox-no-git">No git repo — review changes manually in your terminal.</p>
+            <p className="run-panel__inbox-no-git">No git repo here, so there's no diff to preview — review the agent's work directly, then approve or reject below.</p>
           ) : (
             <>
               <pre className="run-panel__diff">{diffResult.diff}</pre>
@@ -135,6 +162,9 @@ function InboxItem({ run, onChanged }: InboxItemProps) {
           />
 
           {actError && <p className="run-panel__inbox-error">{actError}</p>}
+          {approveDisabled && (
+            <p className="run-panel__inbox-hint">{approveTooltip}</p>
+          )}
 
           <div className="run-panel__inbox-actions">
             <button
@@ -310,16 +340,33 @@ export function RunPanel({ workflowId, runs, liveEvents, activeRun, pausedRuns, 
       </ul>
 
       {(showLive || openRunId) && (
-        <ol className="run-panel__timeline">
-          {timeline.map((e, i) => (
-            <li key={i} className={`run-panel__event run-panel__event--${e.type}`}>
-              <span className="run-panel__event-type">{e.type.replace('_', ' ')}</span>
-              {e.agentSlug && <span className="run-panel__event-agent">{e.agentSlug}</span>}
-              {e.message && <span className="run-panel__event-msg">{e.message}</span>}
-              {e.costUsd !== undefined && <span className="run-panel__event-cost">${e.costUsd.toFixed(2)}</span>}
-            </li>
-          ))}
-        </ol>
+        <>
+          <ol className="run-panel__timeline">
+            {timeline.map((e, i) => (
+              <li key={i} className={`run-panel__event run-panel__event--${e.type}`}>
+                <span className="run-panel__event-type">{eventLabel(e.type)}</span>
+                {e.agentSlug && <span className="run-panel__event-agent">{e.agentSlug}</span>}
+                {e.message && <span className="run-panel__event-msg">{e.message}</span>}
+                {e.costUsd !== undefined && <span className="run-panel__event-cost">${e.costUsd.toFixed(2)}</span>}
+              </li>
+            ))}
+          </ol>
+          {(() => {
+            const total = timeline.reduce((sum, e) => sum + (e.costUsd ?? 0), 0)
+            const done = timeline.findLast?.(e => e.type === 'run_completed')
+            const paused = timeline.findLast?.(e => e.type === 'run_paused' || e.type === 'awaiting_approval')
+            if (!done && !paused && total === 0) return null
+            const outcome = done
+              ? (STATUS_LABEL[done.status ?? ''] ?? done.status ?? 'finished')
+              : paused ? '⏸ waiting for approval' : '● running'
+            return (
+              <div className="run-panel__timeline-summary">
+                <span className="run-panel__summary-outcome">{outcome}</span>
+                {total > 0 && <span className="run-panel__summary-cost">total ${total.toFixed(2)}</span>}
+              </div>
+            )
+          })()}
+        </>
       )}
     </aside>
   )

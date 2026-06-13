@@ -31,6 +31,7 @@ export interface CwcMeta {
   updated: string
   observability?: { enabled: boolean }   // absent = enabled
   triggers?: CwcTrigger[]
+  exportedWorkflowSlug?: string          // slug of the last export; lets a rename reconcile the old skill dir
 }
 
 export interface CwcAgent {

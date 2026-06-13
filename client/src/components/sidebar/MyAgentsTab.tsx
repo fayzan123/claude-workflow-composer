@@ -54,7 +54,8 @@ export function MyAgentsTab() {
   return (
     <div className="my-agents">
       <button className="my-agents__generate" onClick={() => setGenerating(true)}>
-        + Generate agent
+        <span className="my-agents__generate-label">✨ Generate agent</span>
+        <span className="my-agents__generate-sub">Describe it in plain English — AI builds it</span>
       </button>
       <div className="my-agents__search-wrap">
         <input
@@ -94,9 +95,20 @@ export function MyAgentsTab() {
           </div>
         </div>
         {grouped.size === 0 && (
-          <div className="my-agents__status">
-            {search ? 'No agents match your search.' : 'No agents found. Add .md agent files to ~/.claude/agents/.'}
-          </div>
+          search ? (
+            <div className="my-agents__status">No agents match your search.</div>
+          ) : (
+            <div className="my-agents__empty">
+              <p className="my-agents__empty-title">Start by creating an agent</p>
+              <p className="my-agents__empty-body">
+                Use <strong>Generate agent</strong> above to describe one in plain English,
+                or drag <strong>New Agent</strong> onto the canvas to build it yourself.
+              </p>
+              <p className="my-agents__empty-hint">
+                Already have agent files in <code>~/.claude/agents/</code>? They'll show up here automatically.
+              </p>
+            </div>
+          )
         )}
         {Array.from(grouped.entries()).map(([source, sourceAgents]) => (
           <div key={source} className="my-agents__group">

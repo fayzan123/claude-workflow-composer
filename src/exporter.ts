@@ -144,6 +144,19 @@ export async function exportWorkflow(
     observabilityEnabled ? { observability: { workflowId: cwc.meta.id, workflowSlug } } : {},
   )
   const skillContent = buildWorkflowSkillContent(cwc.meta.name, cwc.meta.description, orchestratorBody, workflowId)
+
+  // Workflow rename reconciliation: if the name changed since the last export, the old
+  // skills/<oldSlug>/ dir would linger as an orphaned, runnable skill (and show up as a
+  // phantom "deployed" workflow). Remove it — but only if this workflow owns it.
+  const prevSlug = cwc.meta.exportedWorkflowSlug
+  if (prevSlug && prevSlug !== workflowSlug) {
+    const oldSkillFile = path.join(opts.skillsDir, prevSlug, 'SKILL.md')
+    const oldSkillContent = await safeReadFile(oldSkillFile)
+    if (oldSkillContent !== null && detectConflict(oldSkillContent, WORKFLOW_OWNERSHIP_REGEX, workflowId) === 'owned') {
+      await fs.rm(path.join(opts.skillsDir, prevSlug), { recursive: true, force: true })
+    }
+  }
+
   const skillDir = path.join(opts.skillsDir, workflowSlug)
   await ensureDir(skillDir)
   const skillFilePath = path.join(skillDir, 'SKILL.md')
@@ -161,7 +174,7 @@ export async function exportWorkflow(
   const updatedCwc: CwcFile = {
     ...cwc,
     nodes: updatedNodes,
-    meta: { ...cwc.meta, updated: new Date().toISOString() },
+    meta: { ...cwc.meta, updated: new Date().toISOString(), exportedWorkflowSlug: workflowSlug },
   }
 
   return { updatedCwc, warnings }

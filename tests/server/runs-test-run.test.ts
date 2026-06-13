@@ -14,6 +14,7 @@ let hangBin: string
 let runsDir: string
 let cwd: string
 let wtRoot: string
+let homeDir: string
 let server: http.Server
 let base: string
 
@@ -32,17 +33,23 @@ beforeEach(async () => {
   runsDir = await fs.mkdtemp(path.join(os.tmpdir(), 'cwc-testrun-runs-'))
   cwd = await fs.mkdtemp(path.join(os.tmpdir(), 'cwc-testrun-cwd-'))
   wtRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'cwc-testrun-wt-'))
+  // Temp home with the exported skill so the /test export guard passes for slug 'cwc-flow'.
+  homeDir = await fs.mkdtemp(path.join(os.tmpdir(), 'cwc-testrun-home-'))
+  const skillDir = path.join(homeDir, '.claude', 'skills', 'cwc-flow')
+  await fs.mkdir(skillDir, { recursive: true })
+  await fs.writeFile(path.join(skillDir, 'SKILL.md'), '# cwc-flow\n<!-- cwc:workflow:wf-1 -->\n')
 })
 afterEach(async () => {
   server?.close()
   await fs.rm(runsDir, { recursive: true, maxRetries: 5, retryDelay: 200 })
   await fs.rm(cwd, { recursive: true, maxRetries: 5, retryDelay: 200 })
   await fs.rm(wtRoot, { recursive: true, maxRetries: 5, retryDelay: 200 })
+  await fs.rm(homeDir, { recursive: true, maxRetries: 5, retryDelay: 200 })
 })
 
 function startApp(binPath: string) {
   const app = createApp({
-    staticDir: null, runsDir, claudeBinPath: binPath, worktreesRoot: wtRoot,
+    staticDir: null, runsDir, claudeBinPath: binPath, worktreesRoot: wtRoot, userHomeDir: homeDir,
     automationStatePath: path.join(runsDir, 'astate.json'), configPath: path.join(runsDir, 'config.json'),
     enableNotifier: false,
   })

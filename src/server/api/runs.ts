@@ -2,6 +2,7 @@
 import { Router } from 'express'
 import * as fs from 'node:fs'
 import * as fsPromises from 'node:fs/promises'
+import * as path from 'node:path'
 import { validateRunEvent, type RunEvent } from '../../run-events.js'
 import type { RunStore, RunSummary } from '../run-store.js'
 import { runWorkflowSkill } from '../workflow-runner.js'
@@ -13,6 +14,7 @@ export interface RunsRouterOptions {
   claudeBinPath?: string   // test injection
   worktreesRoot: string
   runsDirPath: string
+  skillsDir: string        // ~/.claude/skills — used to verify a workflow is exported before a test run
 }
 
 export function runsRouter(opts: RunsRouterOptions): Router {
@@ -59,6 +61,13 @@ export function runsRouter(opts: RunsRouterOptions): Router {
     }
     if (!fs.existsSync(cwd) || !fs.statSync(cwd).isDirectory()) {
       res.status(400).json({ error: `working directory does not exist: ${cwd}` })
+      return
+    }
+    // The run spawns `claude -p "/<slug>"`; if the skill isn't on disk the slash command
+    // silently resolves to nothing and the run is a confusing no-op. Verify it's exported.
+    // A rename changes the slug, so this also catches "exported, then renamed, not re-exported".
+    if (!fs.existsSync(path.join(opts.skillsDir, workflowSlug, 'SKILL.md'))) {
+      res.status(400).json({ error: `workflow not exported: no skill found for /${workflowSlug}. Export the workflow first (re-export if you renamed it).` })
       return
     }
     if (store.hasActiveTestRun(workflowId)) {
@@ -135,11 +144,21 @@ export function runsRouter(opts: RunsRouterOptions): Router {
   router.post('/:runId/approve', async (req, res) => {
     const { workflowId, note } = (req.body ?? {}) as { workflowId?: string; note?: string }
     if (!workflowId) return void res.status(400).json({ error: 'workflowId required' })
-    const events = await store.getEvents(workflowId, req.params.runId)
-    if (!events) return void res.status(404).json({ error: 'run not found' })
+    const runId = req.params.runId
+    // Claim the run synchronously (no await between the check and the reserve) so a
+    // rapid second Approve click can't also spawn a resume. A paused run has already
+    // been released from the active registry, so the first claim wins; the rest 409.
+    if (store.hasActiveTestRun(workflowId)) {
+      return void res.status(409).json({ error: 'a run for this workflow is already active' })
+    }
+    store.registerRun(runId, workflowId, () => { /* placeholder until the resume spawns */ })
+    const bail = (code: number, error: string) => { store.releaseRun(runId); res.status(code).json({ error }) }
+
+    const events = await store.getEvents(workflowId, runId)
+    if (!events) return void bail(404, 'run not found')
     const last = events[events.length - 1]
-    if (last.type !== 'run_paused' && last.type !== 'awaiting_approval') return void res.status(409).json({ error: 'run is not paused' })
-    if (last.type !== 'run_paused' || !last.sessionId) return void res.status(409).json({ error: 'cannot resume this run from CWC (no session) — resume it in your terminal, or reject it' })
+    if (last.type !== 'run_paused' && last.type !== 'awaiting_approval') return void bail(409, 'run is not paused')
+    if (last.type !== 'run_paused' || !last.sessionId) return void bail(409, "cannot resume this run from CWC — it was started from a terminal. Continue it where you launched it, or reject it to clean up.")
     const started = events.find(e => e.type === 'run_started')!
     const runCwd = last.worktreePath ?? started.worktreePath ?? started.cwd!
     const wt = started.worktreePath && started.branch
@@ -147,12 +166,12 @@ export function runsRouter(opts: RunsRouterOptions): Router {
       : null
     const prompt = `Approved — continue the workflow from the gate.${note ? `\nNote from the reviewer: ${note}` : ''}`
     // Human action: bypasses the scheduler queue/cap by design (Addendum 2).
-    const { stop, done } = runWorkflowSkill({ slug: started.workflowSlug, runId: req.params.runId, cwd: runCwd, binPath: opts.claudeBinPath, resume: last.sessionId, promptOverride: prompt })
-    store.registerRun(req.params.runId, workflowId, stop)
+    const { stop, done } = runWorkflowSkill({ slug: started.workflowSlug, runId, cwd: runCwd, binPath: opts.claudeBinPath, resume: last.sessionId, promptOverride: prompt })
+    store.registerRun(runId, workflowId, stop)
     void done.then(result => classifyAndFinish({
       workflowId, workflowSlug: started.workflowSlug, cwd: started.cwd ?? runCwd,
       isolation: wt ? 'worktree' : 'in-place', trigger: started.trigger ?? 'manual',
-      store, worktreesRoot: opts.worktreesRoot, runId: req.params.runId, wt, result,
+      store, worktreesRoot: opts.worktreesRoot, runId, wt, result,
     }))
     res.json({ resumed: true })
   })

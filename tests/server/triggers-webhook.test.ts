@@ -85,7 +85,7 @@ beforeEach(async () => {
   const app = express()
   app.use(express.json())
   // Mount the real runs router for waitForStatus / getEvents polling
-  app.use('/api/runs', runsRouter({ store: sharedStore, claudeBinPath: echoBin, worktreesRoot: wtRoot, runsDirPath: runsDir }))
+  app.use('/api/runs', runsRouter({ store: sharedStore, claudeBinPath: echoBin, worktreesRoot: wtRoot, runsDirPath: runsDir, skillsDir: path.join(workflowsDir, 'skills') }))
   app.use('/api/triggers', triggersRouter({
     workflowsDir,
     state: sharedState,
