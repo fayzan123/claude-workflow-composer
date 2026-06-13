@@ -150,6 +150,7 @@ export default function App() {
   const selectedEdge = selectedEdgeId ? editorWorkflow.edges.find((e) => e.id === selectedEdgeId) ?? null : null
   const isEntryNode = selectedNode ? !editorWorkflow.edges.some((e) => e.to === selectedNode.id) : false
   const terminalEdge = selectedNode ? (editorWorkflow.edges.find((e) => e.from === selectedNode.id && e.to === null) ?? null) : null
+  const helpTab = selectedNode ? 'nodes' : selectedEdge ? 'edges' : undefined
 
   return (
     <div className="app app--editor">
@@ -253,7 +254,7 @@ export default function App() {
           onExport={() => setShowExport(true)}
         />
       )}
-      {showHelp && <HelpModal onClose={() => setShowHelp(false)} />}
+      {showHelp && <HelpModal onClose={() => setShowHelp(false)} initialTab={helpTab} />}
     </div>
   )
 }

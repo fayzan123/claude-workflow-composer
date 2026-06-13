@@ -5,11 +5,12 @@ type Tab = 'overview' | 'nodes' | 'edges' | 'running'
 
 interface Props {
   onClose: () => void
+  initialTab?: Tab
 }
 
-export function HelpModal({ onClose }: Props) {
+export function HelpModal({ onClose, initialTab }: Props) {
   const overlayRef = useRef<HTMLDivElement>(null)
-  const [tab, setTab] = useState<Tab>('overview')
+  const [tab, setTab] = useState<Tab>(initialTab ?? 'overview')
 
   useEffect(() => {
     function handleKey(e: KeyboardEvent) {
