@@ -26,7 +26,7 @@ export function workflowsRouter(workflowsDir: string, recentsPath: string, onSav
             try {
               const raw = await fs.readFile(fullPath, 'utf-8')
               const cwc: CwcFile = JSON.parse(raw)
-              return { path: fullPath, name: cwc.meta.name, updated: cwc.meta.updated, nodeCount: cwc.nodes.length }
+              return { id: cwc.meta.id, path: fullPath, name: cwc.meta.name, updated: cwc.meta.updated, nodeCount: cwc.nodes.length }
             } catch {
               return null
             }

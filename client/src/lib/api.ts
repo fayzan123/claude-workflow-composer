@@ -37,7 +37,7 @@ export const api = {
   claudeCheck: () => req<{ installed: boolean; claudeDir: string }>('GET', '/claude-check'),
 
   workflows: {
-    list: () => req<{ path: string; name: string; nodeCount: number; updated: string }[]>('GET', '/workflows/list'),
+    list: () => req<{ id: string; path: string; name: string; nodeCount: number; updated: string }[]>('GET', '/workflows/list'),
     read: (filePath: string) => req<CwcFile>('GET', `/workflows?path=${encodeURIComponent(filePath)}`),
     save: (filePath: string, content: CwcFile) => req<{ saved: boolean }>('POST', '/workflows', { path: filePath, content }),
     delete: (filePath: string) => req<{ deleted: boolean }>('DELETE', `/workflows?path=${encodeURIComponent(filePath)}`),
