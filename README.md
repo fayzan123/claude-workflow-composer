@@ -120,7 +120,7 @@ The **Run panel** header has an **Automations** toggle that globally suspends al
 - **Markdown preview** — click any agent or skill card to view its source file
 - **Open in editor** — view any agent or skill file in your system editor
 - **Claude Code detection** — warns on startup if `~/.claude/` is missing
-- **▶ Test Run** — launch an exported workflow headlessly from the UI (`--permission-mode acceptEdits`, user-chosen working directory, worktree or in-place isolation) and stop it mid-run
+- **▶ Test Run** — launch an exported workflow headlessly from the UI (`--permission-mode bypassPermissions`, user-chosen working directory, worktree or in-place isolation) and stop it mid-run
 - **Live run view** — the active node pulses on the canvas, completed nodes get a check, and events stream into a timeline panel
 - **Run history** — every run of every exported workflow (started from CWC *or* any terminal) persists to `~/.cwc/runs/` with status, duration, source, and cost
 - **Triggers & preconditions** — attach cron schedules, webhook URLs, or manual triggers to a workflow; add a shell command as a precondition guard and a day/time window to restrict when it fires

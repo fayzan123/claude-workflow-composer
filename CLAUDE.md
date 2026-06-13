@@ -41,7 +41,7 @@ This is a full-stack TypeScript app: an Express server (`src/`) serving a React 
 
 **Runs subsystem** (`src/server/`) — observability for exported workflows:
 - `run-store.ts` — JSONL persistence under `~/.cwc/runs/<workflowId>/`, run summaries (running/stale/paused/final), in-memory child-process registry, event fan-out to SSE subscribers
-- `workflow-runner.ts` — spawns `claude -p "/<slug>" --permission-mode acceptEdits` for Test Runs (prompt via stdin; SIGTERM → aborted, timeout → error; supports `resume` session ID for gate continuation)
+- `workflow-runner.ts` — spawns `claude -p "/<slug>" --permission-mode bypassPermissions` for Test Runs (headless: orchestrator needs Bash for git commits + run-logging curls + the gate's `awaiting_approval` event, which `acceptEdits` would silently block; prompt via stdin; SIGTERM → aborted, timeout → error; supports `resume` session ID for gate continuation)
 - `run-isolation.ts` — git worktree helpers: `createWorktree`, `removeWorktree`, `getDiff`, `isGitRepo`, `resolveBaseSha`; runs use an isolated branch so the main checkout is untouched
 - `run-launcher.ts` — `fireWorkflow()` assembles the full run lifecycle (isolation setup, process spawn, classifyAndFinish); `sweepOrphanWorktrees()` cleans up stale worktrees on server start
 - `automation-state.ts` — persistent state at `~/.cwc/automation-state.json`: global paused flag, per-trigger arm state, daily run counts, last-skip reason

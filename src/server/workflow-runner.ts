@@ -50,7 +50,13 @@ export function runWorkflowSkill(opts: RunWorkflowOptions): RunningWorkflow {
     return { child, stop: () => {}, done: Promise.resolve({ status: 'error', message: 'Claude Code CLI not found.' }) }
   }
   const isWinShim = /\.(cmd|bat)$/i.test(bin)
-  const args = ['-p', '--output-format', 'json', '--permission-mode', 'acceptEdits']
+  // bypassPermissions, not acceptEdits: the orchestrator runs headlessly with no
+  // one to approve prompts, and it depends on Bash for git commits, the run-logging
+  // curls (incl. the gate's awaiting_approval event), and subagent delegations.
+  // acceptEdits only auto-approves file edits, so Bash silently stalls and gates
+  // never pause. Runs are confined to an isolated worktree and gated behind the
+  // Test Run consent, so unprompted tool use is acceptable here.
+  const args = ['-p', '--output-format', 'json', '--permission-mode', 'bypassPermissions']
   if (opts.resume) args.push('--resume', opts.resume)
   let settled = false
   let timedOut = false

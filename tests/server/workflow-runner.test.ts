@@ -33,7 +33,7 @@ process.stdout.write(JSON.stringify({ type: 'result', result: input, session_id:
 // maxRetries: Windows briefly holds dir locks while a killed process tree winds down.
 afterAll(async () => { await fs.rm(tmpDir, { recursive: true, maxRetries: 5, retryDelay: 200 }) })
 
-it('invokes the skill by slug with acceptEdits, passes runId, runs in cwd', async () => {
+it('invokes the skill by slug with bypassPermissions, passes runId, runs in cwd', async () => {
   const cwd = await fs.mkdtemp(path.join(os.tmpdir(), 'cwc-wf-cwd-'))
   const { done } = runWorkflowSkill({ slug: 'cwc-my-flow', runId: 'run-abc', cwd, binPath: okBin })
   const result = await done
@@ -93,4 +93,8 @@ it('resume mode passes --resume and uses the override prompt verbatim', async ()
   const args = (await fs.readFile(logPath, 'utf-8')).trim()
   expect(args).toContain('--resume')
   expect(args).toContain('sess-42')
+  // Regression: headless runs must bypass permission prompts, or Bash (git commits,
+  // run-logging curls, the gate's awaiting_approval event) silently stalls.
+  expect(args).toContain('--permission-mode')
+  expect(args).toContain('bypassPermissions')
 })
