@@ -1,0 +1,157 @@
+.workflow-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: 0 var(--space-lg);
+  height: 52px;
+  background: var(--color-surface);
+  border-bottom: 1px solid var(--color-border);
+  flex-shrink: 0;
+  position: relative;
+  z-index: 10;
+}
+
+.workflow-header__back-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  flex-shrink: 0;
+  color: var(--color-text-secondary);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast), border-color var(--transition-fast);
+}
+
+.workflow-header__back-btn:hover {
+  background: var(--color-surface-hover);
+  color: var(--color-text);
+  border-color: var(--color-border);
+}
+
+.workflow-header__name-wrap {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  flex: 1;
+  min-width: 0;
+}
+
+.workflow-header__name-input {
+  font-size: var(--text-base);
+  font-weight: 600;
+  font-family: var(--font-display);
+  color: var(--color-text);
+  background: transparent;
+  border: none;
+  outline: none;
+  padding: 2px 4px;
+  border-radius: var(--radius-sm);
+  transition: background var(--transition-fast);
+  width: 100%;
+  min-width: 0;
+}
+
+.workflow-header__name-input:hover {
+  background: var(--color-surface-hover);
+}
+
+.workflow-header__name-input:focus {
+  background: var(--color-surface-hover);
+  box-shadow: 0 0 0 2px var(--color-primary-ring);
+}
+
+.workflow-header__rename-error {
+  font-size: var(--text-xs);
+  color: var(--color-error);
+  padding-left: 4px;
+}
+
+.workflow-header__leave-msg {
+  font-size: var(--text-sm);
+  color: var(--color-text-secondary);
+}
+
+.workflow-header__status {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  flex-shrink: 0;
+  margin-left: auto;
+}
+
+.workflow-header__save-indicator {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: var(--text-xs);
+  color: var(--color-text-tertiary);
+  background: transparent;
+  border: none;
+  padding: 0;
+  cursor: default;
+}
+
+.workflow-header__save-indicator--error {
+  color: var(--color-error);
+  cursor: pointer;
+}
+
+.workflow-header__save-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--color-text-tertiary);
+  flex-shrink: 0;
+}
+
+.workflow-header__save-indicator--saving .workflow-header__save-dot {
+  background: var(--color-warning);
+  animation: pulse-dot 1s ease-in-out infinite;
+}
+
+.workflow-header__save-indicator--saved .workflow-header__save-dot {
+  background: var(--color-success);
+}
+
+.workflow-header__save-indicator--error .workflow-header__save-dot {
+  background: var(--color-error);
+}
+
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+.workflow-header__leave-btn {
+  font-size: var(--text-sm);
+  font-family: var(--font-sans);
+  padding: 4px 12px;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  border: 1px solid var(--color-border);
+  transition: background var(--transition-fast);
+}
+
+.workflow-header__leave-btn--confirm {
+  background: var(--color-error);
+  color: var(--color-text-inverse);
+  border-color: var(--color-error);
+}
+
+.workflow-header__leave-btn--confirm:hover {
+  background: var(--color-error-dark);
+  border-color: var(--color-error-dark);
+}
+
+.workflow-header__leave-btn--cancel {
+  background: var(--color-surface);
+  color: var(--color-text);
+}
+
+.workflow-header__leave-btn--cancel:hover {
+  background: var(--color-surface-hover);
+}
