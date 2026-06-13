@@ -2,8 +2,8 @@ import { describe, it, expect } from 'vitest'
 import { modelChipLabel, CLAUDE_MODELS } from '../../client/src/lib/models.ts'
 
 describe('modelChipLabel', () => {
-  it('returns "Opus" for claude-opus-4-7', () => {
-    expect(modelChipLabel('claude-opus-4-7')).toBe('Opus')
+  it('returns "Opus" for claude-opus-4-8', () => {
+    expect(modelChipLabel('claude-opus-4-8')).toBe('Opus')
   })
 
   it('returns "Sonnet" for claude-sonnet-4-6', () => {
