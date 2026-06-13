@@ -115,9 +115,6 @@ export function RunModal({ workflowId, workflowSlug, onStarted, onClose, onExpor
             <option value="in-place">In-place (current checkout)</option>
           </select>
         </label>
-        <p className="run-modal__isolation-hint">
-          Worktree: the run works on an isolated branch — your checkout is untouched.
-        </p>
         <p className="run-modal__consent">
           ⚠ The run executes with <strong>bypassPermissions</strong>: it runs headlessly, so agents may
           create/modify files and run commands (git, tests, etc.) in this directory without asking.

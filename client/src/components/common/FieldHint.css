@@ -1,4 +1,5 @@
 .field-hint {
+  display: block;
   margin: 2px 0 6px;
   font-size: var(--text-xs);
   color: var(--color-text-tertiary);

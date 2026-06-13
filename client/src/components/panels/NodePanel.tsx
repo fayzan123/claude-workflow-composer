@@ -334,7 +334,6 @@ export function NodePanel({ node, isEntryNode, terminalEdge, workflow, dispatch,
             <option value="parallel">Parallel fan-out</option>
             <option value="conditional">Conditional branch (router)</option>
           </select>
-          <div className="node-panel__field-hint">When this node has multiple outgoing edges, run all in parallel or pick exactly one branch.</div>
         </div>
 
         <div className="node-panel__field">
@@ -359,15 +358,17 @@ export function NodePanel({ node, isEntryNode, terminalEdge, workflow, dispatch,
           >
             {promptExpanded ? '▼' : '▶'} System Prompt
           </button>
-          <FieldHint id="node.systemPrompt" />
           {promptExpanded && (
-            <textarea
-              className="node-panel__textarea node-panel__textarea--mono"
-              value={node.agent.systemPrompt ?? ''}
-              onChange={handleSystemPromptChange}
-              placeholder="Optional system prompt..."
-              rows={6}
-            />
+            <>
+              <FieldHint id="node.systemPrompt" />
+              <textarea
+                className="node-panel__textarea node-panel__textarea--mono"
+                value={node.agent.systemPrompt ?? ''}
+                onChange={handleSystemPromptChange}
+                placeholder="Optional system prompt..."
+                rows={6}
+              />
+            </>
           )}
         </div>
       </div>

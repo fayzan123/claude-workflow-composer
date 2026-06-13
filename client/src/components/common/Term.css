@@ -8,6 +8,7 @@
   color: inherit;
   cursor: help;
   border-bottom: 1px dotted var(--color-text-tertiary);
+  user-select: none;
 }
 
 .term__pop {

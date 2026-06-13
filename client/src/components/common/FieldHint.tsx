@@ -6,5 +6,5 @@ import './FieldHint.css'
 export function FieldHint({ id }: { id: string }) {
   const text = getControlHint(id)
   if (!text) return null
-  return <p className="field-hint">{text}</p>
+  return <span className="field-hint">{text}</span>
 }

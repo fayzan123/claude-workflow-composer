@@ -2,6 +2,7 @@
 
 // Short, plain-language definitions for jargon, shown inline via <Term>.
 // (HelpModal keeps the longer-form versions; these are the one-line popovers.)
+// Note: many TERMS are not yet referenced — they are scaffolding for Phase 2 (jargon decoding across more surfaces). Do not prune.
 export const TERMS: Record<string, string> = {
   agent: 'A single step in your workflow — one Claude worker with a job, its own tools, and skills.',
   skill: 'A reusable instruction set you attach to a step so it knows how to do a specific task.',
@@ -37,7 +38,7 @@ export const CONTROL_HINTS: Record<string, string> = {
   'edge.label': 'Optional short label shown on the arrow. Handy when the trigger is long.',
   'edge.context': 'Tells the next step what to expect — it doesn\'t move files.',
   'run.cwd': 'The folder this run works in.',
-  'run.isolation': 'Run in a safe isolated copy (worktree) or directly in this folder.',
+  'run.isolation': 'Run in a safe isolated copy (a worktree, so your current checkout is untouched) or directly in this folder.',
   'export.target': 'Where to write the files — just for you, or into a project folder.',
   'export.observability': 'Adds logging so CWC can show this workflow\'s runs live.',
   'trigger.schedule': 'When this runs automatically.',
