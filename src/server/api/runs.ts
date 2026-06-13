@@ -103,6 +103,17 @@ export function runsRouter(opts: RunsRouterOptions): Router {
     res.json(all.sort((a, b) => Date.parse(b.lastEventAt) - Date.parse(a.lastEventAt)))
   })
 
+  // GET /recent — cross-workflow recent runs, newest first. MUST be before '/:runId/...'.
+  router.get('/recent', async (req, res) => {
+    const limit = Math.max(1, Math.min(100, Number(req.query.limit) || 20))
+    const all: RunSummary[] = []
+    let dirs: string[] = []
+    try { dirs = await fsPromises.readdir(opts.runsDirPath) } catch { /* none yet */ }
+    for (const wf of dirs) all.push(...await store.listRuns(wf))
+    all.sort((a, b) => Date.parse(b.lastEventAt ?? b.startedAt) - Date.parse(a.lastEventAt ?? a.startedAt))
+    res.json(all.slice(0, limit))
+  })
+
   router.post('/:runId/stop', (req, res) => {
     if (!store.stopRun(req.params.runId)) {
       res.status(404).json({ error: 'no active test run with that id' })

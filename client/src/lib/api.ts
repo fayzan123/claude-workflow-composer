@@ -110,6 +110,8 @@ export const api = {
       req<RunEvent[]>('GET', `/runs/${encodeURIComponent(runId)}/events?workflowId=${encodeURIComponent(workflowId)}`),
     paused: () =>
       req<RunSummary[]>('GET', '/runs/paused'),
+    recent: (limit?: number) =>
+      req<RunSummary[]>('GET', `/runs/recent${limit ? `?limit=${limit}` : ''}`),
     diff: (workflowId: string, runId: string) =>
       req<{ diff: string | null; status: string | null; branch: string | null }>('GET', `/runs/${encodeURIComponent(runId)}/diff?workflowId=${encodeURIComponent(workflowId)}`),
     approve: (workflowId: string, runId: string, note?: string) =>
