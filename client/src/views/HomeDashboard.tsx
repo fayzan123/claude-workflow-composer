@@ -26,6 +26,16 @@ export function relativeTime(isoString: string, now = Date.now()): string {
   return `${Math.floor(hr / 24)}d ago`
 }
 
+export function untilTime(isoString: string, now = Date.now()): string {
+  const diff = new Date(isoString).getTime() - now
+  if (diff <= 0) return 'now'
+  const min = Math.floor(diff / 60_000)
+  if (min < 60) return `in ${min}m`
+  const hr = Math.floor(min / 60)
+  if (hr < 24) return `in ${hr}h`
+  return `in ${Math.floor(hr / 24)}d`
+}
+
 function shortenPath(p: string): string {
   return p.replace(/^\/Users\/[^/]+/, '~').replace(/^\/home\/[^/]+/, '~')
 }
@@ -114,6 +124,7 @@ export function HomeDashboard() {
   const [globalPaused, setGlobalPaused] = useState<boolean | null>(null)
   const [toggling, setToggling] = useState(false)
   const [servicePersistent, setServicePersistent] = useState<boolean | null>(null)
+  const [triggers, setTriggers] = useState<Awaited<ReturnType<typeof api.automations.triggers>>>([])
 
   // ── Help modal
   const [showHelp, setShowHelp] = useState(false)
@@ -129,6 +140,7 @@ export function HomeDashboard() {
     api.runs.recent(20).then(setRecentRuns).catch(() => setRecentRuns([]))
     api.automations.state().then((s) => setGlobalPaused(s.paused)).catch(() => {})
     api.serviceStatus().then((s) => setServicePersistent(s.persistent)).catch(() => {})
+    api.automations.triggers().then(setTriggers).catch(() => setTriggers([]))
   }, [])
 
   // ── Live mission control: refresh approvals + recent runs as runs change.
@@ -140,6 +152,7 @@ export function HomeDashboard() {
       if (!shouldRefreshDashboard(event.type)) return
       api.runs.paused().then(setPaused).catch(() => {})
       api.runs.recent(20).then(setRecentRuns).catch(() => {})
+      api.automations.triggers().then(setTriggers).catch(() => {})
     }
     return () => es.close()
   }, [])
@@ -661,6 +674,29 @@ export function HomeDashboard() {
                     : 'Session-bound — stops on reboot. Run `npx cwc install-service` for 24/7.'}
                 </p>
               )}
+            </div>
+          )}
+
+          {/* Schedules — only when there are cron triggers */}
+          {triggers.length > 0 && (
+            <div className="hd-widget">
+              <h2 className="hd-widget__heading">Schedules</h2>
+              <ul className="hd-triggers" role="list">
+                {triggers.map((t) => (
+                  <li key={t.triggerId} className="hd-triggers__item">
+                    <span className="hd-triggers__name">{t.workflowName}</span>
+                    <span className="hd-triggers__state">
+                      {!t.armed ? 'draft' : t.enabled ? 'on' : 'off'}
+                    </span>
+                    <span className="hd-triggers__next">
+                      {t.armed && t.enabled && t.nextFireAt ? `next ${untilTime(t.nextFireAt)}` : '—'}
+                    </span>
+                    {t.lastSkip && (
+                      <span className="hd-triggers__skip">skip: {t.lastSkip.reason}</span>
+                    )}
+                  </li>
+                ))}
+              </ul>
             </div>
           )}
         </aside>

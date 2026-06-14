@@ -163,6 +163,11 @@ export function AutomateMode({ workflow, dispatch }: ModeProps) {
                       Last fired {new Date(status.lastFiredAt).toLocaleString()}
                     </span>
                   )}
+                  {status?.lastSkip && (
+                    <span className="automate-mode__row-skip">
+                      Last skipped {new Date(status.lastSkip.ts).toLocaleString()} — {status.lastSkip.reason}
+                    </span>
+                  )}
                 </div>
 
                 {/* Lifecycle pill */}

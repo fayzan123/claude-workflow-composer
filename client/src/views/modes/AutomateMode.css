@@ -159,6 +159,11 @@
   color: var(--color-text-tertiary);
 }
 
+.automate-mode__row-skip {
+  font-size: var(--text-xs);
+  color: var(--color-text-tertiary);
+}
+
 /* ── Lifecycle pill ── */
 
 .automate-mode__pill {
