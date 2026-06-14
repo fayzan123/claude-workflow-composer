@@ -3,7 +3,9 @@ import { useNavigate } from 'react-router-dom'
 import type { CwcFile } from '../types.ts'
 import type { ExportedWorkflowEntry } from '../../../src/server/api/exported-workflows.ts'
 import type { RunSummary } from '../../../src/server/run-store.ts'
+import type { RunEvent } from '../../../src/run-events.ts'
 import { api } from '../lib/api.ts'
+import { shouldRefreshDashboard } from '../lib/dashboard-events.ts'
 import { TEMPLATES } from '../templates/index.ts'
 import { HelpModal } from '../components/HelpModal.tsx'
 import './HomeDashboard.css'
@@ -127,6 +129,19 @@ export function HomeDashboard() {
     api.runs.recent(20).then(setRecentRuns).catch(() => setRecentRuns([]))
     api.automations.state().then((s) => setGlobalPaused(s.paused)).catch(() => {})
     api.serviceStatus().then((s) => setServicePersistent(s.persistent)).catch(() => {})
+  }, [])
+
+  // ── Live mission control: refresh approvals + recent runs as runs change.
+  useEffect(() => {
+    const es = new EventSource('/api/runs/stream')
+    es.onmessage = (msg) => {
+      let event: RunEvent
+      try { event = JSON.parse(msg.data) } catch { return }
+      if (!shouldRefreshDashboard(event.type)) return
+      api.runs.paused().then(setPaused).catch(() => {})
+      api.runs.recent(20).then(setRecentRuns).catch(() => {})
+    }
+    return () => es.close()
   }, [])
 
   // ── Live reload workflows on that tab
