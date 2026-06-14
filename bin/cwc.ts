@@ -6,6 +6,7 @@ import * as child_process from 'node:child_process'
 import * as readline from 'node:readline'
 import { fileURLToPath } from 'node:url'
 import open from 'open'
+import { SERVICE_LABEL, buildServerPlist } from '../src/server/service-plist.js'
 
 const PORT = 3579
 const CWC_DIR = path.join(os.homedir(), '.cwc')
@@ -14,6 +15,9 @@ const SKILL_VERSION_FILE = path.join(CWC_DIR, '.skill-version')
 const SKILL_DECLINED_FILE = path.join(CWC_DIR, '.skill-declined')
 const CLAUDE_SKILLS_DIR = path.join(os.homedir(), '.claude', 'skills')
 const SKILL_DEST = path.join(CLAUDE_SKILLS_DIR, 'cwc-generate-workflow', 'SKILL.md')
+
+const LAUNCH_AGENTS_DIR = path.join(os.homedir(), 'Library', 'LaunchAgents')
+const PLIST_PATH = path.join(LAUNCH_AGENTS_DIR, `${SERVICE_LABEL}.plist`)
 
 // ─── Skill management ────────────────────────────────────────────────────────
 
@@ -156,12 +160,43 @@ async function startServer(): Promise<void> {
   await open(`http://localhost:${PORT}`)
 }
 
+async function installService(): Promise<void> {
+  if (process.platform !== 'darwin') {
+    console.log('install-service is macOS-only (launchd). On other platforms, keep `npx cwc` running.')
+    return
+  }
+  const serverEntry = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'src', 'server', 'start.js')
+  const plist = buildServerPlist({ nodePath: process.execPath, serverEntry, port: PORT })
+  await fs.mkdir(LAUNCH_AGENTS_DIR, { recursive: true })
+  await fs.writeFile(PLIST_PATH, plist, 'utf-8')
+  await new Promise<void>((resolve) => {
+    child_process.execFile('launchctl', ['unload', '-w', PLIST_PATH], () => resolve())  // ignore "not loaded"
+  })
+  await new Promise<void>((resolve, reject) => {
+    child_process.execFile('launchctl', ['load', '-w', PLIST_PATH], (err) => err ? reject(err) : resolve())
+  })
+  console.log(`CWC service installed — the server now starts at login (${PLIST_PATH}).`)
+}
+
+async function uninstallService(): Promise<void> {
+  if (process.platform !== 'darwin') { console.log('No service to remove on this platform.'); return }
+  await new Promise<void>((resolve) => {
+    child_process.execFile('launchctl', ['unload', '-w', PLIST_PATH], () => resolve())
+  })
+  try { await fs.unlink(PLIST_PATH); console.log('CWC service removed.') }
+  catch { console.log('CWC service was not installed.') }
+}
+
 const [,, command] = process.argv
 
 if (command === 'stop') {
   await stopServer()
 } else if (command === 'uninstall-skill') {
   await uninstallSkill()
+} else if (command === 'install-service') {
+  await installService()
+} else if (command === 'uninstall-service') {
+  await uninstallService()
 } else {
   const { version } = JSON.parse(
     await fs.readFile(path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..', 'package.json'), 'utf-8')
