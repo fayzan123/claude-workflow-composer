@@ -26,7 +26,10 @@ import { createAutomationState } from './automation-state.js'
 import { createScheduler } from './automation-scheduler.js'
 import { startNotifier } from './notifier.js'
 import { loadConfig } from './config.js'
-import { sweepOrphanWorktrees, fireWorkflow } from './run-launcher.js'
+import { sweepOrphanWorktrees, fireWorkflow, type FireOutcome } from './run-launcher.js'
+import { resolveTargets } from './trigger-targets.js'
+import type { RunStore } from './run-store.js'
+import type { CwcTrigger } from '../schema.js'
 import { serviceRouter } from './api/service.js'
 
 export interface AppOptions {
@@ -101,15 +104,10 @@ export function createApp(opts: AppOptions): express.Express {
   if (opts.enableScheduler) {
     scheduler = createScheduler({
       workflowsDir: wfDir, state: autoState, isWorkflowBusy,
-      fire: async (workflowId, workflowSlug, t) => {
-        const outcome = await fireWorkflow({
-          workflowId, workflowSlug, cwd: t.cwd, isolation: t.isolation, baseRef: t.baseRef,
-          precondition: t.precondition, setupCommand: t.setupCommand, trigger: t.id,
-          store: runStore, worktreesRoot, binPath: opts.claudeBinPath,
-        })
-        if (outcome.fired === false) await autoState.recordSkip(t.id, outcome.reason, new Date())
-        else await outcome.settled   // hold the concurrency slot until the run finishes
-      },
+      fire: makeSchedulerFire({
+        store: runStore, worktreesRoot, claudeBinPath: opts.claudeBinPath,
+        onSkip: (id, reason) => autoState.recordSkip(id, reason, new Date()),
+      }),
     })
     scheduler.start()
   }
@@ -124,6 +122,28 @@ export function createApp(opts: AppOptions): express.Express {
   }
 
   return app
+}
+
+export interface SchedulerFireDeps {
+  store: RunStore
+  worktreesRoot: string
+  claudeBinPath?: string
+  onSkip: (triggerId: string, reason: string) => Promise<void>
+  fireOne?: (cwd: string, args: { workflowId: string; workflowSlug: string; trigger: CwcTrigger }) => Promise<FireOutcome>
+}
+
+export function makeSchedulerFire(deps: SchedulerFireDeps) {
+  const fireOne = deps.fireOne ?? ((cwd, a) =>
+    fireWorkflow({
+      workflowId: a.workflowId, workflowSlug: a.workflowSlug, cwd, isolation: a.trigger.isolation,
+      baseRef: a.trigger.baseRef, precondition: a.trigger.precondition, setupCommand: a.trigger.setupCommand,
+      trigger: a.trigger.id, store: deps.store, worktreesRoot: deps.worktreesRoot, binPath: deps.claudeBinPath,
+    }))
+  return async (workflowId: string, workflowSlug: string, t: CwcTrigger): Promise<void> => {
+    const outcomes = await Promise.all(resolveTargets(t).map(cwd => fireOne(cwd, { workflowId, workflowSlug, trigger: t })))
+    await Promise.all(outcomes.map(o =>
+      o.fired === false ? deps.onSkip(t.id, o.reason) : o.settled))
+  }
 }
 
 export function startServer(port: number, staticDir: string | null): Promise<void> {
