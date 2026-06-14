@@ -20,6 +20,7 @@ export function RunsMode({ workflow, runState }: ModeProps) {
   const [selectedRunId, setSelectedRunId] = useState<string | null>(defaultRunId)
   const [historicalEvents, setHistoricalEvents] = useState<RunEvent[]>([])
   const [showSettings, setShowSettings] = useState(false)
+  const [diff, setDiff] = useState<{ diff: string | null; status: string | null; branch: string | null } | null>(null)
 
   // When the run list changes (new run started), update selection if nothing was chosen
   useEffect(() => {
@@ -57,6 +58,16 @@ export function RunsMode({ workflow, runState }: ModeProps) {
   const timeline: RunEvent[] = isLiveView ? liveEvents : historicalEvents
 
   const selectedRun: RunSummary | undefined = runs.find(r => r.runId === selectedRunId)
+
+  // Fetch the diff for whatever run is selected (paused, completed, or live).
+  useEffect(() => {
+    if (!selectedRunId) { setDiff(null); return }
+    let cancelled = false
+    api.runs.diff(workflow.meta.id, selectedRunId)
+      .then(d => { if (!cancelled) setDiff(d) })
+      .catch(() => { if (!cancelled) setDiff(null) })
+    return () => { cancelled = true }
+  }, [selectedRunId, workflow.meta.id, selectedRun?.lastEventAt])
 
   function selectRun(runId: string) {
     setSelectedRunId(prev => prev === runId ? prev : runId)
@@ -207,6 +218,16 @@ export function RunsMode({ workflow, runState }: ModeProps) {
                   ))}
                 </ol>
                 <TimelineSummary />
+                {diff?.diff && (
+                  <div className="runs-mode__diff">
+                    <div className="runs-mode__diff-head">
+                      <span className="runs-mode__diff-title">Changes</span>
+                      {diff.branch && <span className="runs-mode__diff-branch">{diff.branch}</span>}
+                    </div>
+                    <pre className="runs-mode__diff-body">{diff.diff}</pre>
+                    {diff.status && <pre className="runs-mode__diff-stat">{diff.status}</pre>}
+                  </div>
+                )}
               </>
             ) : (
               <div className="runs-mode__timeline-loading">
