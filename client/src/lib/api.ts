@@ -124,12 +124,16 @@ export const api = {
       reqWithError<{ stopped: boolean }>('POST', `/runs/${encodeURIComponent(runId)}/stop`),
   },
 
+  serviceStatus: () => req<{ persistent: boolean; platform: string }>('GET', '/service-status'),
+
   automations: {
     state: () => req<{ paused: boolean }>('GET', '/automations/state'),
     setPaused: (paused: boolean) => req<{ paused: boolean }>('PUT', '/automations/state', { paused }),
     arm: (trigger: CwcTrigger) => reqWithError<{ armed: boolean }>('POST', '/automations/arm', { trigger }),
     triggerStatus: (trigger: CwcTrigger) =>
       req<{ armed: boolean; lastFiredAt?: string; skippedCount: number; lastSkip?: { ts: string; reason: string } }>('POST', '/automations/trigger-status', { trigger }),
+    triggers: () =>
+      req<{ workflowId: string; workflowName: string; triggerId: string; schedule: string; enabled: boolean; armed: boolean; nextFireAt: string | null; lastFiredAt: string | null; lastSkip: { ts: string; reason: string } | null }[]>('GET', '/automations/triggers'),
     config: () => req<{ notifications: { macos: boolean; webhookUrl?: string } }>('GET', '/automations/config'),
     setConfig: (c: { notifications: { macos: boolean; webhookUrl?: string } }) => req<typeof c>('PUT', '/automations/config', c),
   },

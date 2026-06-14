@@ -13,6 +13,7 @@ export interface CwcTrigger {
   schedule?: string                     // cron expression (type 'cron')
   token?: string                        // uuid (type 'webhook')
   cwd: string
+  targets?: string[]                    // extra repo cwds; absent/empty → run only in `cwd`
   isolation: 'worktree' | 'in-place'
   baseRef?: string                      // worktree base, default 'HEAD'
   precondition?: string                 // shell; non-zero exit → skip firing

@@ -6,6 +6,7 @@ import * as path from 'node:path'
 import { createScheduler } from '../../src/server/automation-scheduler.js'
 import { createAutomationState } from '../../src/server/automation-state.js'
 import type { CwcTrigger } from '../../src/schema.js'
+import { makeSchedulerFire } from '../../src/server/index.js'
 
 let dir: string, workflowsDir: string, statePath: string
 let fired: { workflowId: string; trigger: CwcTrigger }[]
@@ -140,4 +141,16 @@ describe('scheduler', () => {
     expect(order).toHaveLength(3)
     expect(maxRunning).toBeLessThanOrEqual(2)  // never exceeded maxConcurrent
   })
+})
+
+it('fans a multi-target trigger into one run per target', async () => {
+  const calls: string[] = []
+  const fire = makeSchedulerFire({
+    store: {} as any, worktreesRoot: '/wt',
+    fireOne: async (cwd: string) => { calls.push(cwd); return { fired: true, runId: 'r', settled: Promise.resolve() } },
+    onSkip: async () => {},
+  })
+  const trig = { id: 't', type: 'cron', schedule: '* * * * *', cwd: '/a', targets: ['/b'], isolation: 'worktree', catchUp: false, maxRunsPerDay: 1, enabled: true } as any
+  await fire('wf1', 'cwc-flow', trig)
+  expect(calls.sort()).toEqual(['/a', '/b'])
 })

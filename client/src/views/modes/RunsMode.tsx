@@ -5,6 +5,7 @@ import { api } from '../../lib/api.ts'
 import { InboxItem } from '../../components/runs/InboxItem.tsx'
 import { SettingsBlock } from '../../components/runs/SettingsBlock.tsx'
 import { fmtDuration, fmtRelative, STATUS_LABEL, eventLabel } from '../../components/runs/format.ts'
+import { diffLineKind } from '../../lib/diff-lines.ts'
 import type { ModeProps } from '../modeProps.ts'
 import './RunsMode.css'
 
@@ -20,6 +21,7 @@ export function RunsMode({ workflow, runState }: ModeProps) {
   const [selectedRunId, setSelectedRunId] = useState<string | null>(defaultRunId)
   const [historicalEvents, setHistoricalEvents] = useState<RunEvent[]>([])
   const [showSettings, setShowSettings] = useState(false)
+  const [diff, setDiff] = useState<{ diff: string | null; status: string | null; branch: string | null } | null>(null)
 
   // When the run list changes (new run started), update selection if nothing was chosen
   useEffect(() => {
@@ -57,6 +59,16 @@ export function RunsMode({ workflow, runState }: ModeProps) {
   const timeline: RunEvent[] = isLiveView ? liveEvents : historicalEvents
 
   const selectedRun: RunSummary | undefined = runs.find(r => r.runId === selectedRunId)
+
+  // Fetch the diff for whatever run is selected (paused, completed, or live).
+  useEffect(() => {
+    if (!selectedRunId) { setDiff(null); return }
+    let cancelled = false
+    api.runs.diff(workflow.meta.id, selectedRunId)
+      .then(d => { if (!cancelled) setDiff(d) })
+      .catch(() => { if (!cancelled) setDiff(null) })
+    return () => { cancelled = true }
+  }, [selectedRunId, workflow.meta.id, selectedRun?.lastEventAt])
 
   function selectRun(runId: string) {
     setSelectedRunId(prev => prev === runId ? prev : runId)
@@ -207,6 +219,20 @@ export function RunsMode({ workflow, runState }: ModeProps) {
                   ))}
                 </ol>
                 <TimelineSummary />
+                {diff?.diff && (
+                  <div className="runs-mode__diff">
+                    <div className="runs-mode__diff-head">
+                      <span className="runs-mode__diff-title">Changes</span>
+                      {diff.branch && <span className="runs-mode__diff-branch">{diff.branch}</span>}
+                    </div>
+                    <div className="runs-mode__diff-body">
+                      {diff.diff.split('\n').map((line, i) => (
+                        <span key={i} className={`runs-mode__diff-line runs-mode__diff-line--${diffLineKind(line)}`}>{line || ' '}</span>
+                      ))}
+                    </div>
+                    {diff.status && <pre className="runs-mode__diff-stat">{diff.status}</pre>}
+                  </div>
+                )}
               </>
             ) : (
               <div className="runs-mode__timeline-loading">

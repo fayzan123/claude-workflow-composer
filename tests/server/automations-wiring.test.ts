@@ -134,6 +134,27 @@ describe('POST /api/triggers/:unknown', () => {
   })
 })
 
+describe('GET /api/automations/triggers', () => {
+  it('lists computed status across workflows', async () => {
+    const trig = {
+      id: 'trig-abc', type: 'cron', schedule: '0 2 * * *', cwd: '/tmp/repo',
+      isolation: 'worktree', catchUp: false, maxRunsPerDay: 1, enabled: true,
+    }
+    const cwc = { meta: { id: 'wf1', name: 'Nightly', description: '', version: 1, created: '', updated: '', triggers: [trig] }, nodes: [], edges: [] }
+    await fs.writeFile(path.join(workflowsDir, 'nightly.cwc'), JSON.stringify(cwc))
+
+    const res = await fetch(`${base}/api/automations/triggers`)
+    expect(res.status).toBe(200)
+    const body = await res.json() as Array<{ triggerId: string; workflowId: string; enabled: boolean; armed: boolean; nextFireAt: string | null }>
+    const row = body.find((r) => r.triggerId === 'trig-abc')
+    expect(row).toBeTruthy()
+    expect(row!.workflowId).toBe('wf1')
+    expect(row!.enabled).toBe(true)
+    expect(typeof row!.nextFireAt === 'string' || row!.nextFireAt === null).toBe(true)
+    expect(row).toHaveProperty('armed')
+  })
+})
+
 describe('POST /api/automations/trigger-status', () => {
   const trigger = {
     id: 'trig-status-1',
