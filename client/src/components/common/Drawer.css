@@ -1,0 +1,106 @@
+.drawer-root {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  pointer-events: none;
+}
+
+/* Dim scrim — lighter than Modal, content stays visible behind it */
+.drawer-scrim {
+  position: absolute;
+  inset: 0;
+  background: oklch(0 0 0 / 0.25);
+  pointer-events: all;
+  animation: drawer-scrim-in 0.2s var(--ease-out) both;
+}
+
+/* Right-anchored panel */
+.drawer-panel {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 440px;
+  max-width: 90vw;
+  background: var(--color-surface);
+  border-left: 1px solid var(--color-border);
+  box-shadow: var(--shadow-xl);
+  display: flex;
+  flex-direction: column;
+  pointer-events: all;
+  outline: none;
+  animation: drawer-slide-in 0.28s var(--ease-out-expo) both;
+}
+
+.drawer-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-xl);
+  border-bottom: 1px solid var(--color-border);
+  flex-shrink: 0;
+}
+
+.drawer-title {
+  margin: 0;
+  font-size: var(--text-lg);
+  font-family: var(--font-display);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--color-text);
+}
+
+.drawer-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  color: var(--color-text-tertiary);
+  transition: background var(--transition-fast), color var(--transition-fast), border-color var(--transition-fast);
+}
+
+.drawer-close:hover {
+  background: var(--color-surface-hover);
+  color: var(--color-text);
+  border-color: var(--color-border);
+}
+
+.drawer-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--space-xl);
+}
+
+/* Slide-in from the right */
+@keyframes drawer-slide-in {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+@keyframes drawer-scrim-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* Respect reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  .drawer-panel {
+    animation: drawer-fade-only 0.15s var(--ease-out) both;
+  }
+
+  @keyframes drawer-fade-only {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+}
