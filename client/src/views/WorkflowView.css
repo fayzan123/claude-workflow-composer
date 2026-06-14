@@ -5,6 +5,15 @@
   background: var(--color-surface);
 }
 
+/* Body container that swaps mode content — header above stays mounted */
+.workflow-view__body {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
 .workflow-view__loading {
   height: 100vh;
   display: flex;
