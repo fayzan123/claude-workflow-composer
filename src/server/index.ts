@@ -94,7 +94,7 @@ export function createApp(opts: AppOptions): express.Express {
   app.use('/api/triggers', triggersRouter({ workflowsDir: wfDir, state: autoState, store: runStore, worktreesRoot, claudeBinPath: opts.claudeBinPath, isWorkflowBusy }))
 
   let config = loadConfig(configPath)
-  app.use('/api/automations', automationsRouter({ state: autoState, configPath, onConfigChanged: (c) => { config = c } }))
+  app.use('/api/automations', automationsRouter({ state: autoState, configPath, workflowsDir: wfDir, onConfigChanged: (c) => { config = c } }))
   if (opts.enableNotifier !== false) startNotifier({ store: runStore, getConfig: () => config })
 
   let scheduler: ReturnType<typeof createScheduler> | null = null
