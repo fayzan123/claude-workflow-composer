@@ -142,11 +142,21 @@ export function runsRouter(opts: RunsRouterOptions): Router {
     const events = await store.getEvents(workflowId, req.params.runId)
     if (!events) return void res.status(404).json({ error: 'run not found' })
     const started = events.find(e => e.type === 'run_started')
-    const dir = started?.worktreePath ?? started?.cwd
-    if (!started?.baseSha || !dir) return void res.json({ diff: null, status: null, branch: started?.branch ?? null })
+    if (!started?.baseSha) return void res.json({ diff: null, status: null, branch: started?.branch ?? null })
     try {
-      const d = await getDiff(dir, started.baseSha)
-      res.json({ ...d, branch: started.branch ?? null })
+      // Prefer the live worktree (paused/running runs); fall back to the kept branch
+      // (completed worktree runs — worktree swept, branch retained); else in-place HEAD.
+      let result
+      if (started.worktreePath && fs.existsSync(started.worktreePath)) {
+        result = await getDiff(started.worktreePath, started.baseSha)
+      } else if (started.branch && started.cwd) {
+        result = await getDiff(started.cwd, started.baseSha, started.branch)
+      } else if (started.cwd) {
+        result = await getDiff(started.cwd, started.baseSha)
+      } else {
+        return void res.json({ diff: null, status: null, branch: started.branch ?? null })
+      }
+      res.json({ ...result, branch: started.branch ?? null })
     } catch (err) {
       res.json({ diff: null, status: null, branch: started.branch ?? null, error: err instanceof Error ? err.message : String(err) })
     }

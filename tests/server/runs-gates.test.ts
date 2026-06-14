@@ -7,6 +7,7 @@ import * as http from 'node:http'
 import { execFileSync } from 'node:child_process'
 import type { AddressInfo } from 'node:net'
 import { createApp } from '../../src/server/index.js'
+import { createRunStore } from '../../src/server/run-store.js'
 import { makeBin } from '../helpers/make-bin.js'
 
 let binDir: string
@@ -332,5 +333,41 @@ describe('gate endpoints', () => {
       body: JSON.stringify({ workflowId: 'wf-1' }),
     })
     expect(approveRes.status).toBe(404)
+  })
+
+  it('7. serves a diff for a completed worktree run from its kept branch', async () => {
+    // Arrange: a real repo + a CWC run branch with a committed change, worktree removed.
+    const diffRepo = await fs.mkdtemp(path.join(os.tmpdir(), 'cwc-diff-repo-'))
+    try {
+      execFileSync('git', ['-C', diffRepo, 'init', '-b', 'main'])
+      execFileSync('git', ['-C', diffRepo, 'config', 'user.email', 't@t.t'])
+      execFileSync('git', ['-C', diffRepo, 'config', 'user.name', 't'])
+      await fs.writeFile(path.join(diffRepo, 'a.txt'), 'one\n')
+      execFileSync('git', ['-C', diffRepo, 'add', '-A'])
+      execFileSync('git', ['-C', diffRepo, 'commit', '-m', 'init'])
+      const baseSha = execFileSync('git', ['-C', diffRepo, 'rev-parse', 'HEAD'], { encoding: 'utf-8' }).trim()
+      const branch = 'cwc/flow/run-done'
+      execFileSync('git', ['-C', diffRepo, 'branch', branch])
+      // Commit a change onto the branch without checking it out (keeps main clean).
+      const wt = path.join(await fs.mkdtemp(path.join(os.tmpdir(), 'cwc-diff-wt-')), 'w')
+      execFileSync('git', ['-C', diffRepo, 'worktree', 'add', wt, branch])
+      await fs.writeFile(path.join(wt, 'a.txt'), 'two\n')
+      execFileSync('git', ['-C', wt, 'commit', '-am', 'change'])
+      execFileSync('git', ['-C', diffRepo, 'worktree', 'remove', '--force', wt])
+
+      // Pre-populate run events using a store pointed at runsDir (same dir the app uses).
+      const store = createRunStore(runsDir)
+      await store.append({ runId: 'run-done', workflowId: 'wf1', workflowSlug: 'flow', type: 'run_started', ts: new Date().toISOString(), source: 'test', cwd: diffRepo, baseSha, worktreePath: wt, branch })
+      await store.append({ runId: 'run-done', workflowId: 'wf1', workflowSlug: 'flow', type: 'run_completed', ts: new Date().toISOString(), status: 'complete', source: 'test' })
+
+      startApp(okBin)
+      const res = await fetch(`${base}/api/runs/run-done/diff?workflowId=wf1`)
+      expect(res.status).toBe(200)
+      const body = (await res.json()) as Record<string, unknown>
+      expect(body.diff).toContain('+two')
+      expect(body.branch).toBe(branch)
+    } finally {
+      await fs.rm(diffRepo, { recursive: true, force: true }).catch(() => { /* ignore */ })
+    }
   })
 })
