@@ -5,6 +5,7 @@ import { api } from '../../lib/api.ts'
 import { InboxItem } from '../../components/runs/InboxItem.tsx'
 import { SettingsBlock } from '../../components/runs/SettingsBlock.tsx'
 import { fmtDuration, fmtRelative, STATUS_LABEL, eventLabel } from '../../components/runs/format.ts'
+import { diffLineKind } from '../../lib/diff-lines.ts'
 import type { ModeProps } from '../modeProps.ts'
 import './RunsMode.css'
 
@@ -224,7 +225,11 @@ export function RunsMode({ workflow, runState }: ModeProps) {
                       <span className="runs-mode__diff-title">Changes</span>
                       {diff.branch && <span className="runs-mode__diff-branch">{diff.branch}</span>}
                     </div>
-                    <pre className="runs-mode__diff-body">{diff.diff}</pre>
+                    <div className="runs-mode__diff-body">
+                      {diff.diff.split('\n').map((line, i) => (
+                        <span key={i} className={`runs-mode__diff-line runs-mode__diff-line--${diffLineKind(line)}`}>{line || ' '}</span>
+                      ))}
+                    </div>
                     {diff.status && <pre className="runs-mode__diff-stat">{diff.status}</pre>}
                   </div>
                 )}

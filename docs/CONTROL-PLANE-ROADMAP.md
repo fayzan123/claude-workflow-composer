@@ -94,3 +94,63 @@ runs (respecting the concurrency cap). Schema + scheduler + UI.
 
 1, 2 (P0) → 3, 4 (P1) → 5 (P2). Items 1 and 3 most directly unblock dogfooding: #1 gives you
 something worth reviewing, #3 makes the app feel alive.
+
+---
+
+## Dogfooding findings (2026-06-14)
+
+Surfaced while smoke-testing the gate → review → approve loop. The diff *content* is correct;
+the diff *viewer* (`RunsMode` `runs-mode__diff-body`) is bare-minimum. Follow-up polish:
+
+- [x] **Color the diff (must-do, ~20 lines).** Done — `client/src/lib/diff-lines.ts`
+  (`diffLineKind`, unit-tested) + colored line spans in `RunsMode` via `--color-success*` /
+  `--color-error*` tokens.
+- [ ] **Move the diff above the timeline (should-do).** It's currently last in the detail pane —
+  you scroll past the whole event log to reach the thing you decide on. For review-then-approve
+  it's the headline; put it at the top of the detail (or directly under the approval card).
+- [ ] **Co-locate review + action.** Diff lives in the run detail; Approve/Reject live in the
+  inbox card → scroll down to read, up to act. Put the diff in the same viewport as the buttons.
+
+Decision standing: keep raw diff (not plain-English) — approver is a developer.
+
+- [ ] **Schedules widget ignores global pause.** When automations are paused globally, the
+  Schedules row still shows "on · next in 15h" — contradictory (it will NOT fire). The row should
+  reflect the global pause (e.g. "on · paused globally", or mute/strike the next-fire time). The
+  `/automations/triggers` rows could carry the global `paused` flag, or the dashboard already
+  knows it (`globalPaused`) and can override the display.
+
+- [ ] **Raw-cron escape hatch in the schedule modal.** Schedule UI is preset-only (frequency
+  dropdown + time). Add a raw cron field under the existing **+ ADVANCED** disclosure that writes
+  the same `CwcTrigger.schedule` string (no backend change — scheduler is already cron-capable),
+  validates via `croner`, and renders the same `describeCron` + next-run preview. Keep presets as
+  the default (progressive disclosure: presets for the 90%, raw cron for power users).
+
+---
+
+## Phase 2 — Agent execution transparency (the big one)
+
+> Surfaced 2026-06-14 dogfooding. The biggest control-plane gap: the run timeline shows
+> orchestrator-reported *milestones* ("Started / Finished / Produced File"), not the agent's
+> actual reasoning, tool calls, and tool results. The rich trace is produced by `claude -p`
+> and then **thrown away**. For an unattended control plane, trust comes from seeing *how/why*
+> an agent did something, not just *that* it finished. This is more important than any single
+> P0/P1 gap above and is its own project (brainstorm + plan before building).
+
+**Root cause:** `src/server/workflow-runner.ts:59` spawns with `--output-format json`, which
+buffers the whole run and emits one final JSON object; the runner (`:99-103`) reads only the
+final `result`/`cost`/`session_id`. All intermediate turns are discarded. The timeline events
+are self-reported by the exported skill orchestrator via `POST /api/runs/events` curls — coarse
+by construction.
+
+**Direction:** switch to `--output-format stream-json --verbose`; consume the child's stdout as
+a line-delimited event stream (assistant text + `tool_use`, user `tool_result`, final result);
+persist it (separate per-run transcript file) and surface a per-step "what the agent did" view,
+reusing the existing SSE + run-store infra.
+
+**Open questions / tradeoffs to scope:**
+- [ ] Volume — stream-json is chatty; efficient storage + progressive rendering needed.
+- [ ] Schema — current `RunEvent` is milestone-shaped; map the agent stream or store transcript alongside + add a dedicated view.
+- [ ] Subagents — how much of a Task-delegated subagent's internal turns surface (needs a spike).
+- [ ] Gate resume — capture the `--resume` session's stream too.
+
+- [ ] Brainstorm + write a plan for Phase 2 before implementing.

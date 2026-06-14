@@ -349,3 +349,10 @@
 .runs-mode__diff-title { font-weight: 600; font-size: var(--text-sm); }
 .runs-mode__diff-branch { font-family: var(--font-mono); font-size: var(--text-xs); color: var(--color-text-tertiary); }
 .runs-mode__diff-body, .runs-mode__diff-stat { font-family: var(--font-mono); font-size: var(--text-xs); white-space: pre; overflow-x: auto; background: var(--color-surface-secondary); padding: var(--space-sm); border-radius: var(--radius-sm); margin: 0 0 var(--space-xs); }
+.runs-mode__diff-body { display: block; }
+.runs-mode__diff-line { display: block; white-space: pre; }
+.runs-mode__diff-line--add { color: var(--color-success-dark); background: var(--color-success-light); }
+.runs-mode__diff-line--del { color: var(--color-error-dark); background: var(--color-error-light); }
+.runs-mode__diff-line--hunk { color: var(--color-text-tertiary); font-weight: 600; }
+.runs-mode__diff-line--meta { color: var(--color-text-tertiary); }
+.runs-mode__diff-line--ctx { color: var(--color-text); }
