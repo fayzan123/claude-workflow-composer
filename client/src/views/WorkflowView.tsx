@@ -1,12 +1,12 @@
 import React, { useEffect, useState, useCallback } from 'react'
-import { useParams, Navigate, useNavigate } from 'react-router-dom'
+import { useParams, Navigate } from 'react-router-dom'
 import { api } from '../lib/api.ts'
 import { useWorkflow } from '../hooks/useWorkflow.ts'
 import { useAutoSave } from '../hooks/useAutoSave.ts'
 import { useRunEvents } from '../hooks/useRunEvents.ts'
 import { slugify } from '../../../src/slugify.ts'
-import { RunPanel } from '../components/RunPanel.tsx'
 import { RunModal } from '../components/RunModal.tsx'
+import { RunsMode } from './modes/RunsMode.tsx'
 import { WorkflowHeader } from '../components/shell/WorkflowHeader.tsx'
 import { BuildMode } from './modes/BuildMode.tsx'
 import './WorkflowView.css'
@@ -16,8 +16,6 @@ const VALID_MODES: Mode[] = ['build', 'runs', 'automate']
 
 export function WorkflowView() {
   const { id, mode: rawMode } = useParams<{ id: string; mode: string }>()
-  const navigate = useNavigate()
-
   // Validate mode early — unknown modes redirect to build
   const mode = VALID_MODES.includes(rawMode as Mode) ? (rawMode as Mode) : null
 
@@ -150,17 +148,7 @@ export function WorkflowView() {
             </button>
           }
         />
-        <div className="workflow-view__runs-body">
-          <RunPanel
-            workflowId={workflow.meta.id}
-            runs={runState.runs}
-            liveEvents={runState.liveEvents}
-            activeRun={runState.activeRun}
-            pausedRuns={runState.pausedRuns}
-            onClose={() => navigate(`/w/${id}/build`)}
-            onChanged={runState.refresh}
-          />
-        </div>
+        <RunsMode {...modeProps} />
         {showRunModal && (
           <RunModal
             workflowId={workflow.meta.id}
