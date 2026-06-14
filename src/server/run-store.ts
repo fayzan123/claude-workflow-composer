@@ -94,8 +94,21 @@ export function createRunStore(runsDir: string): RunStore {
       }
       const summaries: RunSummary[] = []
       for (const f of files) {
-        const events = await readEvents(workflowId, f.replace(/\.jsonl$/, ''))
-        if (events && events.length > 0) summaries.push(summarize(events))
+        const runId = f.replace(/\.jsonl$/, '')
+        const events = await readEvents(workflowId, runId)
+        if (events && events.length > 0) {
+          const summary = summarize(events)
+          // A run still in the active registry is mid-flight in this process. Its child
+          // can write `awaiting_approval` to disk (status → paused) a beat before the
+          // parent runs classifyAndFinish → releaseRun. Report it as 'running' until it's
+          // released, so the public status stays consistent with hasActiveTestRun and a
+          // client can't try to approve/reject a run that hasn't been released yet.
+          // (Fixes a flaky approve/reject race on slow CI legs.)
+          if (summary.status === 'paused' && activeRuns.has(runId)) {
+            summary.status = 'running'
+          }
+          summaries.push(summary)
+        }
       }
       return summaries.sort((a, b) => Date.parse(b.startedAt) - Date.parse(a.startedAt))
     },
