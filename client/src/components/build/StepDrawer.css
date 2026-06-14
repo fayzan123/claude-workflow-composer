@@ -1,0 +1,26 @@
+/* Footer sits below the embedded panel content, pinned to the bottom of the drawer body */
+.step-drawer__footer {
+  padding-top: var(--space-xl);
+  border-top: 1px solid var(--color-border);
+  margin-top: var(--space-xl);
+}
+
+.step-drawer__delete {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: var(--text-sm);
+  font-weight: 500;
+  padding: 6px 14px;
+  background: none;
+  border: 1px solid var(--color-error-light);
+  color: var(--color-error);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+
+.step-drawer__delete:hover {
+  background: var(--color-error);
+  color: var(--color-text-inverse);
+}

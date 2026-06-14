@@ -10,12 +10,15 @@ interface Props {
   dispatch: React.Dispatch<WorkflowAction>
   onClose: () => void
   onDelete: () => void
+  /** When true, omits the outer <aside> wrapper and header row (title/Delete/close).
+   *  Use inside a Drawer so the Drawer shell provides the chrome. */
+  embedded?: boolean
 }
 
 const TERMINAL_TYPES: TerminalType[] = ['complete', 'escalated', 'aborted']
 const ARTIFACT_TYPES: ArtifactType[] = ['file', 'text', 'json']
 
-export function EdgePanel({ edge, nodes, dispatch, onClose, onDelete }: Props) {
+export function EdgePanel({ edge, nodes, dispatch, onClose, onDelete, embedded }: Props) {
   function updateEdge(partial: Partial<Omit<CwcEdge, 'id'>>) {
     dispatch({ type: 'UPDATE_EDGE', payload: { edgeId: edge.id, ...partial } })
   }
@@ -69,17 +72,8 @@ export function EdgePanel({ edge, nodes, dispatch, onClose, onDelete }: Props) {
     updateEdge({ context: next })
   }
 
-  return (
-    <aside className="edge-panel">
-      <div className="edge-panel__header">
-        <span className="edge-panel__title">Edge Editor</span>
-        <div className="edge-panel__header-actions">
-          <button className="edge-panel__delete" onClick={onDelete} aria-label="Delete edge">Delete</button>
-          <button className="edge-panel__close" onClick={onClose} aria-label="Close panel">×</button>
-        </div>
-      </div>
-
-      <div className="edge-panel__body">
+  const body = (
+    <div className="edge-panel__body">
         <div className="edge-panel__field">
           <label className="edge-panel__label">Source Node</label>
           <select className="edge-panel__select" value={edge.from} onChange={handleFromChange}>
@@ -185,6 +179,19 @@ export function EdgePanel({ edge, nodes, dispatch, onClose, onDelete }: Props) {
           </button>
         </div>
       </div>
+  )
+
+  if (embedded) return body
+  return (
+    <aside className="edge-panel">
+      <div className="edge-panel__header">
+        <span className="edge-panel__title">Edge Editor</span>
+        <div className="edge-panel__header-actions">
+          <button className="edge-panel__delete" onClick={onDelete} aria-label="Delete edge">Delete</button>
+          <button className="edge-panel__close" onClick={onClose} aria-label="Close panel">×</button>
+        </div>
+      </div>
+      {body}
     </aside>
   )
 }

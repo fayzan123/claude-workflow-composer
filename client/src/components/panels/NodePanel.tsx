@@ -5,7 +5,6 @@ import type { SkillEntry } from '../../../../src/server/api/skills.ts'
 import { slugify } from '../../../../src/slugify.ts'
 import { CLAUDE_MODELS } from '../../lib/models.ts'
 import { api } from '../../lib/api.ts'
-import { TriggersSection } from './TriggersSection.tsx'
 import { FieldHint } from '../common/FieldHint.tsx'
 import './NodePanel.css'
 
@@ -19,9 +18,12 @@ interface Props {
   dispatch: React.Dispatch<WorkflowAction>
   onClose: () => void
   onDelete: () => void
+  /** When true, omits the outer <aside> wrapper and header row (title/Delete/close).
+   *  Use inside a Drawer so the Drawer shell provides the chrome. */
+  embedded?: boolean
 }
 
-export function NodePanel({ node, isEntryNode, terminalEdge, workflow, dispatch, onClose, onDelete }: Props) {
+export function NodePanel({ node, isEntryNode, terminalEdge, workflow, dispatch, onClose, onDelete, embedded }: Props) {
   const [promptExpanded, setPromptExpanded] = useState(false)
   const [newSkill, setNewSkill] = useState('')
   const [skillFocused, setSkillFocused] = useState(false)
@@ -128,7 +130,33 @@ export function NodePanel({ node, isEntryNode, terminalEdge, workflow, dispatch,
 
   const isGate = node.nodeType === 'gate'
 
+  const gateBody = (
+    <div className="node-panel__body">
+      <div className="node-panel__field">
+        <label className="node-panel__label">Gate label</label>
+        <input
+          className="node-panel__input"
+          type="text"
+          value={node.agent.name}
+          onChange={handleNameChange}
+          placeholder="Gate name"
+        />
+      </div>
+      <div className="node-panel__field">
+        <label className="node-panel__label">Reviewer instructions</label>
+        <textarea
+          className="node-panel__textarea"
+          value={node.agent.description}
+          onChange={handleDescChange}
+          placeholder="What should the summary cover? What should the reviewer check?"
+          rows={4}
+        />
+      </div>
+    </div>
+  )
+
   if (isGate) {
+    if (embedded) return gateBody
     return (
       <aside className="node-panel">
         <div className="node-panel__header">
@@ -136,44 +164,13 @@ export function NodePanel({ node, isEntryNode, terminalEdge, workflow, dispatch,
           <button className="node-panel__delete" onClick={onDelete} aria-label="Delete node">Delete</button>
           <button className="node-panel__close" onClick={onClose} aria-label="Close panel">×</button>
         </div>
-        <div className="node-panel__body">
-          <div className="node-panel__field">
-            <label className="node-panel__label">Gate label</label>
-            <input
-              className="node-panel__input"
-              type="text"
-              value={node.agent.name}
-              onChange={handleNameChange}
-              placeholder="Gate name"
-            />
-          </div>
-          <div className="node-panel__field">
-            <label className="node-panel__label">Reviewer instructions</label>
-            <textarea
-              className="node-panel__textarea"
-              value={node.agent.description}
-              onChange={handleDescChange}
-              placeholder="What should the summary cover? What should the reviewer check?"
-              rows={4}
-            />
-          </div>
-        </div>
+        {gateBody}
       </aside>
     )
   }
 
-  return (
-    <aside className="node-panel">
-      <div className="node-panel__header">
-        <span className="node-panel__title">Node Editor</span>
-        <button className="node-panel__delete" onClick={onDelete} aria-label="Delete node">Delete</button>
-        <button className="node-panel__close" onClick={onClose} aria-label="Close panel">×</button>
-      </div>
-
-      <div className="node-panel__body">
-        {isEntryNode && !isGate && (
-          <TriggersSection workflow={workflow} dispatch={dispatch} />
-        )}
+  const nodeBody = (
+    <div className="node-panel__body">
         {isRef && (
           <div className="node-panel__ref-badge">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
@@ -372,6 +369,17 @@ export function NodePanel({ node, isEntryNode, terminalEdge, workflow, dispatch,
           )}
         </div>
       </div>
+  )
+
+  if (embedded) return nodeBody
+  return (
+    <aside className="node-panel">
+      <div className="node-panel__header">
+        <span className="node-panel__title">Node Editor</span>
+        <button className="node-panel__delete" onClick={onDelete} aria-label="Delete node">Delete</button>
+        <button className="node-panel__close" onClick={onClose} aria-label="Close panel">×</button>
+      </div>
+      {nodeBody}
     </aside>
   )
 }

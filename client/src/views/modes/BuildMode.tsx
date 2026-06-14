@@ -3,8 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { ReactFlowProvider } from '@xyflow/react'
 import { Canvas } from '../../components/Canvas.tsx'
 import { Sidebar } from '../../components/Sidebar.tsx'
-import { NodePanel } from '../../components/panels/NodePanel.tsx'
-import { EdgePanel } from '../../components/panels/EdgePanel.tsx'
+import { StepDrawer } from '../../components/build/StepDrawer.tsx'
 import { OrchestratorPreview } from '../../components/OrchestratorPreview.tsx'
 import { ExportFlow } from '../../components/ExportFlow.tsx'
 import { RunModal } from '../../components/RunModal.tsx'
@@ -316,32 +315,30 @@ export function BuildMode({
             nodeRunStates={nodeRunStates}
           />
         </ReactFlowProvider>
-        {selectedNode && (
-          <NodePanel
-            node={selectedNode}
-            isEntryNode={isEntryNode}
-            terminalEdge={terminalEdge}
-            workflow={workflow}
-            dispatch={dispatch}
-            onClose={() => handleSelectNode(null)}
-            onDelete={() => {
+        <StepDrawer
+          selectedNode={selectedNode}
+          selectedEdge={selectedEdge}
+          isEntryNode={isEntryNode}
+          terminalEdge={terminalEdge}
+          workflow={workflow}
+          dispatch={dispatch}
+          onClose={() => {
+            handleSelectNode(null)
+            handleSelectEdge(null)
+          }}
+          onDeleteNode={() => {
+            if (selectedNode) {
               dispatch({ type: 'REMOVE_NODE', payload: { nodeId: selectedNode.id } })
               handleSelectNode(null)
-            }}
-          />
-        )}
-        {selectedEdge && (
-          <EdgePanel
-            edge={selectedEdge}
-            nodes={workflow.nodes}
-            dispatch={dispatch}
-            onClose={() => handleSelectEdge(null)}
-            onDelete={() => {
+            }
+          }}
+          onDeleteEdge={() => {
+            if (selectedEdge) {
               dispatch({ type: 'REMOVE_EDGE', payload: { edgeId: selectedEdge.id } })
               handleSelectEdge(null)
-            }}
-          />
-        )}
+            }
+          }}
+        />
         {!selectedNode && !selectedEdge && showPreview && (
           <OrchestratorPreview
             workflow={workflow}
