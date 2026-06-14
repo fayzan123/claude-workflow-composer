@@ -1,3 +1,4 @@
+import type React from 'react'
 import type { CwcFile } from '../types.ts'
 import type { WorkflowAction } from '../hooks/useWorkflow.ts'
 import type { useRunEvents } from '../hooks/useRunEvents.ts'

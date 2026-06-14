@@ -94,7 +94,6 @@ export function Modal({ open, onClose, title, children }: ModalProps) {
         className="modal-dialog"
         role="dialog"
         aria-modal="true"
-        aria-label={title ?? undefined}
         aria-labelledby={title ? titleId : undefined}
         tabIndex={-1}
         onClick={e => e.stopPropagation()}

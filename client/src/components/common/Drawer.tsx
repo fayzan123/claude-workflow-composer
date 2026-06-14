@@ -9,6 +9,15 @@ export interface DrawerProps {
   children: React.ReactNode
 }
 
+/** All focusable elements inside a container, ordered by DOM position. */
+function getFocusable(container: HTMLElement): HTMLElement[] {
+  return Array.from(
+    container.querySelectorAll<HTMLElement>(
+      'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+    )
+  )
+}
+
 export function Drawer({ open, onClose, title, children }: DrawerProps) {
   const titleId = useId()
   const drawerRef = useRef<HTMLDivElement>(null)
@@ -21,11 +30,9 @@ export function Drawer({ open, onClose, title, children }: DrawerProps) {
       // Move focus into the drawer on next frame
       requestAnimationFrame(() => {
         if (drawerRef.current) {
-          const first = drawerRef.current.querySelector<HTMLElement>(
-            'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
-          )
-          if (first) {
-            first.focus()
+          const focusable = getFocusable(drawerRef.current)
+          if (focusable.length > 0) {
+            focusable[0].focus()
           } else {
             drawerRef.current.focus()
           }
@@ -40,13 +47,33 @@ export function Drawer({ open, onClose, title, children }: DrawerProps) {
     }
   }, [open])
 
-  // Esc key closes
+  // Esc key + Tab focus trap
   useEffect(() => {
     if (!open) return
     function handleKey(e: KeyboardEvent) {
       if (e.key === 'Escape') {
         e.stopPropagation()
         onClose()
+        return
+      }
+
+      // Focus trap: keep Tab cycling within the drawer
+      if (e.key === 'Tab' && drawerRef.current) {
+        const focusable = getFocusable(drawerRef.current)
+        if (focusable.length === 0) return
+        const first = focusable[0]
+        const last = focusable[focusable.length - 1]
+        if (e.shiftKey) {
+          if (document.activeElement === first) {
+            e.preventDefault()
+            last.focus()
+          }
+        } else {
+          if (document.activeElement === last) {
+            e.preventDefault()
+            first.focus()
+          }
+        }
       }
     }
     document.addEventListener('keydown', handleKey)
@@ -69,7 +96,6 @@ export function Drawer({ open, onClose, title, children }: DrawerProps) {
         className="drawer-panel"
         role="dialog"
         aria-modal="true"
-        aria-label={title ?? undefined}
         aria-labelledby={title ? titleId : undefined}
         tabIndex={-1}
       >

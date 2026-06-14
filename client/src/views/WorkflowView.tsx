@@ -1,6 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react'
 import { useParams, Navigate, useNavigate } from 'react-router-dom'
-import type { CwcFile } from '../types.ts'
 import { api } from '../lib/api.ts'
 import { useWorkflow } from '../hooks/useWorkflow.ts'
 import { useAutoSave } from '../hooks/useAutoSave.ts'
@@ -40,19 +39,26 @@ export function WorkflowView() {
   // Resolve id → file path on mount or when id changes
   useEffect(() => {
     if (!id) return
+    let cancelled = false
     setLoading(true)
     setNotFound(false)
 
     api.workflows.list()
       .then(async (items) => {
         const item = items.find((w) => w.id === id)
-        if (!item) { setNotFound(true); setLoading(false); return }
+        if (!item) {
+          if (!cancelled) { setNotFound(true); setLoading(false) }
+          return
+        }
         const cwc = await api.workflows.read(item.path)
+        if (cancelled) return
         setFilePath(item.path)
         dispatch({ type: 'LOAD', payload: cwc })
         setLoading(false)
       })
-      .catch(() => { setNotFound(true); setLoading(false) })
+      .catch(() => { if (!cancelled) { setNotFound(true); setLoading(false) } })
+
+    return () => { cancelled = true }
   }, [id]) // eslint-disable-line react-hooks/exhaustive-deps
   // dispatch is stable (useReducer); omitting from deps is intentional
 
@@ -196,9 +202,6 @@ export function WorkflowView() {
             ))}
           </ul>
         )}
-        <p className="workflow-view__automate-note">
-          Edit triggers in the entry node for now — a dedicated editor is coming.
-        </p>
       </div>
     </div>
   )

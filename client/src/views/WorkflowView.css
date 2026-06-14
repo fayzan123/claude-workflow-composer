@@ -73,12 +73,6 @@
   margin: 0;
 }
 
-.workflow-view__automate-note {
-  font-size: var(--text-sm);
-  color: var(--color-text-tertiary);
-  margin: var(--space-lg) 0 0;
-}
-
 .workflow-view__trigger-list {
   list-style: none;
   margin: 0 0 var(--space-lg) 0;

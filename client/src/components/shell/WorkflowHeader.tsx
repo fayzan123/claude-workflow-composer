@@ -120,6 +120,14 @@ export function WorkflowHeader({
           aria-label="Workflow name"
           placeholder="Workflow name"
         />
+        <input
+          className="workflow-header__desc-input"
+          type="text"
+          value={workflow.meta.description}
+          onChange={(e) => dispatch({ type: 'SET_META', payload: { description: e.target.value } })}
+          aria-label="Workflow description"
+          placeholder="Add a description…"
+        />
         {renameError && (
           <span className="workflow-header__rename-error" role="alert">{renameError}</span>
         )}

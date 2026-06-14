@@ -3,7 +3,7 @@
   align-items: center;
   gap: var(--space-sm);
   padding: 0 var(--space-lg);
-  height: 52px;
+  min-height: 52px;
   background: var(--color-surface);
   border-bottom: 1px solid var(--color-border);
   flex-shrink: 0;
@@ -61,6 +61,31 @@
 
 .workflow-header__name-input:focus {
   background: var(--color-surface-hover);
+  box-shadow: 0 0 0 2px var(--color-primary-ring);
+}
+
+.workflow-header__desc-input {
+  font-size: var(--text-xs);
+  font-family: var(--font-sans);
+  color: var(--color-text-tertiary);
+  background: transparent;
+  border: none;
+  outline: none;
+  padding: 1px 4px;
+  border-radius: var(--radius-sm);
+  transition: background var(--transition-fast), color var(--transition-fast);
+  width: 100%;
+  min-width: 0;
+}
+
+.workflow-header__desc-input:hover {
+  background: var(--color-surface-hover);
+  color: var(--color-text-secondary);
+}
+
+.workflow-header__desc-input:focus {
+  background: var(--color-surface-hover);
+  color: var(--color-text-secondary);
   box-shadow: 0 0 0 2px var(--color-primary-ring);
 }
 
