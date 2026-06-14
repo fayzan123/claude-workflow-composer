@@ -27,6 +27,7 @@ import { createScheduler } from './automation-scheduler.js'
 import { startNotifier } from './notifier.js'
 import { loadConfig } from './config.js'
 import { sweepOrphanWorktrees, fireWorkflow } from './run-launcher.js'
+import { serviceRouter } from './api/service.js'
 
 export interface AppOptions {
   staticDir: string | null
@@ -55,6 +56,7 @@ export function createApp(opts: AppOptions): express.Express {
   const recPath = opts.recentsPath ?? path.join(os.homedir(), '.cwc', 'recents.json')
 
   const homeDir = opts.userHomeDir ?? os.homedir()
+  app.use('/api/service-status', serviceRouter(homeDir))
   app.use('/api/agents/generate', agentsGenerateRouter(opts.claudeRunner))
   app.use('/api/agents', agentsRouter(homeDir))
 

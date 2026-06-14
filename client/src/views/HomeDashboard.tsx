@@ -111,6 +111,7 @@ export function HomeDashboard() {
   const [recentRuns, setRecentRuns] = useState<RunSummary[]>([])
   const [globalPaused, setGlobalPaused] = useState<boolean | null>(null)
   const [toggling, setToggling] = useState(false)
+  const [servicePersistent, setServicePersistent] = useState<boolean | null>(null)
 
   // ── Help modal
   const [showHelp, setShowHelp] = useState(false)
@@ -125,6 +126,7 @@ export function HomeDashboard() {
     api.runs.paused().then(setPaused).catch(() => setPaused([]))
     api.runs.recent(20).then(setRecentRuns).catch(() => setRecentRuns([]))
     api.automations.state().then((s) => setGlobalPaused(s.paused)).catch(() => {})
+    api.serviceStatus().then((s) => setServicePersistent(s.persistent)).catch(() => {})
   }, [])
 
   // ── Live reload workflows on that tab
@@ -637,6 +639,13 @@ export function HomeDashboard() {
                   {globalPaused ? 'Resume' : 'Pause all'}
                 </button>
               </div>
+              {servicePersistent !== null && (
+                <p className="hd-auto__persistence">
+                  {servicePersistent
+                    ? 'Runs at login — the server restarts automatically.'
+                    : 'Session-bound — stops on reboot. Run `npx cwc install-service` for 24/7.'}
+                </p>
+              )}
             </div>
           )}
         </aside>

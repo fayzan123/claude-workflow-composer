@@ -841,6 +841,12 @@
   background: var(--color-success-dark);
 }
 
+.hd-auto__persistence {
+  font-size: var(--text-xs);
+  color: var(--color-text-tertiary);
+  margin-top: var(--space-xs);
+}
+
 /* ── Responsive ──────────────────────────────────────────────────────────── */
 
 @media (max-width: 860px) {

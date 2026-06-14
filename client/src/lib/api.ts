@@ -124,6 +124,8 @@ export const api = {
       reqWithError<{ stopped: boolean }>('POST', `/runs/${encodeURIComponent(runId)}/stop`),
   },
 
+  serviceStatus: () => req<{ persistent: boolean; platform: string }>('GET', '/service-status'),
+
   automations: {
     state: () => req<{ paused: boolean }>('GET', '/automations/state'),
     setPaused: (paused: boolean) => req<{ paused: boolean }>('PUT', '/automations/state', { paused }),
