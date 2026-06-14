@@ -71,4 +71,17 @@ describe('getDiff', () => {
     expect(d.diff).toContain('+two')
     expect(d.status).toContain('b.txt')
   })
+
+  it('diffs a kept branch from the repo after its worktree is removed', async () => {
+    const info = await createWorktree(repo, 'f', 'run-kept', 'HEAD', wtRoot)
+    await fs.writeFile(path.join(info.worktreePath, 'a.txt'), 'two\n')
+    execFileSync('git', ['-C', info.worktreePath, 'commit', '-am', 'change'])
+    await removeWorktree(repo, info.worktreePath, info.branch, { keepBranch: true })
+
+    // Worktree is gone; diff the surviving branch from the main repo checkout.
+    const d = await getDiff(repo, info.baseSha, info.branch)
+    expect(d.diff).toContain('-one')
+    expect(d.diff).toContain('+two')
+    expect(d.status).toContain('a.txt')
+  })
 })

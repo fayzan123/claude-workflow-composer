@@ -34,7 +34,14 @@ export async function removeWorktree(repoCwd: string, worktreePath: string, bran
   if (!opts.keepBranch) await gitP(repoCwd, ['branch', '-D', branch]).catch(() => { /* already gone */ })
 }
 
-export async function getDiff(dir: string, baseSha: string): Promise<{ diff: string; status: string }> {
+export async function getDiff(dir: string, baseSha: string, ref?: string): Promise<{ diff: string; status: string }> {
+  if (ref) {
+    // Non-live ref (e.g. a kept run branch). Working-tree status is meaningless here,
+    // so report the committed change set as a stat summary instead.
+    const diff = await gitP(dir, ['diff', `${baseSha}..${ref}`])
+    const status = await gitP(dir, ['diff', '--stat', `${baseSha}..${ref}`])
+    return { diff, status }
+  }
   const diff = await gitP(dir, ['diff', `${baseSha}..HEAD`])
   const status = await gitP(dir, ['status', '--short'])
   return { diff, status }
