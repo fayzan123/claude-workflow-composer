@@ -253,8 +253,8 @@
 }
 
 @keyframes cwc-run-pulse {
-  0%, 100% { box-shadow: 0 0 0 0 rgb(59 130 246 / 0.55); }
-  50% { box-shadow: 0 0 0 8px rgb(59 130 246 / 0); }
+  0%, 100% { box-shadow: 0 0 0 0 oklch(0.62 0.13 195 / 0.55); }
+  50% { box-shadow: 0 0 0 8px oklch(0.62 0.13 195 / 0); }
 }
 
 .workflow-node--run-done {
