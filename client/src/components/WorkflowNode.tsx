@@ -44,8 +44,10 @@ export function WorkflowNode({ data }: NodeProps) {
 
   const hasIssues = nodeData.warnings.length > 0 || nodeData.errors.length > 0
   const hasErrors = nodeData.errors.length > 0
-  const accentColor = nodeData.agent.color ?? 'oklch(0.47 0.20 255)'
+  // Node-type color language: agent → teal (brand default), ref → muted neutral
   const isRef = !!nodeData.agentRef
+  const accentColor = nodeData.agent.color
+    ?? (isRef ? 'var(--color-text-tertiary)' : 'var(--color-primary)')
   const isRouter = nodeData.dispatchMode === 'conditional'
 
   return (

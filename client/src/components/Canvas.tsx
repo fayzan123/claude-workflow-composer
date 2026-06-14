@@ -2,6 +2,7 @@ import React, { useCallback, useMemo, useState, useEffect, useRef } from 'react'
 import {
   ReactFlow,
   Background,
+  BackgroundVariant,
   Controls,
   MiniMap,
   MarkerType,
@@ -259,7 +260,12 @@ export function Canvas({ workflow, dispatch, validation, onSelectNode, onSelectE
         onReconnect={onReconnect}
         fitView
       >
-        <Background />
+        <Background
+          variant={BackgroundVariant.Dots}
+          gap={21}
+          size={1.3}
+          color="color-mix(in oklch, var(--color-border) 60%, var(--color-primary) 8%)"
+        />
         <Controls />
         <MiniMap />
       </ReactFlow>

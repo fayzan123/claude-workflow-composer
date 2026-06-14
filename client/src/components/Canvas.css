@@ -11,9 +11,9 @@
 .workflow-node {
   position: relative;
   background: var(--color-surface);
-  border: 1.5px solid var(--color-border);
-  border-radius: var(--radius-xl);
-  padding: 16px 16px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: 14px 14px 10px;
   min-width: 180px;
   max-width: 240px;
   box-shadow: var(--shadow-sm);
@@ -25,6 +25,7 @@
 }
 
 .workflow-node:hover {
+  border-color: var(--color-border-hover);
   box-shadow: var(--shadow-md);
 }
 
@@ -194,33 +195,50 @@
   letter-spacing: 0.04em;
   padding: 1px 6px;
   border-radius: var(--radius-sm);
-  background: oklch(0.93 0.06 50);
-  color: oklch(0.45 0.14 50);
+  background: var(--color-warning-light);
+  color: var(--color-warning-dark);
   flex-shrink: 0;
 }
 
-/* Gate node */
+/* Gate node — deliberate checkpoint, amber-branded, distinct from agent nodes */
 .workflow-node--gate {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 8px 14px;
+  gap: var(--space-sm);
+  padding: 10px 16px;
   min-width: 0;
   width: auto;
   border-style: dashed;
-  border-color: var(--color-warning, #fbbf24);
+  border-color: var(--color-warning);
+  border-width: 1.5px;
+  background: color-mix(in oklch, var(--color-warning-light) 60%, var(--color-surface));
+  border-radius: var(--radius-lg);
+}
+
+.workflow-node--gate::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: var(--space-md);
+  right: var(--space-md);
+  height: 2px;
+  background: var(--color-warning);
+  border-radius: 0 0 2px 2px;
 }
 
 .workflow-node__gate-icon {
-  font-size: 14px;
+  font-size: 13px;
   flex-shrink: 0;
+  opacity: 0.85;
 }
 
 .workflow-node__gate-label {
-  font-size: 13px;
+  font-family: var(--font-display);
+  font-size: var(--text-sm);
   font-weight: 600;
-  color: var(--color-text);
+  color: var(--color-warning-dark);
   white-space: nowrap;
+  letter-spacing: -0.01em;
 }
 
 /* Trigger pills on entry nodes */
@@ -238,9 +256,9 @@
   font-weight: 500;
   padding: 1px 5px;
   border-radius: var(--radius-sm);
-  background: oklch(0.93 0.04 80);
-  color: oklch(0.45 0.12 80);
-  border: 1px solid oklch(0.82 0.08 80);
+  background: var(--color-warning-light);
+  color: var(--color-warning-dark);
+  border: 1px solid color-mix(in oklch, var(--color-warning) 30%, transparent);
   white-space: nowrap;
   max-width: 140px;
   overflow: hidden;
@@ -253,21 +271,60 @@
 }
 
 @keyframes cwc-run-pulse {
-  0%, 100% { box-shadow: 0 0 0 0 oklch(0.62 0.13 195 / 0.55); }
-  50% { box-shadow: 0 0 0 8px oklch(0.62 0.13 195 / 0); }
+  0%, 100% { box-shadow: 0 0 0 0 color-mix(in oklch, var(--color-primary) 55%, transparent); }
+  50% { box-shadow: 0 0 0 8px color-mix(in oklch, var(--color-primary) 0%, transparent); }
 }
 
 .workflow-node--run-done {
-  outline: 1px solid rgb(52 211 153 / 0.6);
+  outline: 1px solid color-mix(in oklch, var(--color-success) 60%, transparent);
 }
 
 .workflow-node__run-check {
-  color: var(--color-success, #34d399);
+  color: var(--color-success);
   font-size: 12px;
   flex-shrink: 0;
 }
 
 /* ReactFlow overrides */
+
+/* Handles — clear, branded connection affordance */
+.react-flow__handle {
+  width: 10px;
+  height: 10px;
+  background: var(--color-surface);
+  border: 2px solid color-mix(in oklch, var(--color-primary) 50%, var(--color-border));
+  border-radius: 50%;
+  transition: background var(--transition-fast), border-color var(--transition-fast), transform var(--transition-fast);
+  /* nudge inward so handles sit at the node edge, not outside it */
+  transform: translateX(0);
+}
+
+/* Source handle on right */
+.react-flow__handle-right {
+  right: -5px;
+}
+
+/* Target handle on left */
+.react-flow__handle-left {
+  left: -5px;
+}
+
+/* On node hover: handles become clearly grabbable */
+.workflow-node:hover .react-flow__handle,
+.react-flow__handle:hover {
+  background: color-mix(in oklch, var(--color-primary) 15%, var(--color-surface));
+  border-color: var(--color-primary);
+  transform: scale(1.25);
+}
+
+/* Active/connecting state */
+.react-flow__handle.react-flow__handle-connecting,
+.react-flow__handle:active {
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+  transform: scale(1.2);
+}
+
 .react-flow__controls {
   box-shadow: var(--shadow-md);
   border-radius: var(--radius-lg);
@@ -304,6 +361,9 @@
 
 .react-flow__edge-textbg {
   fill: var(--color-surface);
+  rx: 4;
+  stroke: var(--color-border);
+  stroke-width: 1;
 }
 
 .react-flow__edge-text {
@@ -339,13 +399,17 @@
 }
 
 .canvas-empty-hint__text {
-  font-size: var(--text-sm);
-  font-weight: 500;
+  font-family: var(--font-display);
+  font-size: var(--text-md);
+  font-weight: 600;
   color: var(--color-text-secondary);
   margin: 0;
+  line-height: 1.15;
+  letter-spacing: -0.01em;
 }
 
 .canvas-empty-hint__sub {
   font-size: var(--text-xs);
   margin: 0;
+  color: var(--color-text-tertiary);
 }
