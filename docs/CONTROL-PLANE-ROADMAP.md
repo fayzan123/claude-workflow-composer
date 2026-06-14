@@ -32,10 +32,10 @@ resolve the diff against the surviving branch when the live worktree is gone:
 Surface the diff in the RunsMode **detail pane** for completed runs, not just the paused inbox.
 No schema change, no storage bloat.
 
-- [ ] `getDiff` accepts an optional ref; branch-mode status uses `--stat`
-- [ ] `/:runId/diff` resolves live-worktree vs. kept-branch vs. in-place
-- [ ] RunsMode detail pane shows the diff for completed (not just paused) runs
-- [ ] Tests: completed worktree run still yields a diff after worktree removal
+- [x] `getDiff` accepts an optional ref; branch-mode status uses `--stat`
+- [x] `/:runId/diff` resolves live-worktree vs. kept-branch vs. in-place
+- [x] RunsMode detail pane shows the diff for completed (not just paused) runs
+- [x] Tests: completed worktree run still yields a diff after worktree removal
 
 ### 2. Boot / login persistence — **P0**
 
@@ -48,9 +48,9 @@ via `cwc install-service` / removed via `cwc uninstall-service`, with `RunAtLoad
 macOS-first (matches the notifier). Until installed, the UI should state the scheduler is
 session-bound rather than implying 24/7.
 
-- [ ] `cwc install-service` writes + loads the launchd plist
-- [ ] `cwc uninstall-service` unloads + removes it
-- [ ] UI surfaces service state (persistent vs. session-bound)
+- [x] `cwc install-service` writes + loads the launchd plist
+- [x] `cwc uninstall-service` unloads + removes it
+- [x] UI surfaces service state (persistent vs. session-bound)
 
 ### 3. Live dashboard — **P1**
 
@@ -61,7 +61,7 @@ while a working SSE stream (`/api/runs/stream`) sits unused by the dashboard.
 **Approach.** Subscribe the dashboard to `/api/runs/stream` and refresh the paused/recent widgets
 on relevant events. Mostly plumbing; large perception payoff.
 
-- [ ] Dashboard subscribes to SSE and live-updates approvals + recent runs
+- [x] Dashboard subscribes to SSE and live-updates approvals + recent runs
 
 ### 4. Trigger legibility — **P1**
 
@@ -73,8 +73,8 @@ Easy to believe something is scheduled when it isn't. State already records `las
 last skip: daily cap` — on the dashboard / Automate mode. Add an endpoint that returns computed
 trigger status (armed, nextFireAt, lastFiredAt, lastSkip).
 
-- [ ] Endpoint returns computed trigger status (armed/nextFire/lastFired/lastSkip)
-- [ ] Dashboard / Automate mode renders it
+- [x] Endpoint returns computed trigger status (armed/nextFire/lastFired/lastSkip)
+- [x] Dashboard / Automate mode renders it
 
 ### 5. Multi-repo target model — **P2**
 
@@ -84,9 +84,9 @@ hand-maintained triggers. The fleet framing has no first-class model.
 **Approach.** Let a workflow/trigger carry a list of target repos; fan one firing into N isolated
 runs (respecting the concurrency cap). Schema + scheduler + UI.
 
-- [ ] Trigger carries `targets[]` (repo paths)
-- [ ] Scheduler fans one due trigger into N runs
-- [ ] UI to manage the target list
+- [x] Trigger carries `targets[]` (repo paths)
+- [x] Scheduler fans one due trigger into N runs
+- [x] UI to manage the target list
 
 ---
 
