@@ -59,6 +59,7 @@ export function AutomationModal({ open, trigger, onSave, onClose }: AutomationMo
   const [draft, setDraft] = useState<CwcTrigger | null>(null)
   const [schedule, setSchedule] = useState<Schedule>({ frequency: 'weekdays', time: '09:00' })
   const [showAdvanced, setShowAdvanced] = useState(false)
+  const [targetsText, setTargetsText] = useState('')
 
   // Initialize draft from trigger (or null for new)
   useEffect(() => {
@@ -66,9 +67,11 @@ export function AutomationModal({ open, trigger, onSave, onClose }: AutomationMo
     if (trigger) {
       setDraft({ ...trigger })
       setSchedule(scheduleFromCron(trigger.schedule))
+      setTargetsText((trigger.targets ?? []).join('\n'))
     } else {
       setDraft(null)
       setSchedule({ frequency: 'weekdays', time: '09:00' })
+      setTargetsText('')
     }
     setShowAdvanced(false)
   }, [open, trigger])
@@ -90,7 +93,7 @@ export function AutomationModal({ open, trigger, onSave, onClose }: AutomationMo
 
   function handleSave() {
     if (!draft) return
-    onSave(draft)
+    onSave({ ...draft, targets: targetsText.split('\n').map(s => s.trim()).filter(Boolean) })
     onClose()
   }
 
@@ -252,6 +255,20 @@ export function AutomationModal({ open, trigger, onSave, onClose }: AutomationMo
                   onChange={e => patchDraft({ cwd: e.target.value })}
                   placeholder="/absolute/path/to/project"
                 />
+              </label>
+
+              <label className="automation-modal__field">
+                <span className="automation-modal__label">Additional target repos (one path per line)</span>
+                <textarea
+                  className="automation-modal__input"
+                  rows={3}
+                  placeholder={"/path/to/another/repo\n/path/to/a/third/repo"}
+                  value={targetsText}
+                  onChange={(e) => setTargetsText(e.target.value)}
+                />
+                <span className="automation-modal__field-hint">
+                  Leave blank to run only in the working directory above. Each repo gets its own isolated run.
+                </span>
               </label>
 
               <label className="automation-modal__field">
