@@ -154,3 +154,62 @@ reusing the existing SSE + run-store infra.
 - [ ] Gate resume — capture the `--resume` session's stream too.
 
 - [ ] Brainstorm + write a plan for Phase 2 before implementing.
+
+---
+
+## Product thesis — automations born from conversation (the demand problem)
+
+> Surfaced 2026-06-14. This is strategy, not a feature. Captured to brainstorm as its own thing.
+> It may be the actual product, not an addition to it.
+
+**The real gap isn't *how* to make an automation — it's *if / why / when*.** The whole product
+(and every workflow tool: Zapier, n8n) assumes the user arrives already knowing they want a
+scheduled job, what it does, and when it runs. We built the *how* (presets, cron, targets) and
+skipped the hard part: **most people — expert or not — can't answer "should this be automated,
+and what should it be?" cold.** Writing `0 3 * * *` was never the barrier; *recognizing the
+opportunity* is.
+
+**Why this is the root gap, not a side issue.** It's the same root as "would anyone switch?"
+People don't carry a backlog of automations they wish they had. So a build-it-yourself tool hands
+them a blank canvas and waits for an intent they don't have. The canvas stays empty. **We serve
+demand; we don't create it — and pre-formed demand for this barely exists yet.**
+
+**The resolution (ties the whole strategy together).** Don't make the automation something you go
+to a canvas to author. Make it **born from the conversation you're already having**, and
+**discovered from repetition**:
+
+> You work with Claude in the terminal as normal. You run the tests, fix the flakes, open a PR.
+> You do it again two days later. The system notices the repeated shape and offers: "You've done
+> this 3× this week — want it to run nightly and just show you the diff to approve?" Yes promotes
+> that conversation into a scheduled, gated, observable workflow that then lives in CWC's control
+> plane.
+
+This fixes three things at once:
+- **if/why/when gap** — you didn't have to know you wanted it; repetition surfaced it, and the
+  "why" is self-evident (you keep doing it).
+- **conversation-vs-GUI tension** — the automation is created *by talking*, not by leaving the
+  conversation for a canvas. CWC's job becomes operating + auditing it (the part conversation
+  can't do).
+- **empty-canvas problem** — nobody starts blank; automations are discovered from real behavior.
+
+Reframes CWC from "a place to build automations you already want" → "the system that notices
+which repeated work *should* be automated, and gives the resulting agents a home." Demand-
+**creating**, not demand-serving.
+
+**Hard parts (don't sell the dream without these):**
+- **Clippy risk** — behavior-based suggestion is powerful when right, infuriating when wrong. Bar
+  for a sparse, well-timed, correct suggestion is high.
+- **Needs to see your work** — discovery-from-repetition means mining Claude Code session history
+  (`~/.claude`). Doable (the history exists) but a real privacy/trust design problem.
+- **Scope** — bigger than the control plane; but it's the *acquisition funnel* for it. Without it
+  the control plane is a beautiful empty room.
+
+**Cheap near-term moves that point the same direction (no big build):**
+- [ ] **Reframe templates by pain, not structure** — "Flaky tests eating your mornings," "stale
+  PRs," "dependency drift" — not "Full-Stack Feature Builder." Let people recognize *their*
+  problem.
+- [ ] **Lead with "when X happens," not cron** — event triggers (on push, on PR open) map to
+  *why* far better than a time-of-day the user has to invent. Webhook triggers already exist;
+  surface them ahead of cron in the automation UI.
+
+- [ ] Brainstorm this as its own product direction (separate from the control-plane gaps).
