@@ -1,0 +1,298 @@
+/* AutomateMode — primary automation home for a workflow */
+
+.automate-mode {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 28px 32px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  font-size: var(--text-sm);
+  background: var(--color-surface);
+}
+
+/* ── Header ── */
+
+.automate-mode__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-md);
+}
+
+.automate-mode__header-text {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.automate-mode__title {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--color-text);
+  font-family: var(--font-display);
+}
+
+.automate-mode__subtitle {
+  margin: 0;
+  font-size: var(--text-xs);
+  color: var(--color-text-tertiary);
+}
+
+/* ── Add button ── */
+
+.automate-mode__add-btn {
+  padding: 7px 14px;
+  background: var(--color-primary);
+  color: var(--color-text-inverse);
+  border: none;
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm);
+  font-weight: 500;
+  font-family: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background var(--transition-fast);
+}
+
+.automate-mode__add-btn:hover {
+  background: var(--color-primary-hover);
+}
+
+/* ── Empty state ── */
+
+.automate-mode__empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 56px 24px;
+  text-align: center;
+  color: var(--color-text-secondary);
+  border: 1px dashed var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-secondary);
+}
+
+.automate-mode__empty-headline {
+  margin: 0;
+  font-size: var(--text-sm);
+  font-weight: 500;
+  color: var(--color-text);
+}
+
+.automate-mode__empty-hint {
+  margin: 0;
+  font-size: var(--text-xs);
+  color: var(--color-text-tertiary);
+  max-width: 320px;
+  line-height: 1.5;
+}
+
+/* ── Trigger list ── */
+
+.automate-mode__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.automate-mode__row {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px 16px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  transition: border-color var(--transition-fast);
+  flex-wrap: wrap;
+}
+
+.automate-mode__row:hover {
+  border-color: var(--color-border-hover);
+}
+
+.automate-mode__row--draft {
+  opacity: 0.85;
+}
+
+.automate-mode__row--off {
+  opacity: 0.65;
+}
+
+.automate-mode__row-icon {
+  font-size: 16px;
+  line-height: 1.4;
+  flex-shrink: 0;
+}
+
+.automate-mode__row-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.automate-mode__row-summary {
+  font-size: var(--text-sm);
+  font-weight: 500;
+  color: var(--color-text);
+}
+
+.automate-mode__row-next {
+  font-size: var(--text-xs);
+  color: var(--color-text-tertiary);
+  font-family: var(--font-mono);
+  word-break: break-all;
+}
+
+.automate-mode__row-meta {
+  font-size: var(--text-xs);
+  color: var(--color-text-tertiary);
+}
+
+/* ── Lifecycle pill ── */
+
+.automate-mode__pill {
+  padding: 2px 8px;
+  border-radius: 9px;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+  align-self: flex-start;
+}
+
+.automate-mode__pill--draft {
+  background: var(--color-surface-secondary);
+  color: var(--color-text-tertiary);
+  border: 1px solid var(--color-border);
+}
+
+.automate-mode__pill--off {
+  background: var(--color-surface-secondary);
+  color: var(--color-text-tertiary);
+  border: 1px solid var(--color-border);
+}
+
+.automate-mode__pill--on {
+  background: oklch(0.92 0.10 160);
+  color: oklch(0.30 0.12 160);
+  border: 1px solid oklch(0.80 0.10 160);
+}
+
+/* ── Row actions ── */
+
+.automate-mode__row-actions {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  flex-wrap: wrap;
+  flex-shrink: 0;
+}
+
+.automate-mode__action-btn {
+  padding: 5px 10px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  font-size: var(--text-xs);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  font-family: inherit;
+  transition: border-color var(--transition-fast), background var(--transition-fast), color var(--transition-fast);
+}
+
+.automate-mode__action-btn:hover {
+  border-color: var(--color-primary);
+  background: var(--color-primary-light);
+  color: var(--color-primary);
+}
+
+.automate-mode__action-btn--turn-on {
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+  color: var(--color-text-inverse);
+  font-weight: 500;
+}
+
+.automate-mode__action-btn--turn-on:hover {
+  background: var(--color-primary-hover);
+  border-color: var(--color-primary-hover);
+  color: var(--color-text-inverse);
+}
+
+.automate-mode__action-btn--cancel {
+  background: transparent;
+  border-color: var(--color-border);
+  color: var(--color-text-tertiary);
+}
+
+.automate-mode__action-btn--cancel:hover {
+  background: var(--color-surface-hover);
+  border-color: var(--color-border-hover);
+  color: var(--color-text-secondary);
+}
+
+.automate-mode__action-btn--confirm {
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+  color: var(--color-text-inverse);
+  font-weight: 500;
+}
+
+.automate-mode__action-btn--confirm:hover {
+  background: var(--color-primary-hover);
+  border-color: var(--color-primary-hover);
+  color: var(--color-text-inverse);
+}
+
+.automate-mode__action-btn--delete:hover {
+  border-color: var(--color-error);
+  background: oklch(0.96 0.02 25);
+  color: var(--color-error);
+}
+
+/* ── Arm / trust prompt ── */
+
+.automate-mode__trust-prompt {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  background: oklch(0.97 0.02 80);
+  border: 1px solid oklch(0.88 0.06 80);
+  border-radius: var(--radius-md);
+  max-width: 340px;
+}
+
+.automate-mode__trust-text {
+  margin: 0;
+  font-size: var(--text-xs);
+  color: oklch(0.35 0.08 60);
+  line-height: 1.5;
+}
+
+.automate-mode__trust-btns {
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
+}
+
+/* ── Global note ── */
+
+.automate-mode__global-note {
+  margin: 0;
+  padding-top: 8px;
+  font-size: var(--text-xs);
+  color: var(--color-text-tertiary);
+  border-top: 1px solid var(--color-border);
+}

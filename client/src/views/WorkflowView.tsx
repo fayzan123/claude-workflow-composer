@@ -7,6 +7,7 @@ import { useRunEvents } from '../hooks/useRunEvents.ts'
 import { slugify } from '../../../src/slugify.ts'
 import { RunModal } from '../components/RunModal.tsx'
 import { RunsMode } from './modes/RunsMode.tsx'
+import { AutomateMode } from './modes/AutomateMode.tsx'
 import { WorkflowHeader } from '../components/shell/WorkflowHeader.tsx'
 import { BuildMode } from './modes/BuildMode.tsx'
 import './WorkflowView.css'
@@ -162,7 +163,6 @@ export function WorkflowView() {
   }
 
   // automate mode
-  const triggers = workflow.meta.triggers ?? []
   return (
     <div className="workflow-view workflow-view--automate">
       <WorkflowHeader
@@ -170,27 +170,7 @@ export function WorkflowView() {
         activeMode="automate"
         actions={null}
       />
-      <div className="workflow-view__automate-body">
-        {triggers.length === 0 ? (
-          <div className="workflow-view__automate-empty">
-            <p className="workflow-view__automate-empty-text">No automations yet.</p>
-            <p className="workflow-view__automate-empty-hint">
-              Edit triggers in the entry node for now — a dedicated editor is coming.
-            </p>
-          </div>
-        ) : (
-          <ul className="workflow-view__trigger-list">
-            {triggers.map((trigger, i) => (
-              <li key={i} className="workflow-view__trigger-item">
-                <span className="workflow-view__trigger-type">{trigger.type}</span>
-                {trigger.type === 'cron' && trigger.schedule && (
-                  <span className="workflow-view__trigger-detail">{trigger.schedule}</span>
-                )}
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
+      <AutomateMode {...modeProps} />
     </div>
   )
 }
