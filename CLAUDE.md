@@ -96,3 +96,7 @@ This is a full-stack TypeScript app: an Express server (`src/`) serving a React 
 Tests live in `tests/` (server tests in `tests/server/`, core tests at `tests/*.test.ts`). No client-side tests. Tests use real temp filesystems (via `fs.mkdtemp`) rather than mocks — don't introduce mocks for filesystem operations. Run a single file with `npx vitest run tests/<file>.test.ts`.
 
 The `AppOptions` interface in `src/server/index.ts` accepts `workflowsDir`, `userHomeDir`, `recentsPath`, `runsDir`, `claudeBinPath`, `worktreesRoot`, `automationStatePath`, `configPath`, `enableScheduler`, and `enableNotifier` overrides specifically for test injection — use these instead of mocking. Fake `claude` binaries for runner tests are built with `tests/helpers/make-bin.ts` (platform-aware: plain shebang script on POSIX, `.cmd` shim on Windows).
+
+## Design System
+
+Always read `DESIGN.md` before making any visual or UI decision. All font choices, colors, spacing, motion, and the canvas/node visual language are defined there (direction: "precise & warm" dev-tool, signature teal accent, warm-neutral surfaces, light-default + dark). Do not deviate without explicit user approval. In QA/review, flag any UI that doesn't match `DESIGN.md`.
