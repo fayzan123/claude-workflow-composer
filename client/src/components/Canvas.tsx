@@ -264,7 +264,9 @@ export function Canvas({ workflow, dispatch, validation, onSelectNode, onSelectE
           variant={BackgroundVariant.Dots}
           gap={21}
           size={1.3}
-          color="color-mix(in oklch, var(--color-border) 60%, var(--color-primary) 8%)"
+          /* Concrete OKLCH (not a token): React Flow puts this in an SVG fill attribute,
+             where CSS vars / color-mix don't resolve. Warm-neutral dot, faint teal tint. */
+          color="oklch(0.85 0.015 200)"
         />
         <Controls />
         <MiniMap />
