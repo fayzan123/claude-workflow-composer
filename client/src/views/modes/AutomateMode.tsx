@@ -18,20 +18,6 @@ interface TriggerStatus {
   lastSkip?: { ts: string; reason: string }
 }
 
-function newTrigger(type: CwcTrigger['type']): CwcTrigger {
-  return {
-    id: `trig-${crypto.randomUUID().slice(0, 8)}`,
-    type,
-    schedule: type === 'cron' ? '0 9 * * 1-5' : undefined,
-    token: type === 'webhook' ? crypto.randomUUID() : undefined,
-    cwd: '',
-    isolation: 'worktree',
-    catchUp: true,
-    maxRunsPerDay: 10,
-    enabled: true,
-  }
-}
-
 function nextRunPreview(schedule: string): string {
   try {
     const next = new Cron(schedule).nextRun()

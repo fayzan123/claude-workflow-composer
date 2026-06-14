@@ -5,19 +5,10 @@ import type { WorkflowAction } from '../../hooks/useWorkflow.ts'
 import { api } from '../../lib/api.ts'
 import { FieldHint } from '../common/FieldHint.tsx'
 import { Term } from '../common/Term.tsx'
+import { newTrigger } from '../../lib/trigger.ts'
 import './TriggersSection.css'
 
 interface Props { workflow: CwcFile; dispatch: React.Dispatch<WorkflowAction> }
-
-function newTrigger(type: CwcTrigger['type']): CwcTrigger {
-  return {
-    id: `trig-${crypto.randomUUID().slice(0, 8)}`,
-    type,
-    schedule: type === 'cron' ? '0 9 * * 1-5' : undefined,
-    token: type === 'webhook' ? crypto.randomUUID() : undefined,
-    cwd: '', isolation: 'worktree', catchUp: true, maxRunsPerDay: 10, enabled: true,
-  }
-}
 
 function nextRunPreview(schedule: string): string {
   try {

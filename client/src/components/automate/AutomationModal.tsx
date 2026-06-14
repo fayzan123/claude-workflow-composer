@@ -11,6 +11,7 @@ import {
   type Schedule,
 } from '../../lib/schedule-cron.ts'
 import type { CwcTrigger } from '../../types.ts'
+import { newTrigger } from '../../lib/trigger.ts'
 import './AutomationModal.css'
 
 export interface AutomationModalProps {
@@ -18,20 +19,6 @@ export interface AutomationModalProps {
   trigger: CwcTrigger | null   // null = creating new (shows type chooser)
   onSave: (trigger: CwcTrigger) => void
   onClose: () => void
-}
-
-function newTrigger(type: CwcTrigger['type']): CwcTrigger {
-  return {
-    id: `trig-${crypto.randomUUID().slice(0, 8)}`,
-    type,
-    schedule: type === 'cron' ? '0 9 * * 1-5' : undefined,
-    token: type === 'webhook' ? crypto.randomUUID() : undefined,
-    cwd: '',
-    isolation: 'worktree',
-    catchUp: true,
-    maxRunsPerDay: 10,
-    enabled: true,
-  }
 }
 
 function nextRunPreview(schedule: string): string {
