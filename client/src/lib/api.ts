@@ -126,6 +126,9 @@ export const api = {
 
   serviceStatus: () => req<{ persistent: boolean; platform: string }>('GET', '/service-status'),
 
+  automationCandidates: () =>
+    req<{ signature: string; count: number; summary: string; trigger: { kind: string; label: string }; cwds: string[]; lastSeen: string }[]>('GET', '/automation-candidates'),
+
   automations: {
     state: () => req<{ paused: boolean }>('GET', '/automations/state'),
     setPaused: (paused: boolean) => req<{ paused: boolean }>('PUT', '/automations/state', { paused }),

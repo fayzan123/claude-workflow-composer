@@ -912,6 +912,50 @@
   white-space: nowrap;
 }
 
+/* ── Rail: detected automations widget ──────────────────────────────────── */
+
+.hd-candidates {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+}
+
+.hd-candidates__item {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 4px 6px;
+  border-radius: var(--radius-md);
+  transition: background var(--transition-fast);
+}
+
+.hd-candidates__item:hover {
+  background: var(--color-surface-hover);
+}
+
+.hd-candidates__summary {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--color-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hd-candidates__meta {
+  font-size: var(--text-xs);
+  color: var(--color-text-tertiary);
+}
+
+.hd-candidates__note {
+  font-size: var(--text-xs);
+  color: var(--color-text-tertiary);
+  margin: var(--space-xs) 0 0 0;
+}
+
 /* ── Responsive ──────────────────────────────────────────────────────────── */
 
 @media (max-width: 860px) {
