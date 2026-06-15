@@ -213,3 +213,39 @@ which repeated work *should* be automated, and gives the resulting agents a home
   surface them ahead of cron in the automation UI.
 
 - [ ] Brainstorm this as its own product direction (separate from the control-plane gaps).
+
+---
+
+## Reality check & validation-first pivot (2026-06-14)
+
+A hard reality-check (Reality Checker agent, evidence-verified against the code) on the
+Promote-to-Automation direction. Verdict: **good engineering path, premature product path.**
+
+**The core finding:** the engineering is real and tested, but **demand is unvalidated and the
+roadmap itself concedes it** ("we serve demand; we don't create it — pre-formed demand barely
+exists yet"). The damning logic: Promote-to-Automation, honestly scoped (the autonomous `Stop`
+hook deferred), only fires when the user *already asked* — but such a user already knows what to
+automate, so it does **not** solve the *if/why/when* gap the thesis claims. It's demand-*serving*,
+not demand-*creating*; the demand-creating part is the deferred hook. The only usage evidence we
+have is one contrived dogfood (an agent writing one note file).
+
+**Decision: hold the Promote build. Validate demand first.** The Promote spec
+(`docs/superpowers/specs/2026-06-14-promote-to-automation-design.md`) stands as a document and
+its §1 has been corrected to say demand-*serving until the hook*. Do NOT start its implementation
+plan until the gate below returns signal.
+
+**Prioritized next steps:**
+- [x] **launchd ↔ `cwc stop` reliability (P0).** Done — CLI is now service-aware: when a launchd
+  service is installed it is the source of truth; `cwc` ensures it's loaded (no competing spawn /
+  port collision) and `cwc stop` unloads it (no KeepAlive respawn). Precondition for a real
+  unattended dogfood. *(branch `service-reliability-fix`)*
+- [x] **§1 spec honesty correction** — Promote spec now states it's demand-serving until the hook.
+- [ ] **Two-week self-dogfood on ONE real recurring job** (the gate for everything). Real repo,
+  armed + gated, approve real diffs each morning. If the builder won't sustain it over just
+  asking the terminal, no user will → pivot to what the dogfood reveals.
+- [ ] **Cheap demand probes (no Promote build):** templates reframed *by pain*; lead with
+  *"when X happens"* triggers. (Same as the two product-thesis bullets above.)
+- [ ] **Remaining cheap prereqs:** global-pause legibility; ref-node `tools`/`skills` prose honesty
+  (`prose-generator.ts:90-91`).
+- [ ] **Only if the dogfood earns it:** build Promote — and treat the `Stop` hook (autonomous
+  detection) as *the* feature, not the deferred afterthought.

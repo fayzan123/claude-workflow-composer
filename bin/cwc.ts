@@ -3,6 +3,7 @@ import * as fs from 'node:fs/promises'
 import * as path from 'node:path'
 import * as os from 'node:os'
 import * as child_process from 'node:child_process'
+import * as http from 'node:http'
 import * as readline from 'node:readline'
 import { fileURLToPath } from 'node:url'
 import open from 'open'
@@ -119,7 +120,38 @@ async function writePid(pid: number): Promise<void> {
   await fs.writeFile(PID_FILE, String(pid), 'utf-8')
 }
 
+/** A launchd service is installed iff its plist exists. When it does, the service —
+ * not a detached PID — is the source of truth for the running server, so the CLI must
+ * not spawn a competing process (port collision) or try to SIGTERM a stale PID. */
+async function isServiceInstalled(): Promise<boolean> {
+  if (process.platform !== 'darwin') return false
+  try { await fs.access(PLIST_PATH); return true } catch { return false }
+}
+
+function launchctl(args: string[]): Promise<void> {
+  // Best-effort: "already loaded" / "not loaded" exit non-zero but are benign here.
+  return new Promise((resolve) => { child_process.execFile('launchctl', args, () => resolve()) })
+}
+
+function serverResponding(): Promise<boolean> {
+  return new Promise((resolve) => {
+    const req = http.get({ host: '127.0.0.1', port: PORT, path: '/api/health', timeout: 1000 }, (res) => {
+      res.resume()
+      resolve((res.statusCode ?? 500) < 500)
+    })
+    req.on('error', () => resolve(false))
+    req.on('timeout', () => { req.destroy(); resolve(false) })
+  })
+}
+
 async function stopServer(): Promise<void> {
+  if (await isServiceInstalled()) {
+    // unload -w stops it now AND disables autostart, so KeepAlive can't respawn it and
+    // it won't return at next login until re-enabled (`cwc` or `cwc install-service`).
+    await launchctl(['unload', '-w', PLIST_PATH])
+    console.log('CWC service stopped (autostart disabled). Run `cwc` to start it again, or `cwc uninstall-service` to remove it.')
+    return
+  }
   const pid = await readPid()
   if (pid && await isRunning(pid)) {
     process.kill(pid, 'SIGTERM')
@@ -131,6 +163,21 @@ async function stopServer(): Promise<void> {
 }
 
 async function startServer(): Promise<void> {
+  // If a service is installed, ensure it's loaded (idempotent) rather than spawning a
+  // second server that would collide on the port. load -w re-enables it if `cwc stop`
+  // had disabled it.
+  if (await isServiceInstalled()) {
+    await launchctl(['load', '-w', PLIST_PATH])
+    for (let i = 0; i < 12 && !(await serverResponding()); i++) await new Promise((r) => setTimeout(r, 300))
+    if (await serverResponding()) {
+      console.log(`CWC is running as a service at http://localhost:${PORT}`)
+      await open(`http://localhost:${PORT}`)
+    } else {
+      console.error('CWC service is installed but the server did not come up. Check `launchctl list | grep cwc`, or `cwc uninstall-service` to run it manually.')
+    }
+    return
+  }
+
   const existingPid = await readPid()
   if (existingPid && await isRunning(existingPid)) {
     process.kill(existingPid, 'SIGTERM')
