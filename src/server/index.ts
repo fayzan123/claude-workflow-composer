@@ -31,6 +31,7 @@ import { resolveTargets } from './trigger-targets.js'
 import type { RunStore } from './run-store.js'
 import type { CwcTrigger } from '../schema.js'
 import { serviceRouter } from './api/service.js'
+import { automationCandidatesRouter } from './api/automation-candidates.js'
 
 export interface AppOptions {
   staticDir: string | null
@@ -60,6 +61,7 @@ export function createApp(opts: AppOptions): express.Express {
 
   const homeDir = opts.userHomeDir ?? os.homedir()
   app.use('/api/service-status', serviceRouter(homeDir))
+  app.use('/api/automation-candidates', automationCandidatesRouter(homeDir))
   app.use('/api/agents/generate', agentsGenerateRouter(opts.claudeRunner))
   app.use('/api/agents', agentsRouter(homeDir))
 
