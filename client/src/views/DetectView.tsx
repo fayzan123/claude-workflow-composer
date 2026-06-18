@@ -158,7 +158,14 @@ export function DetectView() {
                 </button>
                 <button type="button" onClick={() => dismiss(a.id)} disabled={busyId !== null}>Dismiss</button>
               </div>
-              {busy && <div className="detect__card-busy">Building agents &amp; wiring the graph — this takes a few moments. You can leave; it keeps generating and lands in your workflows.</div>}
+              {busy && (
+                <div className="detect__card-busy">
+                  <div className="detect__progress" role="progressbar" aria-label="Generating workflow">
+                    <div className="detect__progress-bar" />
+                  </div>
+                  Building agents &amp; wiring the graph — this takes a few moments. You can leave; it keeps generating and lands in your workflows.
+                </div>
+              )}
             </div>
             )
           })}

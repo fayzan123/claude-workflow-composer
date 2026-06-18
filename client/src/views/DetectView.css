@@ -33,5 +33,8 @@
 .detect__card-actions button:disabled { opacity: .5; cursor: default; }
 .detect__card--busy { border-color: var(--color-primary); }
 .detect__card-busy { font-size: var(--text-xs); color: var(--color-primary); margin-top: 6px; }
+.detect__progress { height: 4px; border-radius: 2px; background: var(--color-border); overflow: hidden; margin-bottom: 6px; }
+.detect__progress-bar { height: 100%; width: 40%; border-radius: 2px; background: var(--color-primary); animation: detect-indeterminate 1.1s ease-in-out infinite; }
+@keyframes detect-indeterminate { 0% { margin-left: -42%; } 100% { margin-left: 100%; } }
 .detect__error { font-size: var(--text-xs); color: var(--color-error); margin: 0 0 var(--space-sm); }
 .detect__empty { font-size: var(--text-xs); color: var(--color-text-secondary); padding: var(--space-md) 0; }
