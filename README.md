@@ -28,7 +28,7 @@ The authoring experience is entirely text-based. You can't see what you're build
 npx claude-cwc
 ```
 
-Opens a browser at `http://localhost:3579`. No code signing, no Gatekeeper friction — paste it in a terminal and you're in.
+Opens a browser at `http://localhost:3579`. The local server binds to loopback and protects API calls with a per-run local token.
 
 ```bash
 npx claude-cwc stop    # Stop the server
@@ -208,7 +208,7 @@ Storage:
 
 ## Why Open Source
 
-This tool has filesystem access to `~/.claude/`. Open source is the trust model — no data leaves your machine, no cloud dependency. The local Node.js server is the entire backend. You can read every line of code that touches your files.
+This tool has filesystem access to `~/.claude/`. Open source is the trust model — no cloud dependency, and the local Node.js server is the entire backend. The server binds to `127.0.0.1`, restricts cross-origin API access, and protects packaged-app API requests with a per-run local token.
 
 ---
 
@@ -224,17 +224,18 @@ npm run build               # Production build (server + client)
 
 ### Tests
 
-308 tests across 38 files (run `npm test` for the current count) covering:
+434 tests across 59 files (run `npm test` for the current count) covering:
 
 - **BFS traversal**: linear chains, back-edges, fan-out, multi-root, terminal edges
 - **Prose generation**: start triggers, bold wrapping, context artifacts, Oxford comma, back-edge ordering
 - **File writer**: frontmatter, skills block, ownership comments, workflow skill generation
-- **Exporter**: full integration with real temp filesystem, rename cleanup, skill resolution, re-export, conflict warnings
+- **Exporter**: full integration with real temp filesystem, rename cleanup, skill resolution, re-export, hard conflict failures for foreign or hand-authored files
 - **Validation**: empty workflows, missing names, duplicate slugs, disconnected nodes
 - **Graph layout**: horizontal spacing, fan-out vertical spacing, back-edge stability
 - **HTTP endpoints**: all API routes tested with real server instances
 - **Slugify**: special chars, truncation, hyphen collapse, empty input
 - **Conflict detection**: owned, foreign, absent, malformed states
+- **Server hardening**: local API token enforcement, workflow path confinement, export target path validation
 - **Skill resolution**: namespaced (plugin) and non-namespaced (user) skill lookup
 - **Claude runner**: binary resolution (incl. Windows shims), stdin prompt delivery, timeout/error envelopes
 - **Undo history**: coalescing, redo-stack clearing, edge cascade on node delete, history cap

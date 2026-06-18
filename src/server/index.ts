@@ -1,5 +1,4 @@
 import express from 'express'
-import cors from 'cors'
 import * as path from 'node:path'
 import * as fs from 'node:fs'
 import * as os from 'node:os'
@@ -34,6 +33,7 @@ import type { CwcTrigger } from '../schema.js'
 import { serviceRouter } from './api/service.js'
 import { automationScanRouter } from './api/automation-scan.js'
 import { createScanStore } from './scan-store.js'
+import { createServerToken, installUiTokenCookie, requireApiToken, restrictCors } from './security.js'
 
 export interface AppOptions {
   staticDir: string | null
@@ -50,11 +50,17 @@ export interface AppOptions {
   streamingRunner?: StreamingRunner
   enableScheduler?: boolean       // default false; bin/cwc start passes true
   enableNotifier?: boolean        // default true; tests pass false
+  authToken?: string              // set by the packaged server; tests/dev injections may omit
+  allowedOrigins?: string[]       // CORS allowlist for explicit cross-origin dev clients
 }
 
 export function createApp(opts: AppOptions): express.Express {
   const app = express()
-  app.use(cors())
+  app.use(restrictCors(opts.allowedOrigins))
+  if (opts.authToken) {
+    app.use(installUiTokenCookie(opts.authToken))
+    app.use(requireApiToken(opts.authToken))
+  }
   app.use(express.json({ limit: '10mb' }))
 
   app.use('/api/health', healthRouter())
@@ -156,9 +162,9 @@ export function makeSchedulerFire(deps: SchedulerFireDeps) {
 }
 
 export function startServer(port: number, staticDir: string | null): Promise<void> {
-  const app = createApp({ staticDir, enableScheduler: true })
+  const app = createApp({ staticDir, enableScheduler: true, authToken: createServerToken() })
   return new Promise((resolve, reject) => {
-    const server = app.listen(port, () => {
+    const server = app.listen(port, '127.0.0.1', () => {
       console.log(`CWC server running on http://localhost:${port}`)
       resolve()
     })

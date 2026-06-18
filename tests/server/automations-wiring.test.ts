@@ -100,6 +100,25 @@ describe('POST /api/automations/arm + GET /api/automations/trigger-state/:id', (
     expect(typeof stateBody.armedHash).toBe('string')
     expect((stateBody.armedHash as string).length).toBeGreaterThan(0)
   })
+
+  it('rejects arming a trigger with no cwd or targets', async () => {
+    const trigger = {
+      id: 'trig-arm-empty',
+      type: 'cron' as const,
+      schedule: '0 * * * *',
+      cwd: '',
+      isolation: 'in-place' as const,
+      catchUp: false,
+      maxRunsPerDay: 5,
+      enabled: true,
+    }
+    const armRes = await fetch(`${base}/api/automations/arm`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ trigger }),
+    })
+    expect(armRes.status).toBe(400)
+  })
 })
 
 describe('GET /PUT /api/automations/config', () => {

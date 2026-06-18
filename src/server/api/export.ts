@@ -1,5 +1,5 @@
 import { Router as createRouter } from 'express'
-import { exportWorkflow } from '../../exporter.js'
+import { ExportConflictError, exportWorkflow } from '../../exporter.js'
 import type { ExportTarget, ExportOptions } from '../../exporter.js'
 import type { CwcFile } from '../../schema.js'
 import * as os from 'node:os'
@@ -15,6 +15,15 @@ export function exportRouter() {
       skillsDir?: string
     }
     if (!cwcFile || !target) return void res.status(400).json({ error: 'cwcFile and target required' })
+    if (target.type === 'project' && (!target.projectDir || !path.isAbsolute(target.projectDir))) {
+      return void res.status(400).json({ error: 'projectDir must be an absolute path' })
+    }
+    if (target.type === 'user' && target.userDir && !path.isAbsolute(target.userDir)) {
+      return void res.status(400).json({ error: 'userDir must be an absolute path' })
+    }
+    if (skillsDir && !path.isAbsolute(skillsDir)) {
+      return void res.status(400).json({ error: 'skillsDir must be an absolute path' })
+    }
 
     const opts: ExportOptions = {
       skillsDir: skillsDir ?? path.join(os.homedir(), '.claude', 'skills'),
@@ -24,6 +33,9 @@ export function exportRouter() {
       const result = await exportWorkflow(cwcFile, target, opts)
       res.json(result)
     } catch (err) {
+      if (err instanceof ExportConflictError) {
+        return void res.status(409).json({ error: err.message, path: err.filePath })
+      }
       res.status(500).json({ error: String(err) })
     }
   })

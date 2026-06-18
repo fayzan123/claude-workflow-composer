@@ -118,7 +118,7 @@ function cronTriggerFor(a: DetectedAutomation): CwcTrigger {
   return {
     id: 'trig-' + Math.random().toString(16).slice(2, 10),
     type: 'cron', schedule,
-    cwd: a.evidence.repos[0] ?? process.cwd(),
+    cwd: '',
     isolation: 'worktree', baseRef: 'HEAD',
     catchUp: false, maxRunsPerDay: 1, enabled: false,
   }

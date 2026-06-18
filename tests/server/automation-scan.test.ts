@@ -125,6 +125,7 @@ describe('automation-scan API', () => {
     expect(cwc.meta.id).toBe(workflowId)
     expect(cwc.meta.triggers[0].type).toBe('cron')
     expect(cwc.meta.triggers[0].enabled).toBe(false)
+    expect(cwc.meta.triggers[0].cwd).toBe('')
     // Skill reuse: the valid user skill is kept, the hallucinated one is dropped.
     expect(cwc.nodes[0].agent.skills).toEqual(['real-skill'])
 
@@ -147,6 +148,7 @@ describe('triggersForAutomation', () => {
     expect(sched[0].type).toBe('cron')
     expect(sched[0].enabled).toBe(false)
     expect(sched[0].schedule).toBe('0 9 * * 1')
+    expect(sched[0].cwd).toBe('')
   })
 
   it('seeds NO trigger for manual or event automations', () => {

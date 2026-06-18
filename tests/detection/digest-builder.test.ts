@@ -37,7 +37,8 @@ describe('buildDigests', () => {
       unit({ cwd: '/b', tools: ['Edit'], commands: [] }),
     ])
     const repos = digests.map(d => d.repo).sort()
-    expect(repos).toEqual(['/a', '/b'])
+    expect(repos).toEqual(['repo-1', 'repo-2'])
+    expect(digests.map(d => d.originalRepo).sort()).toEqual(['/a', '/b'])
     const allRefs = digests.flatMap(d => d.lines.map(l => l.ref))
     expect(allRefs).toEqual(['r0', 'r1'])     // only the 2 non-trivial units
   })

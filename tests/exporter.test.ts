@@ -3,7 +3,7 @@ import * as fs from 'node:fs/promises'
 import * as os from 'node:os'
 import * as path from 'node:path'
 import { randomUUID } from 'node:crypto'
-import { exportWorkflow, ExportTarget } from '../src/exporter.js'
+import { ExportConflictError, exportWorkflow, ExportTarget } from '../src/exporter.js'
 import type { CwcFile } from '../src/schema.js'
 import matter from 'gray-matter'
 
@@ -109,6 +109,29 @@ describe('exportWorkflow — linear.cwc', () => {
     // No orphan files
     const files = await fs.readdir(path.join(tmpDir, '.claude', 'agents'))
     expect(files).toHaveLength(3)
+  })
+
+  it('refuses to overwrite an existing hand-authored agent file', async () => {
+    const cwc = await loadFixture('linear.cwc')
+    const target: ExportTarget = { type: 'project', projectDir: tmpDir }
+    const agentsDir = path.join(tmpDir, '.claude', 'agents')
+    await fs.mkdir(agentsDir, { recursive: true })
+    await fs.writeFile(path.join(agentsDir, 'architect.md'), '---\nname: Architect\n---\nhand-written\n')
+
+    await expect(exportWorkflow(cwc, target, { skillsDir: path.join(tmpDir, 'skills') }))
+      .rejects.toBeInstanceOf(ExportConflictError)
+  })
+
+  it('refuses to overwrite an existing workflow skill from another workflow', async () => {
+    const cwc = await loadFixture('linear.cwc')
+    const target: ExportTarget = { type: 'project', projectDir: tmpDir }
+    const skillsDir = path.join(tmpDir, 'skills')
+    const skillDir = path.join(skillsDir, 'cwc-linear-pipeline')
+    await fs.mkdir(skillDir, { recursive: true })
+    await fs.writeFile(path.join(skillDir, 'SKILL.md'), '# x\n<!-- cwc:workflow:other-workflow -->\n')
+
+    await expect(exportWorkflow(cwc, target, { skillsDir }))
+      .rejects.toBeInstanceOf(ExportConflictError)
   })
 })
 

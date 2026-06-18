@@ -14,7 +14,7 @@ export function buildAnalysisPrompt(digests: RepoDigest[]): string {
 
   return `You are analyzing a developer's Claude Code history to find recurring work worth automating.
 
-Below are task digests, grouped by repository. Each line is one task the developer ran:
+Below are task digests, grouped by repository alias. Each line is one task the developer ran:
 [ref] date time · "their prompt" · tools used · salient command labels
 
 ${body}

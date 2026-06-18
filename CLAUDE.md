@@ -34,7 +34,7 @@ This is a full-stack TypeScript app: an Express server (`src/`) serving a React 
 - `bfs.ts` — BFS traversal of the node/edge graph used by prose generation
 - `prose-generator.ts` — converts graph traversal into natural-language orchestrator steps
 - `file-writer.ts` — builds agent `.md` frontmatter and workflow `SKILL.md` content
-- `conflict-detector.ts` — reads ownership HTML comments (`<!-- cwc:node:ID:workflow:ID -->`) to determine whether a file is safe to overwrite
+- `conflict-detector.ts` — reads ownership HTML comments (`<!-- cwc:node:ID:workflow:ID -->`) to determine whether a file is safe to overwrite; unsafe conflicts abort export
 - `skill-resolver.ts` — resolves skill slugs against `~/.claude/skills/` (user) and `~/.claude/plugins/cache/` (plugins)
 - `slugify.ts` — slug normalization shared by server and core
 - `run-events.ts` — `RunEvent` type + `validateRunEvent()` for the runs API
@@ -82,7 +82,7 @@ This is a full-stack TypeScript app: an Express server (`src/`) serving a React 
 ## Export Flow
 
 `POST /api/export` calls `exportWorkflow()` in `src/exporter.ts`, which:
-1. For each bespoke node: slugifies the name, checks conflict (reads ownership comment), writes agent `.md` via `buildAgentFileContent()`
+1. For each bespoke node: slugifies the name, checks conflict (reads ownership comment), writes agent `.md` via `buildAgentFileContent()`; foreign or hand-authored files are not overwritten
 2. For renamed nodes: deletes the old file if this workflow owns it
 3. BFS-traverses the graph to generate orchestrator prose via `generateOrchestratorBody()`
 4. Writes the workflow `SKILL.md` via `buildWorkflowSkillContent()`

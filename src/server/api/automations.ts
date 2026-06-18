@@ -6,6 +6,7 @@ import { Cron } from 'croner'
 import type { AutomationState } from '../automation-state.js'
 import { loadConfig, saveConfig, type CwcConfig } from '../config.js'
 import type { CwcFile, CwcTrigger } from '../../schema.js'
+import { resolveTargets } from '../trigger-targets.js'
 
 export interface AutomationsRouterOptions {
   state: AutomationState
@@ -24,6 +25,7 @@ export function automationsRouter(opts: AutomationsRouterOptions): Router {
   router.post('/arm', async (req, res) => {
     const trigger = (req.body ?? {}).trigger as CwcTrigger | undefined
     if (!trigger?.id) return void res.status(400).json({ error: 'trigger required' })
+    if (resolveTargets(trigger).length === 0) return void res.status(400).json({ error: 'trigger cwd required before arming' })
     await opts.state.arm(trigger)
     res.json({ armed: true })
   })

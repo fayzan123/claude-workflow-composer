@@ -3,7 +3,7 @@ import type { TaskUnit } from './types.js'
 import { deriveSignature } from './signature.js'
 
 export interface DigestLine { ref: string; unit: TaskUnit; text: string }
-export interface RepoDigest { repo: string; lines: DigestLine[] }
+export interface RepoDigest { repo: string; originalRepo: string; lines: DigestLine[] }
 
 /** A unit is worth analyzing only if it did real work (used at least one tool). */
 function isMeaningful(u: TaskUnit): boolean { return u.tools.length > 0 }
@@ -64,11 +64,12 @@ export function buildDigests(units: TaskUnit[], opts?: BuildDigestOpts): RepoDig
 
   // 5. Assign refs globally in final emitted order
   let n = 0
-  return [...byRepo.entries()].map(([repo, repoUnits]) => {
+  return [...byRepo.entries()].map(([originalRepo, repoUnits], index) => {
+    const repo = originalRepo === '(unknown)' ? '(unknown)' : `repo-${index + 1}`
     const lines: DigestLine[] = repoUnits.map(u => {
       const ref = `r${n++}`
       return { ref, unit: u, text: formatLine(ref, u) }
     })
-    return { repo, lines }
+    return { repo, originalRepo, lines }
   })
 }

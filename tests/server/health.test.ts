@@ -30,4 +30,27 @@ describe('GET /api/health', () => {
     expect(status).toBe(200)
     expect((body as { status: string }).status).toBe('ok')
   })
+
+  it('keeps health public but protects other APIs when auth is enabled', async () => {
+    const app = createApp({ staticDir: null, authToken: 'test-token' })
+    let authServer!: http.Server
+    await new Promise<void>((resolve) => {
+      authServer = app.listen(0, resolve)
+    })
+    const addr = authServer.address() as { port: number }
+    try {
+      const health = await fetch(`http://localhost:${addr.port}/api/health`)
+      expect(health.status).toBe(200)
+
+      const blocked = await fetch(`http://localhost:${addr.port}/api/claude-check`)
+      expect(blocked.status).toBe(401)
+
+      const allowed = await fetch(`http://localhost:${addr.port}/api/claude-check`, {
+        headers: { 'X-CWC-Token': 'test-token' },
+      })
+      expect(allowed.status).toBe(200)
+    } finally {
+      await new Promise<void>((resolve) => authServer.close(() => resolve()))
+    }
+  })
 })

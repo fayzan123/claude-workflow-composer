@@ -1,11 +1,10 @@
 import { Router as createRouter } from 'express'
-import type { ExportTarget } from '../../exporter.js'
+import { resolveExportPaths, type ExportTarget } from '../../exporter.js'
 import type { CwcFile } from '../../schema.js'
 import { detectConflict } from '../../conflict-detector.js'
 import { slugify, agentSlug } from '../../slugify.js'
 import * as fs from 'node:fs/promises'
 import * as path from 'node:path'
-import * as os from 'node:os'
 
 const AGENT_OWNERSHIP_REGEX = /^<!-- cwc:node:[^:\s]+:workflow:[^:\s>]+ -->$/
 const WORKFLOW_OWNERSHIP_REGEX = /^<!-- cwc:workflow:[^:\s>]+ -->$/
@@ -24,17 +23,7 @@ export async function deleteExport(cwc: CwcFile, target: ExportTarget): Promise<
   const workflowId = cwc.meta.id
   const workflowSlug = 'cwc-' + slugify(cwc.meta.name)
   const legacyWorkflowSlug = slugify(cwc.meta.name)
-
-  const homeDir = os.homedir()
-  const agentsDir =
-    target.type === 'project'
-      ? path.join(target.projectDir, '.claude', 'agents')
-      : path.join(homeDir, '.claude', 'agents')
-
-  const skillsDir =
-    target.type === 'project'
-      ? path.join(target.projectDir, '.claude', 'skills')
-      : path.join(homeDir, '.claude', 'skills')
+  const { agentsDir, skillsDir } = resolveExportPaths(target)
 
   const deleted: string[] = []
   const skipped: string[] = []
@@ -86,7 +75,8 @@ export function exportDeleteRouter() {
   router.post('/', async (req, res) => {
     const { cwcFile, target } = req.body as { cwcFile: CwcFile; target: ExportTarget }
     if (!cwcFile || !target) return void res.status(400).json({ error: 'cwcFile and target required' })
-    if (target.type === 'project' && !target.projectDir) return void res.status(400).json({ error: 'projectDir required for project target' })
+    if (target.type === 'project' && (!target.projectDir || !path.isAbsolute(target.projectDir))) return void res.status(400).json({ error: 'projectDir must be an absolute path' })
+    if (target.type === 'user' && target.userDir && !path.isAbsolute(target.userDir)) return void res.status(400).json({ error: 'userDir must be an absolute path' })
     try {
       const result = await deleteExport(cwcFile, target)
       res.json(result)

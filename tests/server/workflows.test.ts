@@ -100,8 +100,32 @@ it('GET /api/workflows/list includes nodeCount', async () => {
 })
 
 it('GET /api/workflows?path returns 404 for missing file', async () => {
-  const { status } = await httpGet(`/api/workflows?path=${encodeURIComponent('/tmp/does-not-exist.cwc')}`)
+  const { status } = await httpGet(`/api/workflows?path=${encodeURIComponent(path.join(tmpDir, 'does-not-exist.cwc'))}`)
   expect(status).toBe(404)
+})
+
+it('GET /api/workflows?path returns 403 outside workflowsDir', async () => {
+  const outside = path.join(os.tmpdir(), `outside-${Date.now()}.cwc`)
+  const { status } = await httpGet(`/api/workflows?path=${encodeURIComponent(outside)}`)
+  expect(status).toBe(403)
+})
+
+it('POST /api/workflows rejects writes outside workflowsDir', async () => {
+  const outside = path.join(os.tmpdir(), `outside-${Date.now()}.cwc`)
+  const { status } = await httpPost('/api/workflows', { path: outside, content: FIXTURE_CWC })
+  expect(status).toBe(403)
+})
+
+it('DELETE /api/workflows rejects deletes outside workflowsDir', async () => {
+  const outside = path.join(os.tmpdir(), `outside-${Date.now()}.cwc`)
+  await fs.writeFile(outside, JSON.stringify(FIXTURE_CWC), 'utf-8')
+  try {
+    const { status } = await httpDelete(`/api/workflows?path=${encodeURIComponent(outside)}`)
+    expect(status).toBe(403)
+    await expect(fs.access(outside)).resolves.toBeUndefined()
+  } finally {
+    await fs.unlink(outside).catch(() => {})
+  }
 })
 
 it('DELETE /api/workflows deletes the file', async () => {
@@ -150,4 +174,10 @@ it('POST /api/workflows/rename returns 404 when source file is missing', async (
     newName: 'New Name',
   })
   expect(status).toBe(404)
+})
+
+it('POST /api/workflows/rename rejects sources outside workflowsDir', async () => {
+  const outside = path.join(os.tmpdir(), `outside-${Date.now()}.cwc`)
+  const { status } = await httpPost('/api/workflows/rename', { oldPath: outside, newName: 'New Name' })
+  expect(status).toBe(403)
 })

@@ -13,6 +13,18 @@ export type ExportTarget =
   | { type: 'project'; projectDir: string }
   | { type: 'user'; userDir?: string }
 
+export interface ExportPaths {
+  agentsDir: string
+  skillsDir: string
+}
+
+export class ExportConflictError extends Error {
+  constructor(message: string, readonly filePath: string) {
+    super(message)
+    this.name = 'ExportConflictError'
+  }
+}
+
 export interface ExportOptions {
   skillsDir: string          // where workflow skill is written
   userSkillsDir?: string     // override for ~/.claude/skills/ (test injection)
@@ -32,6 +44,27 @@ async function safeReadFile(p: string): Promise<string | null> {
 
 async function ensureDir(p: string): Promise<void> {
   await fs.mkdir(p, { recursive: true })
+}
+
+export function resolveExportPaths(target: ExportTarget, opts?: { skillsDir?: string }): ExportPaths {
+  if (target.type === 'project') {
+    if (!target.projectDir || !path.isAbsolute(target.projectDir)) {
+      throw new Error('projectDir must be an absolute path')
+    }
+    return {
+      agentsDir: path.join(target.projectDir, '.claude', 'agents'),
+      skillsDir: opts?.skillsDir ?? path.join(target.projectDir, '.claude', 'skills'),
+    }
+  }
+
+  if (target.userDir && !path.isAbsolute(target.userDir)) {
+    throw new Error('userDir must be an absolute path')
+  }
+  const userDir = target.userDir ?? os.homedir()
+  return {
+    agentsDir: path.join(userDir, '.claude', 'agents'),
+    skillsDir: opts?.skillsDir ?? path.join(userDir, '.claude', 'skills'),
+  }
 }
 
 async function resolveSkillWithOverride(slug: string, userSkillsDir?: string): Promise<SkillResolution> {
@@ -56,11 +89,7 @@ export async function exportWorkflow(
   const warnings: string[] = []
   const workflowId = cwc.meta.id
   const workflowSlug = 'cwc-' + slugify(cwc.meta.name)
-
-  const agentsDir =
-    target.type === 'project'
-      ? path.join(target.projectDir, '.claude', 'agents')
-      : path.join(target.userDir ?? os.homedir(), '.claude', 'agents')
+  const { agentsDir, skillsDir } = resolveExportPaths(target, { skillsDir: opts.skillsDir })
 
   await ensureDir(agentsDir)
 
@@ -133,6 +162,13 @@ export async function exportWorkflow(
     }
 
     const content = buildAgentFileContent(node, resolvedSkills, workflowId)
+    const existingAgent = await safeReadFile(agentPath)
+    if (existingAgent !== null) {
+      const status = detectConflict(existingAgent, AGENT_OWNERSHIP_REGEX, workflowId)
+      if (status !== 'owned') {
+        throw new ExportConflictError(`Agent file at ${agentPath} was not created by this workflow. Rename the agent or remove the file before exporting.`, agentPath)
+      }
+    }
     await fs.writeFile(agentPath, content, 'utf-8')
     updatedNodes.push({ ...node, exportedSlug: newSlug })
   }
@@ -150,23 +186,23 @@ export async function exportWorkflow(
   // phantom "deployed" workflow). Remove it — but only if this workflow owns it.
   const prevSlug = cwc.meta.exportedWorkflowSlug
   if (prevSlug && prevSlug !== workflowSlug) {
-    const oldSkillFile = path.join(opts.skillsDir, prevSlug, 'SKILL.md')
+    const oldSkillFile = path.join(skillsDir, prevSlug, 'SKILL.md')
     const oldSkillContent = await safeReadFile(oldSkillFile)
     if (oldSkillContent !== null && detectConflict(oldSkillContent, WORKFLOW_OWNERSHIP_REGEX, workflowId) === 'owned') {
-      await fs.rm(path.join(opts.skillsDir, prevSlug), { recursive: true, force: true })
+      await fs.rm(path.join(skillsDir, prevSlug), { recursive: true, force: true })
     }
   }
 
-  const skillDir = path.join(opts.skillsDir, workflowSlug)
+  const skillDir = path.join(skillsDir, workflowSlug)
   await ensureDir(skillDir)
   const skillFilePath = path.join(skillDir, 'SKILL.md')
   const existingSkill = await safeReadFile(skillFilePath)
   if (existingSkill !== null) {
     const status = detectConflict(existingSkill, WORKFLOW_OWNERSHIP_REGEX, workflowId)
     if (status === 'foreign') {
-      warnings.push(`Workflow skill at ${skillFilePath} belongs to a different workflow — overwriting`)
+      throw new ExportConflictError(`Workflow skill at ${skillFilePath} belongs to a different workflow. Rename the workflow or remove the existing skill before exporting.`, skillFilePath)
     } else if (status === 'absent') {
-      warnings.push(`Workflow skill at ${skillFilePath} was not created by this workflow — overwriting`)
+      throw new ExportConflictError(`Workflow skill at ${skillFilePath} was not created by this workflow. Rename the workflow or remove the existing skill before exporting.`, skillFilePath)
     }
   }
   await fs.writeFile(skillFilePath, skillContent, 'utf-8')

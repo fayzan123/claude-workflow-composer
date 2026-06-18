@@ -7,11 +7,18 @@ import { slugify } from '../../slugify.js'
 
 export function workflowsRouter(workflowsDir: string, recentsPath: string, onSaved?: () => void) {
   const router = createRouter()
+  const root = path.resolve(workflowsDir)
+
+  function resolveWorkflowPath(filePath: string): string | null {
+    if (!filePath.endsWith('.cwc')) return null
+    const resolved = path.resolve(filePath)
+    return resolved === root || resolved.startsWith(root + path.sep) ? resolved : null
+  }
 
   router.get('/default-path', (req, res) => {
     const name = (req.query['name'] as string) || 'untitled'
     const slug = slugify(name) || 'untitled'
-    res.json({ path: path.join(os.homedir(), '.cwc', 'workflows', `${slug}.cwc`) })
+    res.json({ path: path.join(workflowsDir || path.join(os.homedir(), '.cwc', 'workflows'), `${slug}.cwc`) })
   })
 
   router.get('/list', async (_req, res) => {
@@ -41,8 +48,10 @@ export function workflowsRouter(workflowsDir: string, recentsPath: string, onSav
   router.get('/', async (req, res) => {
     const filePath = req.query['path'] as string
     if (!filePath) return void res.status(400).json({ error: 'path required' })
+    const resolved = resolveWorkflowPath(filePath)
+    if (!resolved) return void res.status(403).json({ error: 'Access restricted to workflows directory' })
     try {
-      const raw = await fs.readFile(filePath, 'utf-8')
+      const raw = await fs.readFile(resolved, 'utf-8')
       res.json(JSON.parse(raw))
     } catch {
       res.status(404).json({ error: 'not found' })
@@ -52,9 +61,11 @@ export function workflowsRouter(workflowsDir: string, recentsPath: string, onSav
   router.post('/', async (req, res) => {
     const { path: filePath, content } = req.body as { path: string; content: CwcFile }
     if (!filePath || !content) return void res.status(400).json({ error: 'path and content required' })
+    const resolved = resolveWorkflowPath(filePath)
+    if (!resolved) return void res.status(403).json({ error: 'Access restricted to workflows directory' })
     try {
-      await fs.mkdir(path.dirname(filePath), { recursive: true })
-      await fs.writeFile(filePath, JSON.stringify(content, null, 2), 'utf-8')
+      await fs.mkdir(path.dirname(resolved), { recursive: true })
+      await fs.writeFile(resolved, JSON.stringify(content, null, 2), 'utf-8')
       onSaved?.()
       res.json({ saved: true })
     } catch (err) {
@@ -65,8 +76,10 @@ export function workflowsRouter(workflowsDir: string, recentsPath: string, onSav
   router.delete('/', async (req, res) => {
     const filePath = req.query['path'] as string
     if (!filePath) return void res.status(400).json({ error: 'path required' })
+    const resolved = resolveWorkflowPath(filePath)
+    if (!resolved) return void res.status(403).json({ error: 'Access restricted to workflows directory' })
     try {
-      await fs.unlink(filePath)
+      await fs.unlink(resolved)
       res.json({ deleted: true })
     } catch {
       res.status(404).json({ error: 'not found' })
@@ -76,19 +89,21 @@ export function workflowsRouter(workflowsDir: string, recentsPath: string, onSav
   router.post('/rename', async (req, res) => {
     const { oldPath, newName } = req.body as { oldPath: string; newName: string }
     if (!oldPath || !newName) return void res.status(400).json({ error: 'oldPath and newName required' })
+    const resolvedOldPath = resolveWorkflowPath(oldPath)
+    if (!resolvedOldPath) return void res.status(403).json({ error: 'Access restricted to workflows directory' })
 
     const newSlug = slugify(newName) || 'untitled'
-    const dir = path.dirname(oldPath)
+    const dir = path.dirname(resolvedOldPath)
     const newPath = path.join(dir, `${newSlug}.cwc`)
 
-    if (newPath === oldPath) return void res.json({ path: oldPath, renamed: false })
+    if (newPath === resolvedOldPath) return void res.json({ path: resolvedOldPath, renamed: false })
     if (await fs.access(newPath).then(() => true).catch(() => false)) {
       return void res.status(400).json({ error: 'A workflow with that name already exists' })
     }
 
     let raw: string
     try {
-      raw = await fs.readFile(oldPath, 'utf-8')
+      raw = await fs.readFile(resolvedOldPath, 'utf-8')
     } catch {
       return void res.status(404).json({ error: 'not found' })
     }
@@ -97,12 +112,12 @@ export function workflowsRouter(workflowsDir: string, recentsPath: string, onSav
     cwc.meta.name = newName
     cwc.meta.updated = new Date().toISOString()
     await fs.writeFile(newPath, JSON.stringify(cwc, null, 2), 'utf-8')
-    await fs.unlink(oldPath)
+    await fs.unlink(resolvedOldPath)
 
     try {
       const recentsRaw = await fs.readFile(recentsPath, 'utf-8')
       const recents: string[] = JSON.parse(recentsRaw)
-      const updated = recents.map((p) => (p === oldPath ? newPath : p))
+      const updated = recents.map((p) => (p === oldPath || p === resolvedOldPath ? newPath : p))
       await fs.writeFile(recentsPath, JSON.stringify(updated, null, 2), 'utf-8')
     } catch { /* recents file missing or corrupt — skip */ }
 
