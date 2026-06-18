@@ -5,9 +5,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Commands
 
 ```bash
-# Development
-npm run dev:server          # Watch-mode TypeScript compilation for server
+# Development (run all three in separate terminals)
+npm run dev:server          # Watch-mode TypeScript compilation for server (tsc --watch → dist/)
+npm run dev:api             # Run the API at :3579 with auth OFF (CWC_DISABLE_AUTH=1), restarts on rebuild
 npm run dev:client          # Vite HMR dev server at :5173 (proxies /api → :3579)
+# Note: dev:api disables the token gate because Vite serves the HTML, so the server never sets the
+# auth cookie the client relies on. The packaged server (npm start / bin/cwc) is always authed.
 
 # Testing
 npm test                    # Run all tests (Vitest, one-shot)

@@ -20,6 +20,7 @@
     "build:client": "vite build --config client/vite.config.ts",
     "build:skills": "node -e \"const fs=require('fs');const p=require('path');const d='dist/skills/cwc-generate-workflow';fs.mkdirSync(d,{recursive:true});fs.copyFileSync('src/skills/cwc-generate-workflow/SKILL.md',p.join(d,'SKILL.md'))\"",
     "dev:server": "tsc --watch",
+    "dev:api": "CWC_DISABLE_AUTH=1 node --watch dist/src/server/start.js 3579",
     "dev:client": "vite --config client/vite.config.ts",
     "typecheck": "tsc --noEmit && tsc --noEmit -p client/tsconfig.json",
     "start": "node dist/bin/cwc.js",

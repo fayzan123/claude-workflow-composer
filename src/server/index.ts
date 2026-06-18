@@ -33,7 +33,7 @@ import type { CwcTrigger } from '../schema.js'
 import { serviceRouter } from './api/service.js'
 import { automationScanRouter } from './api/automation-scan.js'
 import { createScanStore } from './scan-store.js'
-import { createServerToken, installUiTokenCookie, requireApiToken, restrictCors } from './security.js'
+import { installUiTokenCookie, requireApiToken, resolveAuthToken, restrictCors } from './security.js'
 
 export interface AppOptions {
   staticDir: string | null
@@ -162,7 +162,11 @@ export function makeSchedulerFire(deps: SchedulerFireDeps) {
 }
 
 export function startServer(port: number, staticDir: string | null): Promise<void> {
-  const app = createApp({ staticDir, enableScheduler: true, authToken: createServerToken() })
+  const authToken = resolveAuthToken()
+  if (!authToken) {
+    console.warn('⚠️  CWC_DISABLE_AUTH=1 — API auth is OFF. Local development only; never use for the packaged app.')
+  }
+  const app = createApp({ staticDir, enableScheduler: true, authToken })
   return new Promise((resolve, reject) => {
     const server = app.listen(port, '127.0.0.1', () => {
       console.log(`CWC server running on http://localhost:${port}`)

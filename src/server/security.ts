@@ -5,6 +5,17 @@ export function createServerToken(): string {
   return randomUUID()
 }
 
+/**
+ * Resolve the API auth token for the packaged server. Returns a fresh token normally,
+ * or `undefined` when `CWC_DISABLE_AUTH=1` — the local-dev escape hatch so the Vite
+ * dev server (which serves the HTML itself and so never receives the UI cookie) can
+ * talk to the API. Only honor this for loopback binds; the packaged app stays authed.
+ */
+export function resolveAuthToken(env: NodeJS.ProcessEnv = process.env): string | undefined {
+  if (env['CWC_DISABLE_AUTH'] === '1') return undefined
+  return createServerToken()
+}
+
 function cookieValue(req: Request, name: string): string | null {
   const raw = req.headers.cookie
   if (!raw) return null
