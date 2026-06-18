@@ -32,6 +32,16 @@ export function DetectView() {
   const [busyId, setBusyId] = useState<string | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
   const [model, setModel] = useState<string>('sonnet')
+  const mountedRef = useRef(true)
+  useEffect(() => () => { mountedRef.current = false }, [])
+
+  // Warn before a browser-level close/refresh while a workflow is generating.
+  useEffect(() => {
+    if (!busyId) return
+    const h = (e: BeforeUnloadEvent) => { e.preventDefault(); e.returnValue = '' }
+    window.addEventListener('beforeunload', h)
+    return () => window.removeEventListener('beforeunload', h)
+  }, [busyId])
 
   async function refresh() {
     const r = await api.automationScan.latest()
@@ -75,12 +85,15 @@ export function DetectView() {
     setBusyId(id); setActionError(null)
     try {
       const r = await api.automationScan.promote(id)
+      // If the user navigated away while generating, the workflow is still saved
+      // server-side and appears in their library — just don't yank them back here.
+      if (!mountedRef.current) return
       if (r.workflowId) { navigate(`/w/${r.workflowId}/build`); return }
       setActionError(r.error || 'Could not generate a workflow from this automation.')
     } catch {
-      setActionError('Promote failed — is the server still running?')
+      if (mountedRef.current) setActionError('Promote failed — is the server still running?')
     } finally {
-      setBusyId(null)
+      if (mountedRef.current) setBusyId(null)
     }
   }
   async function dismiss(id: string) {
@@ -142,7 +155,7 @@ export function DetectView() {
                 </button>
                 <button type="button" onClick={() => dismiss(a.id)} disabled={busyId !== null}>Dismiss</button>
               </div>
-              {busy && <div className="detect__card-busy">Building agents &amp; wiring the graph — this takes a few seconds…</div>}
+              {busy && <div className="detect__card-busy">Building agents &amp; wiring the graph — this takes a few moments. You can leave; it keeps generating and lands in your workflows.</div>}
             </div>
             )
           })}
