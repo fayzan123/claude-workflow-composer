@@ -17,14 +17,6 @@ export interface InferredTrigger {
   label: string              // human text, e.g. "on every push" / "weekly, around Mon 09:00"
 }
 
-export interface Candidate {
-  signature: string          // stable key the grouping is keyed on
-  count: number              // how many task units matched
-  summary: string            // human "what it noticed", e.g. "edit files → npm test → git push"
-  trigger: InferredTrigger
-  cwds: string[]             // distinct repos it was seen in
-  lastSeen: string           // ISO of most recent occurrence
-}
 
 export interface AutomationEvidence {
   count: number
