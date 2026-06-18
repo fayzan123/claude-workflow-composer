@@ -12,13 +12,18 @@ export function buildWorkflowGenPrompt(a: DetectedAutomation, skills: CatalogSki
 REUSE THE DEVELOPER'S EXISTING SKILLS — this is the most important instruction.
 They already have these skills (slug — what it does):
 ${skills.map(s => `  - ${s.slug} — ${s.description}`).join('\n')}
-- If this automation is ESSENTIALLY one of these skills, do NOT recreate its internals as a
-  pipeline of agents. Generate a MINIMAL workflow — ideally ONE agent — whose job is to invoke
-  that skill: put the exact slug in that agent's "skills" and have its systemPrompt say
-  "Run the /<slug> skill on <the input>, then …". The skill already does the work.
-- If only some steps map to existing skills, attach those slugs to the relevant agents and lean
-  on them instead of re-describing that capability.
-- Use slugs ONLY from the list above — never invent a skill that isn't listed.`
+Rules for using them:
+- If this automation is ESSENTIALLY one of these skills, generate a MINIMAL workflow — ideally a
+  SINGLE agent whose job is to invoke that skill (put the exact slug in its "skills"; its
+  systemPrompt says "Run the /<slug> skill on <input>"). The skill already does the work end to end.
+- Attach AT MOST ONE skill per agent — the single best fit. NEVER stack multiple skills on one
+  agent; that is wasteful, unclear, and not how these skills are used.
+- Many skills already perform their own later phases internally — e.g. an implementation/development
+  skill that runs its OWN review, verification, and branch-finishing loop. If you use such a skill,
+  do NOT add separate review / verify / commit / finish agents: that duplicates the skill, burns
+  tokens, and a flat graph can't express the back-and-forth the skill already handles internally.
+  Trust the skill to do those phases.
+- Use slugs ONLY from the list above — never invent one.`
 
   return `Generate a complete, valid Claude Workflow Composer (.cwc) workflow JSON for this
 recurring task, detected from the developer's Claude Code history:
@@ -28,10 +33,11 @@ What it does: ${a.description}
 Observed steps: ${a.steps.map(s => `\n  - ${s}`).join('') || ' (infer from the title)'}
 Runs in repo: ${a.evidence.repos[0] ?? '(unspecified)'}${skillsBlock}
 
-Design the SMALLEST workflow that does the job — fewer agents means fewer tokens at runtime, so
-never add an agent the task doesn't need. Use 1 agent when one (or one existing skill) covers it;
-only add more agents for genuinely distinct phases not handled by a single skill. Cap at 6.
-Each agent needs a specific completionCriteria and a concrete systemPrompt. Respond with ONLY a
+Default to ONE agent. Only add another agent for a genuinely distinct phase that NO single skill
+already covers — never split work that one skill handles end-to-end into multiple agents, and never
+add review/commit/finish agents after a skill that already does those internally. Fewer agents means
+fewer tokens at runtime. Cap at 6. Each agent needs ONE clear responsibility, a specific
+completionCriteria, and a concrete systemPrompt. Respond with ONLY a
 JSON object — no prose, no markdown fences — matching exactly:
 {
   "meta": { "id": string, "name": string, "description": string, "version": 1, "created": string, "updated": string },

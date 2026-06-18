@@ -84,9 +84,9 @@ export function automationScanRouter(opts: AutomationScanRouterOptions): Router 
       const skills = selectRelevantSkills(await listReusableSkills(opts.homeDir), a)
       const out = await runner(buildWorkflowGenPrompt(a, skills), { model: opts.genModel ?? 'claude-sonnet-4-6' })
       const cwc = parseWorkflowJson(out.result)
-      // Drop any hallucinated skill slugs — keep only skills the user actually has.
+      // Keep only real skills, and AT MOST ONE per agent — no hallucinated slugs, no skill-cramming.
       const validSlugs = new Set(skills.map(s => s.slug))
-      for (const n of cwc.nodes) n.agent.skills = (n.agent.skills ?? []).filter(s => validSlugs.has(s))
+      for (const n of cwc.nodes) n.agent.skills = (n.agent.skills ?? []).filter(s => validSlugs.has(s)).slice(0, 1)
       // Overwrite the LLM-generated id with a server-assigned UUID to guarantee
       // uniqueness and safe post-promote navigation (/w/<id>/build).
       cwc.meta.id = randomUUID()

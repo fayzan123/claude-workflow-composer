@@ -16,11 +16,12 @@ describe('workflow-generator', () => {
     expect(p).toContain('exportedSlug')
   })
 
-  it('lists available skills + a reuse instruction when skills are provided', () => {
+  it('lists available skills + a one-skill-per-agent, no-reinvention reuse instruction', () => {
     const p = buildWorkflowGenPrompt(auto, [{ slug: 'brutal-product-analysis', description: 'tear apart an idea' }])
     expect(p).toContain('brutal-product-analysis')
     expect(p).toContain('tear apart an idea')
-    expect(p).toMatch(/slug/i)
+    expect(p).toMatch(/AT MOST ONE skill/i)
+    expect(p).toMatch(/do NOT add separate review/i)
   })
 
   it('omits the skills block when no skills are provided', () => {
