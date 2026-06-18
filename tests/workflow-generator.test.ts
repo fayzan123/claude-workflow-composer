@@ -16,6 +16,17 @@ describe('workflow-generator', () => {
     expect(p).toContain('exportedSlug')
   })
 
+  it('lists available skills + a reuse instruction when skills are provided', () => {
+    const p = buildWorkflowGenPrompt(auto, [{ slug: 'brutal-product-analysis', description: 'tear apart an idea' }])
+    expect(p).toContain('brutal-product-analysis')
+    expect(p).toContain('tear apart an idea')
+    expect(p).toMatch(/slug/i)
+  })
+
+  it('omits the skills block when no skills are provided', () => {
+    expect(buildWorkflowGenPrompt(auto)).not.toContain('ALREADY HAS')
+  })
+
   it('parses a valid workflow JSON object and validates the graph', () => {
     const json = JSON.stringify({
       meta: { id: 'w1', name: 'Flaky Test Triage', description: 'd', version: 1, created: '2026-06-17T00:00:00Z', updated: '2026-06-17T00:00:00Z' },

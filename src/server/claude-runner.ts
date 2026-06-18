@@ -8,6 +8,7 @@ export interface RunClaudeOptions {
   binPath?: string
   timeoutMs?: number
   env?: Record<string, string>
+  model?: string          // --model override (e.g. 'claude-sonnet-4-6'); omitted → CLI default
 }
 
 export interface RunClaudeResult {
@@ -46,6 +47,7 @@ export const runClaude: ClaudeRunner = (prompt, opts = {}) => {
   // user-authored argv content would be unsafe to interpolate.
   const args = ['-p', '--output-format', 'json']
   if (opts.resume) args.push('--resume', opts.resume)
+  if (opts.model) args.push('--model', opts.model)
   const isWinShim = /\.(cmd|bat)$/i.test(bin)
   return new Promise<RunClaudeResult>((resolve, reject) => {
     const child = execFile(

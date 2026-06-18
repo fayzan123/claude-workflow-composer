@@ -31,7 +31,7 @@ const smartRunner = async (prompt: string) => {
   if (prompt.includes('.cwc') || prompt.includes('"nodes"')) {
     return { result: JSON.stringify({
       meta: { id: 'wf-1', name: 'Tests And Push', description: 'd', version: 1, created: '2026-06-17T00:00:00Z', updated: '2026-06-17T00:00:00Z' },
-      nodes: [{ id: 'n1', position: { x: 100, y: 300 }, exportedSlug: null, agent: { name: 'Runner', description: 'd', completionCriteria: 'c' } }],
+      nodes: [{ id: 'n1', position: { x: 100, y: 300 }, exportedSlug: null, agent: { name: 'Runner', description: 'd', completionCriteria: 'c', skills: ['real-skill', 'fake-skill'] } }],
       edges: [{ id: 'e1', from: 'n1', to: null, trigger: 'done', terminalType: 'complete' }],
     }), sessionId: 's' }
   }
@@ -48,6 +48,10 @@ beforeEach(async () => {
   const push = (ts: string) => L({ type: 'user', sessionId: 'S' + ts, cwd: '/r', timestamp: ts, message: { role: 'user', content: [{ type: 'text', text: 'ship it' }] } })
     + L({ type: 'assistant', sessionId: 'S' + ts, cwd: '/r', timestamp: ts, message: { role: 'assistant', content: [{ type: 'tool_use', name: 'Bash', input: { command: 'npm test && git push' } }] } })
   await fs.writeFile(path.join(proj, 'S.jsonl'), push('2026-06-01T10:00:00Z') + push('2026-06-02T10:00:00Z') + push('2026-06-03T10:00:00Z'))
+  // A real user skill so promote's slug validation has a valid set to filter against.
+  const skillDir = path.join(home, '.claude', 'skills', 'real-skill')
+  await fs.mkdir(skillDir, { recursive: true })
+  await fs.writeFile(path.join(skillDir, 'SKILL.md'), '---\nname: Real\ndescription: a real skill\n---\nbody\n')
   const app = createApp({ staticDir: null, userHomeDir: home, automationScanPath: scanPath, workflowsDir: wfDir, claudeRunner: smartRunner, streamingRunner: fakeStreaming, enableNotifier: false })
   server = app.listen(0)
   base = `http://localhost:${(server.address() as AddressInfo).port}`
@@ -104,6 +108,8 @@ describe('automation-scan API', () => {
     expect(cwc.meta.id).toBe(workflowId)
     expect(cwc.meta.triggers[0].type).toBe('cron')
     expect(cwc.meta.triggers[0].enabled).toBe(false)
+    // Skill reuse: the valid user skill is kept, the hallucinated one is dropped.
+    expect(cwc.nodes[0].agent.skills).toEqual(['real-skill'])
 
     const after = await (await fetch(`${base}/api/automation-scan`)).json() as { automations: { status: string }[] }
     expect(after.automations[0].status).toBe('promoted')

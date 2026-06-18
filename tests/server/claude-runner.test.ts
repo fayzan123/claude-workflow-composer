@@ -63,6 +63,14 @@ it('passes --resume when a sessionId is provided', async () => {
   expect(args).toContain('sess-123')
 })
 
+it('passes --model when a model is provided', async () => {
+  const logPath = path.join(tmpDir, 'args-model.log')
+  await runClaude('x', { binPath: fakeBin, model: 'claude-sonnet-4-6', env: { CLAUDE_ARGS_LOG: logPath } })
+  const args = (await fs.readFile(logPath, 'utf-8')).trim()
+  expect(args).toContain('--model')
+  expect(args).toContain('claude-sonnet-4-6')
+})
+
 it('throws when the binary path does not exist', async () => {
   await expect(runClaude('x', { binPath: '/no/such/claude' })).rejects.toThrow()
 })

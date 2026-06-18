@@ -11,6 +11,7 @@ import { runClaudeStreaming, type StreamingRunner } from '../streaming-analyzer.
 import type { TaskUnit, DetectedAutomation } from '../../detection/types.js'
 import type { ScanStore } from '../scan-store.js'
 import { buildWorkflowGenPrompt, parseWorkflowJson } from '../../workflow-generator.js'
+import { listReusableSkills } from '../skill-catalog.js'
 import { slugify } from '../../slugify.js'
 import type { CwcTrigger } from '../../schema.js'
 
@@ -20,6 +21,7 @@ export interface AutomationScanRouterOptions {
   store: ScanStore
   runner?: ClaudeRunner
   streamingRunner?: StreamingRunner
+  genModel?: string         // model for Promote's workflow generation; default Sonnet
 }
 
 export function automationScanRouter(opts: AutomationScanRouterOptions): Router {
@@ -66,8 +68,12 @@ export function automationScanRouter(opts: AutomationScanRouterOptions): Router 
     const a = opts.store.getLatest()?.automations.find(x => x.id === req.params.id)
     if (!a) return void res.status(404).json({ error: 'not found' })
     try {
-      const out = await runner(buildWorkflowGenPrompt(a))
+      const skills = await listReusableSkills(opts.homeDir)
+      const out = await runner(buildWorkflowGenPrompt(a, skills), { model: opts.genModel ?? 'claude-sonnet-4-6' })
       const cwc = parseWorkflowJson(out.result)
+      // Drop any hallucinated skill slugs — keep only skills the user actually has.
+      const validSlugs = new Set(skills.map(s => s.slug))
+      for (const n of cwc.nodes) n.agent.skills = (n.agent.skills ?? []).filter(s => validSlugs.has(s))
       // Overwrite the LLM-generated id with a server-assigned UUID to guarantee
       // uniqueness and safe post-promote navigation (/w/<id>/build).
       cwc.meta.id = randomUUID()
