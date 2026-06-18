@@ -5,6 +5,7 @@ export interface TaskUnit {
   sessionId: string
   cwd: string
   gitBranch?: string
+  promptText: string         // first text block of the user prompt (intent signal), truncated
   startedAt: string          // ISO of the prompt
   endedAt: string            // ISO of the last action in the unit
   tools: string[]            // tool_use names, in order

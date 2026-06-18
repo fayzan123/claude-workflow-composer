@@ -31,6 +31,18 @@ function toolUseBlocks(o: RawLine): { name: string; input?: Record<string, unkno
     .map(b => ({ name: b.name as string, input: b.input }))
 }
 
+/** Extract the user-visible prompt text from a user line, truncated to 280 chars. */
+function promptTextOf(o: RawLine): string {
+  const c = o.message?.content
+  let text = ''
+  if (typeof c === 'string') text = c
+  else if (Array.isArray(c)) {
+    const block = c.find(b => (b as { type?: string }).type === 'text') as { text?: string } | undefined
+    text = block?.text ?? ''
+  }
+  return text.replace(/\s+/g, ' ').trim().slice(0, 280)
+}
+
 /** Parse one session .jsonl into task units (one per user prompt). */
 export async function parseSession(filePath: string): Promise<TaskUnit[]> {
   let raw: string
@@ -45,6 +57,7 @@ export async function parseSession(filePath: string): Promise<TaskUnit[]> {
       if (cur) units.push(cur)
       cur = {
         sessionId: o.sessionId ?? '', cwd: o.cwd ?? '', gitBranch: o.gitBranch,
+        promptText: promptTextOf(o),
         startedAt: o.timestamp ?? '', endedAt: o.timestamp ?? '', tools: [], commands: [],
       }
       continue

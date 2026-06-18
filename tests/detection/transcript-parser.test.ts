@@ -47,4 +47,16 @@ describe('parseSession', () => {
     expect(await parseSession(p)).toEqual([])
     expect(await parseSession(path.join(dir, 'nope.jsonl'))).toEqual([])
   })
+
+  it('captures the user prompt text on each unit', async () => {
+    const ts = (n: number) => `2026-06-14T10:0${n}:00.000Z`
+    const p = await writeSession('pt.jsonl', [
+      line({ type: 'user', sessionId: 'S2', cwd: '/repo', timestamp: ts(0), message: { role: 'user', content: [{ type: 'text', text: 'fix the tests' }] } }),
+      line({ type: 'assistant', sessionId: 'S2', cwd: '/repo', timestamp: ts(1), message: { role: 'assistant', content: [{ type: 'tool_use', name: 'Bash', input: { command: 'npm test' } }] } }),
+      line({ type: 'user', sessionId: 'S2', cwd: '/repo', timestamp: ts(2), message: { role: 'user', content: 'a plain string prompt' } }),
+    ])
+    const units = await parseSession(p)
+    expect(units[0].promptText).toBe('fix the tests')
+    expect(units[1].promptText).toBe('a plain string prompt')
+  })
 })
