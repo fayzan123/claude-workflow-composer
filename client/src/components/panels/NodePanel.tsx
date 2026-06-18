@@ -6,6 +6,7 @@ import { slugify } from '../../../../src/slugify.ts'
 import { CLAUDE_MODELS } from '../../lib/models.ts'
 import { api } from '../../lib/api.ts'
 import { FieldHint } from '../common/FieldHint.tsx'
+import { agentToMarkdown, parseAgentMarkdown } from '../../lib/agentMarkdown.ts'
 import './NodePanel.css'
 
 const AVAILABLE_TOOLS = ['Read', 'Write', 'Edit', 'Bash', 'Glob', 'Grep', 'WebSearch', 'WebFetch', 'Agent', 'Skill', 'Task', 'TodoWrite', 'NotebookEdit', 'LSP']
@@ -28,10 +29,27 @@ export function NodePanel({ node, isEntryNode, terminalEdge, workflow, dispatch,
   const [newSkill, setNewSkill] = useState('')
   const [skillFocused, setSkillFocused] = useState(false)
   const [installedSkills, setInstalledSkills] = useState<SkillEntry[]>([])
+  const [mode, setMode] = useState<'form' | 'markdown'>('form')
+  const [mdDraft, setMdDraft] = useState('')
+  const [mdError, setMdError] = useState<string | null>(null)
 
   useEffect(() => {
     api.skills().then(setInstalledSkills).catch(() => {})
   }, [])
+
+  // Re-seed the markdown draft only when entering markdown mode or selecting a different node —
+  // not on every field change, so form edits don't clobber an in-progress markdown edit.
+  useEffect(() => {
+    if (mode === 'markdown') { setMdDraft(agentToMarkdown(node.agent)); setMdError(null) }
+  }, [mode, node.id]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  function handleMdChange(e: React.ChangeEvent<HTMLTextAreaElement>) {
+    const v = e.target.value
+    setMdDraft(v)
+    const r = parseAgentMarkdown(v)
+    if (r.ok) { setMdError(null); updateAgent(r.patch) }
+    else setMdError(r.error)
+  }
 
   function updateAgent(agentPartial: Partial<CwcAgent>) {
     dispatch({ type: 'UPDATE_NODE', payload: { nodeId: node.id, agent: agentPartial } })
@@ -178,6 +196,30 @@ export function NodePanel({ node, isEntryNode, terminalEdge, workflow, dispatch,
           </div>
         )}
 
+        {!isRef && (
+          <div className="node-panel__modes" role="tablist" aria-label="Editor mode">
+            <button type="button" role="tab" aria-selected={mode === 'form'} className={`node-panel__mode${mode === 'form' ? ' is-on' : ''}`} onClick={() => setMode('form')}>Form</button>
+            <button type="button" role="tab" aria-selected={mode === 'markdown'} className={`node-panel__mode${mode === 'markdown' ? ' is-on' : ''}`} onClick={() => setMode('markdown')}>Markdown</button>
+          </div>
+        )}
+
+        {mode === 'markdown' && !isRef && (
+          <div className="node-panel__field">
+            <textarea
+              className="node-panel__md"
+              value={mdDraft}
+              onChange={handleMdChange}
+              spellCheck={false}
+              rows={24}
+              aria-label="Agent markdown source"
+            />
+            {mdError
+              ? <div className="node-panel__md-error">{mdError}</div>
+              : <div className="node-panel__md-note">Editing the agent's raw <code>.md</code> — frontmatter + system prompt. Completion criteria, skills &amp; wiring stay in Form view.</div>}
+          </div>
+        )}
+
+        {(mode === 'form' || isRef) && (<>
         <div className="node-panel__field">
           <label className="node-panel__label">Name</label>
           <FieldHint id="node.name" />
@@ -368,6 +410,7 @@ export function NodePanel({ node, isEntryNode, terminalEdge, workflow, dispatch,
             </>
           )}
         </div>
+        </>)}
       </div>
   )
 
