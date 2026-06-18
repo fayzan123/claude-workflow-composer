@@ -2,6 +2,7 @@
 import { Router } from 'express'
 import * as fs from 'node:fs/promises'
 import * as path from 'node:path'
+import { randomUUID } from 'node:crypto'
 import { Cron } from 'croner'
 import { runClaude as defaultRunner, type ClaudeRunner } from '../claude-runner.js'
 import { findTranscripts, parseSession } from '../../detection/transcript-parser.js'
@@ -60,6 +61,9 @@ export function automationScanRouter(opts: AutomationScanRouterOptions): Router 
     try {
       const out = await runner(buildWorkflowGenPrompt(a))
       const cwc = parseWorkflowJson(out.result)
+      // Overwrite the LLM-generated id with a server-assigned UUID to guarantee
+      // uniqueness and safe post-promote navigation (/w/<id>/build).
+      cwc.meta.id = randomUUID()
       cwc.meta.triggers = [cronTriggerFor(a)]
       const file = path.join(opts.workflowsDir, `${slugify(cwc.meta.name)}-${Date.now()}.cwc`)
       await fs.mkdir(opts.workflowsDir, { recursive: true })

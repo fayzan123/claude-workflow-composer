@@ -75,11 +75,18 @@ describe('automation-scan API', () => {
     const res = await fetch(`${base}/api/automation-scan/${id}/promote`, { method: 'POST' })
     expect(res.status).toBe(200)
     const { workflowId } = await res.json() as { workflowId: string }
-    expect(workflowId).toBe('wf-1')
+    // Server assigns a fresh UUID — it must be a non-empty string, must NOT be the
+    // LLM-generated 'wf-1', and must look like a UUID (contains hyphens).
+    expect(typeof workflowId).toBe('string')
+    expect(workflowId.length).toBeGreaterThan(0)
+    expect(workflowId).not.toBe('wf-1')
+    expect(workflowId).toMatch(/^[0-9a-f-]{36}$/)
 
     const files = await fs.readdir(wfDir)
     expect(files.some(f => f.endsWith('.cwc'))).toBe(true)
     const cwc = JSON.parse(await fs.readFile(path.join(wfDir, files[0]), 'utf-8'))
+    // The written file must carry the server-assigned id (same as the returned workflowId)
+    expect(cwc.meta.id).toBe(workflowId)
     expect(cwc.meta.triggers[0].type).toBe('cron')
     expect(cwc.meta.triggers[0].enabled).toBe(false)
 
