@@ -32,6 +32,8 @@ import type { RunStore } from './run-store.js'
 import type { CwcTrigger } from '../schema.js'
 import { serviceRouter } from './api/service.js'
 import { automationCandidatesRouter } from './api/automation-candidates.js'
+import { automationScanRouter } from './api/automation-scan.js'
+import { createScanStore } from './scan-store.js'
 
 export interface AppOptions {
   staticDir: string | null
@@ -44,6 +46,7 @@ export interface AppOptions {
   worktreesRoot?: string
   automationStatePath?: string    // default ~/.cwc/automation-state.json
   configPath?: string             // default ~/.cwc/config.json
+  automationScanPath?: string     // default ~/.cwc/automation-scan.json
   enableScheduler?: boolean       // default false; bin/cwc start passes true
   enableNotifier?: boolean        // default true; tests pass false
 }
@@ -61,7 +64,6 @@ export function createApp(opts: AppOptions): express.Express {
 
   const homeDir = opts.userHomeDir ?? os.homedir()
   app.use('/api/service-status', serviceRouter(homeDir))
-  app.use('/api/automation-candidates', automationCandidatesRouter(homeDir))
   app.use('/api/agents/generate', agentsGenerateRouter(opts.claudeRunner))
   app.use('/api/agents', agentsRouter(homeDir))
 
@@ -83,6 +85,10 @@ export function createApp(opts: AppOptions): express.Express {
 
   const runStore = createRunStore(runsDir)
   const autoState = createAutomationState(statePath)
+
+  const scanPath = opts.automationScanPath ?? path.join(os.homedir(), '.cwc', 'automation-scan.json')
+  const scanStore = createScanStore(scanPath)
+  app.use('/api/automation-scan', automationScanRouter({ homeDir, workflowsDir: wfDir, store: scanStore, runner: opts.claudeRunner }))
 
   // Sweep orphan worktrees on real server start only (paused/running runs keep theirs).
   // Gated on enableScheduler so test apps with default paths never touch ~/.cwc/worktrees.
