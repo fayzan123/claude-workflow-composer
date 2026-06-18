@@ -31,14 +31,15 @@ function evidenceFrom(units: TaskUnit[]): AutomationEvidence {
   }
 }
 
-/** Run the deep analysis over task units with an injected Claude runner. */
-export async function analyzeUnits(units: TaskUnit[], runner: ClaudeRunner): Promise<DetectedAutomation[]> {
+export function buildAnalysisContext(units: TaskUnit[]): { prompt: string; refIndex: Map<string, TaskUnit> } | null {
   const digests = buildDigests(units)
-  if (digests.length === 0) return []
+  if (digests.length === 0) return null
   const refIndex = new Map(digests.flatMap(d => d.lines).map(l => [l.ref, l.unit]))
+  return { prompt: buildAnalysisPrompt(digests), refIndex }
+}
 
-  const out = await runner(buildAnalysisPrompt(digests), { timeoutMs: 5 * 60_000 })
-  const json = extractJsonObject(out.result)
+export function parseAutomations(resultText: string, refIndex: Map<string, TaskUnit>): DetectedAutomation[] {
+  const json = extractJsonObject(resultText)
   if (!json) return []
   let parsed: { automations?: RawAutomation[] }
   try { parsed = JSON.parse(json) } catch { return [] }
@@ -64,4 +65,12 @@ export async function analyzeUnits(units: TaskUnit[], runner: ClaudeRunner): Pro
     })
   }
   return results.sort((x, y) => y.confidence - x.confidence)
+}
+
+/** Run the deep analysis over task units with an injected Claude runner. */
+export async function analyzeUnits(units: TaskUnit[], runner: ClaudeRunner): Promise<DetectedAutomation[]> {
+  const ctx = buildAnalysisContext(units)
+  if (!ctx) return []
+  const out = await runner(ctx.prompt, { timeoutMs: 5 * 60_000 })
+  return parseAutomations(out.result, ctx.refIndex)
 }

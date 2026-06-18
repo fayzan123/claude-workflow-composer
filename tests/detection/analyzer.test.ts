@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { analyzeUnits } from '../../src/detection/analyzer.js'
+import { analyzeUnits, buildAnalysisContext, parseAutomations } from '../../src/detection/analyzer.js'
 import type { TaskUnit } from '../../src/detection/types.js'
 
 function unit(p: Partial<TaskUnit>): TaskUnit {
@@ -36,5 +36,27 @@ describe('analyzeUnits', () => {
   it('returns [] when the model returns no JSON object', async () => {
     const runner = async () => ({ result: 'no json here', sessionId: 's' })
     expect(await analyzeUnits([unit({})], runner)).toEqual([])
+  })
+})
+
+describe('buildAnalysisContext + parseAutomations', () => {
+  it('builds a refIndex and parses a result string into automations', () => {
+    const units = [
+      { sessionId: 'A', cwd: '/repo', promptText: 'x', startedAt: '2026-06-10T09:00:00.000Z', endedAt: '', tools: ['Bash'], commands: ['npm test'] },
+      { sessionId: 'B', cwd: '/repo', promptText: 'x', startedAt: '2026-06-12T09:00:00.000Z', endedAt: '', tools: ['Bash'], commands: ['npm test'] },
+    ]
+    const ctx = buildAnalysisContext(units)!
+    expect(ctx).not.toBeNull()
+    expect(ctx.refIndex.size).toBe(2)
+    const out = parseAutomations(JSON.stringify({ automations: [{
+      title: 'T', description: 'd', steps: [], stepTokens: ['run-tests'], refs: ['r0', 'r1'],
+      suggestedTrigger: { kind: 'manual', label: '' }, confidence: 0.8,
+    }] }), ctx.refIndex)
+    expect(out).toHaveLength(1)
+    expect(out[0].evidence.count).toBe(2)
+  })
+
+  it('buildAnalysisContext returns null when there is nothing meaningful', () => {
+    expect(buildAnalysisContext([])).toBeNull()
   })
 })
