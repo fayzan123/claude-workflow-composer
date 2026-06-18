@@ -7,6 +7,29 @@ function unit(p: Partial<TaskUnit>): TaskUnit {
 }
 
 describe('buildDigests', () => {
+  it('caps per-repo lines at maxPerRepo (most-recent kept) and assigns sequential refs starting at r0', () => {
+    // 12 units in one repo with distinct timestamps; maxPerRepo=5 should keep only the 5 newest
+    const units = Array.from({ length: 12 }, (_, i) => {
+      const day = String(i + 1).padStart(2, '0')
+      return unit({ cwd: '/repo', startedAt: `2026-06-${day}T10:00:00.000Z` })
+    })
+    const digests = buildDigests(units, { maxPerRepo: 5 })
+    expect(digests).toHaveLength(1)
+    expect(digests[0].lines).toHaveLength(5)
+    // All emitted refs must be sequential from r0
+    const refs = digests[0].lines.map(l => l.ref)
+    expect(refs).toEqual(['r0', 'r1', 'r2', 'r3', 'r4'])
+    // The kept lines should be the 5 most-recent (days 08–12)
+    const timestamps = digests[0].lines.map(l => l.unit.startedAt)
+    expect(timestamps).toEqual([
+      '2026-06-12T10:00:00.000Z',
+      '2026-06-11T10:00:00.000Z',
+      '2026-06-10T10:00:00.000Z',
+      '2026-06-09T10:00:00.000Z',
+      '2026-06-08T10:00:00.000Z',
+    ])
+  })
+
   it('drops trivial units (no tools), buckets by repo, assigns sequential refs', () => {
     const digests = buildDigests([
       unit({ cwd: '/a', tools: ['Bash'], commands: ['npm test'] }),
