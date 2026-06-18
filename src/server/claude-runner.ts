@@ -3,6 +3,12 @@ import * as fs from 'node:fs'
 import * as os from 'node:os'
 import * as path from 'node:path'
 
+// Every runClaude caller is an LLM generation task (workflow promote, agent/skill build).
+// In a heavily-loaded CLI environment these routinely take 60-90s and can spike past two
+// minutes for larger outputs, so the default must be generous — 120s was mis-calibrated and
+// surfaced as "claude timed out after 120s" on the longer promotions. Matches the scan ceiling.
+const DEFAULT_TIMEOUT_MS = 300_000
+
 export interface RunClaudeOptions {
   resume?: string
   binPath?: string
@@ -54,7 +60,7 @@ export const runClaude: ClaudeRunner = (prompt, opts = {}) => {
       isWinShim ? `"${bin}"` : bin,
       args,
       {
-        timeout: opts.timeoutMs ?? 120_000,
+        timeout: opts.timeoutMs ?? DEFAULT_TIMEOUT_MS,
         maxBuffer: 10 * 1024 * 1024,
         env: { ...process.env, ...(opts.env ?? {}) },
         // .cmd/.bat cannot be spawned directly (Node rejects them with EINVAL);
@@ -64,7 +70,7 @@ export const runClaude: ClaudeRunner = (prompt, opts = {}) => {
       (err, stdout, stderr) => {
         if (err) {
           if ((err as NodeJS.ErrnoException & { killed?: boolean }).killed) {
-            reject(new Error(`claude timed out after ${(opts.timeoutMs ?? 120_000) / 1000}s`))
+            reject(new Error(`claude timed out after ${(opts.timeoutMs ?? DEFAULT_TIMEOUT_MS) / 1000}s`))
             return
           }
           reject(new Error(`claude failed: ${stderr?.toString().trim() || err.message}`))
