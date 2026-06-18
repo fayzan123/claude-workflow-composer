@@ -99,6 +99,15 @@ it('delivers the prompt via stdin, never argv', async () => {
   expect(args).not.toContain('line prompt')
 })
 
+it('aborts a running claude process when the signal is cancelled', async () => {
+  const hangingBin = await makeBin(tmpDir, 'claude-hanging', `setInterval(() => {}, 1000)
+`)
+  const controller = new AbortController()
+  const run = runClaude('cancel me', { binPath: hangingBin, timeoutMs: 5000, signal: controller.signal })
+  setTimeout(() => controller.abort(), 50)
+  await expect(run).rejects.toThrow(/cancelled/)
+})
+
 it('resolveClaudeBin finds Windows shims (claude.cmd / claude.exe) on win32', async () => {
   const binDir = await fs.mkdtemp(path.join(os.tmpdir(), 'cwc-win-bin-'))
   await fs.writeFile(path.join(binDir, 'claude.cmd'), '@echo off\n', { mode: 0o755 })

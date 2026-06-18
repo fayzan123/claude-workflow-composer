@@ -17,4 +17,10 @@ describe('relativeTime', () => {
     expect(relativeTime(new Date(NOW - 86400_000).toISOString(), NOW)).toBe('1d ago')
     expect(relativeTime(new Date(NOW - 2 * 86400_000).toISOString(), NOW)).toBe('2d ago')
   })
+  it('treats future timestamps as just now', () => {
+    expect(relativeTime(new Date(NOW + 60_000).toISOString(), NOW)).toBe('just now')
+  })
+  it('handles invalid timestamps', () => {
+    expect(relativeTime('', NOW)).toBe('unknown')
+  })
 })

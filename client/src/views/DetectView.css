@@ -89,7 +89,8 @@
   background: var(--color-text-tertiary);
 }
 
-.detect__status--running::before {
+.detect__status--running::before,
+.detect__status--promoting::before {
   background: var(--color-primary);
   animation: detect-pulse 1.4s ease-in-out infinite;
 }
@@ -309,6 +310,10 @@
   box-shadow: 0 0 0 3px var(--color-primary-ring);
 }
 
+.detect__card--failed {
+  border-color: color-mix(in oklch, var(--color-error) 42%, var(--color-border));
+}
+
 .detect__card-top {
   display: flex;
   align-items: flex-start;
@@ -334,6 +339,20 @@
   font-weight: 600;
   padding: 2px 7px;
   white-space: nowrap;
+}
+
+.detect__badge--busy {
+  color: var(--color-primary);
+}
+
+.detect__badge--error {
+  border-color: color-mix(in oklch, var(--color-error) 38%, var(--color-border));
+  color: var(--color-error);
+}
+
+.detect__badge--muted {
+  color: var(--color-text-tertiary);
+  border-color: var(--color-border);
 }
 
 .detect__card-meta {
@@ -439,6 +458,16 @@
   color: var(--color-text);
 }
 
+.detect__cancel {
+  color: var(--color-error);
+  border-color: color-mix(in oklch, var(--color-error) 38%, var(--color-border));
+}
+
+.detect__cancel:hover:not(:disabled) {
+  background: var(--color-error-light);
+  color: var(--color-error);
+}
+
 .detect__card-actions button:disabled {
   opacity: .5;
   cursor: default;
@@ -449,6 +478,18 @@
   color: var(--color-primary);
   font-size: var(--text-xs);
   line-height: 1.5;
+}
+
+.detect__card-failed {
+  margin: var(--space-md) 0 0;
+  color: var(--color-error);
+  font-size: var(--text-xs);
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.detect__card-muted {
+  color: var(--color-text-tertiary);
 }
 
 .detect__progress {

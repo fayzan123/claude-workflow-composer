@@ -130,7 +130,7 @@ export const api = {
     latest: () => fetch('/api/automation-scan').then(r => r.json()) as Promise<{
       status: string
       log?: Array<{ ts: string; level: string; message: string }>
-      automations: Array<{ id: string; title: string; description: string; steps: string[]; evidence: { count: number; repos: string[] }; suggestedTrigger: { label: string; cron?: string }; confidence: number; status: string }>
+      automations: Array<{ id: string; title: string; description: string; steps: string[]; evidence: { count: number; repos: string[] }; suggestedTrigger: { label: string; cron?: string }; confidence: number; status: string; statusDetail?: string }>
     }>,
     start: (model?: string) => fetch('/api/automation-scan', {
       method: 'POST',
@@ -138,7 +138,8 @@ export const api = {
       body: JSON.stringify(model ? { model } : {}),
     }),
     dismiss: (id: string) => fetch(`/api/automation-scan/${id}/dismiss`, { method: 'POST' }),
-    promote: (id: string) => fetch(`/api/automation-scan/${id}/promote`, { method: 'POST' }).then(r => r.json()) as Promise<{ workflowId?: string; error?: string }>,
+    promote: (id: string) => fetch(`/api/automation-scan/${id}/promote`, { method: 'POST' }).then(r => r.json()) as Promise<{ workflowId?: string; error?: string; cancelled?: boolean }>,
+    cancelPromote: (id: string) => fetch(`/api/automation-scan/${id}/promote/cancel`, { method: 'POST' }),
   },
 
   automations: {

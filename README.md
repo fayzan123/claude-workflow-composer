@@ -34,6 +34,13 @@ Opens a browser at `http://localhost:3579`. The local server binds to loopback a
 npx claude-cwc stop    # Stop the server
 ```
 
+On macOS, install the background service if you want scheduled automations to keep running after reboot:
+
+```bash
+npx claude-cwc install-service
+npx claude-cwc uninstall-service
+```
+
 Or from source:
 
 ```bash

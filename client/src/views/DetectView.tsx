@@ -39,16 +39,20 @@ export function DetectView() {
   const [busyId, setBusyId] = useState<string | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
   const [model, setModel] = useState<string>('sonnet')
+  const [cancelingId, setCancelingId] = useState<string | null>(null)
   const mountedRef = useRef(true)
+  const activePromotionId = autos.find(a => a.status === 'promoting')?.id ?? busyId
+  const generationInProgress = activePromotionId !== null
+  const running = status === 'running'
   useEffect(() => () => { mountedRef.current = false }, [])
 
   // Warn before a browser-level close/refresh while a workflow is generating.
   useEffect(() => {
-    if (!busyId) return
+    if (!generationInProgress) return
     const h = (e: BeforeUnloadEvent) => { e.preventDefault(); e.returnValue = '' }
     window.addEventListener('beforeunload', h)
     return () => window.removeEventListener('beforeunload', h)
-  }, [busyId])
+  }, [generationInProgress])
 
   async function refresh() {
     const r = await api.automationScan.latest()
@@ -59,8 +63,20 @@ export function DetectView() {
   }
 
   async function scan() {
+    if (running || generationInProgress) return
+    setActionError(null)
     setStatus('running'); setLogs([]); setAutos([])
-    await api.automationScan.start(model)
+    try {
+      const res = await api.automationScan.start(model)
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({})) as { error?: string }
+        setActionError(body.error || 'Could not start history scan.')
+        await refresh()
+      }
+    } catch {
+      setActionError('Could not start history scan — is the server still running?')
+      await refresh().catch(() => setStatus('idle'))
+    }
   }
 
   // mount: replay current state, subscribe to live log, optionally autostart
@@ -88,30 +104,64 @@ export function DetectView() {
   // Promote spawns Claude to generate the workflow (seconds). Guard against double-fire and
   // give visible feedback; block dismiss on the same card while a promote is in flight.
   async function promote(id: string) {
-    if (busyId) return
+    if (generationInProgress) return
     setBusyId(id); setActionError(null)
+    setAutos(prev => prev.map(a => a.id === id ? { ...a, status: 'promoting', statusDetail: undefined } : a))
     try {
       const r = await api.automationScan.promote(id)
       // If the user navigated away while generating, the workflow is still saved
       // server-side and appears in their library — just don't yank them back here.
       if (!mountedRef.current) return
       if (r.workflowId) { navigate(`/w/${r.workflowId}/build`); return }
+      if (r.cancelled) { await refresh(); return }
       setActionError(r.error || 'Could not generate a workflow from this automation.')
+      await refresh()
     } catch {
       if (mountedRef.current) setActionError('Promote failed — is the server still running?')
+      if (mountedRef.current) await refresh().catch(() => {})
     } finally {
       if (mountedRef.current) setBusyId(null)
     }
   }
+  async function cancelPromote(id: string) {
+    setCancelingId(id)
+    setActionError(null)
+    try {
+      const res = await api.automationScan.cancelPromote(id)
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({})) as { error?: string }
+        setActionError(body.error || 'Could not cancel workflow generation.')
+      }
+      await refresh()
+    } catch {
+      setActionError('Cancel failed — is the server still running?')
+    } finally {
+      if (mountedRef.current) {
+        setCancelingId(null)
+        setBusyId(null)
+      }
+    }
+  }
   async function dismiss(id: string) {
-    if (busyId) return
-    try { await api.automationScan.dismiss(id) } catch { /* best effort */ }
+    if (generationInProgress) return
+    try {
+      const res = await api.automationScan.dismiss(id)
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({})) as { error?: string }
+        setActionError(body.error || 'Could not dismiss this automation.')
+        await refresh()
+        return
+      }
+    } catch {
+      setActionError('Dismiss failed — is the server still running?')
+      return
+    }
     setAutos(prev => prev.filter(a => a.id !== id))
   }
 
-  const running = status === 'running'
   const selectedModel = MODELS.find(m => m.key === model) ?? MODELS[1]
-  const statusLabel = STATUS_LABEL[status] ?? status
+  const statusLabel = generationInProgress ? 'Generating workflow' : STATUS_LABEL[status] ?? status
+  const statusClass = generationInProgress ? 'promoting' : status
 
   return (
     <div className="detect">
@@ -123,9 +173,9 @@ export function DetectView() {
           <p className="detect__subtitle">Find repeated Claude Code work and turn the strongest patterns into workflows.</p>
         </div>
         <div className="detect__bar-actions">
-          <span className={`detect__status detect__status--${status}`}>{statusLabel}</span>
-          <button className="detect__scan" type="button" onClick={scan} disabled={running}>
-            {running ? 'Scanning...' : logs.length ? 'Scan again' : 'Scan history'}
+          <span className={`detect__status detect__status--${statusClass}`}>{statusLabel}</span>
+          <button className="detect__scan" type="button" onClick={scan} disabled={running || generationInProgress}>
+            {generationInProgress ? 'Generating...' : running ? 'Scanning...' : logs.length ? 'Scan again' : 'Scan history'}
           </button>
         </div>
       </header>
@@ -138,7 +188,7 @@ export function DetectView() {
               type="button"
               className={`detect__model${model === m.key ? ' detect__model--on' : ''}`}
               onClick={() => setModel(m.key)}
-              disabled={running}
+              disabled={running || generationInProgress}
               aria-pressed={model === m.key}
             >
               <span className="detect__model-name">{m.label}</span>
@@ -170,12 +220,17 @@ export function DetectView() {
           ) : (
             <div className="detect__cards">
               {autos.map(a => {
-                const busy = busyId === a.id
+                const busy = a.status === 'promoting' || busyId === a.id
+                const failed = a.status === 'promotion_failed'
+                const cancelled = a.status === 'promotion_cancelled'
                 return (
-                <article key={a.id} className={`detect__card${busy ? ' detect__card--busy' : ''}`}>
+                <article key={a.id} className={`detect__card${busy ? ' detect__card--busy' : ''}${failed ? ' detect__card--failed' : ''}`}>
                   <div className="detect__card-top">
                     <h3 className="detect__card-title">{a.title}</h3>
                     {a.status === 'promoted' && <span className="detect__badge">Promoted</span>}
+                    {busy && <span className="detect__badge detect__badge--busy">Generating</span>}
+                    {cancelled && <span className="detect__badge detect__badge--muted">Cancelled</span>}
+                    {failed && <span className="detect__badge detect__badge--error">Failed</span>}
                   </div>
                   <div className="detect__card-meta">
                     <span>{a.evidence.count} sighting{a.evidence.count === 1 ? '' : 's'}</span>
@@ -191,11 +246,19 @@ export function DetectView() {
                     </ol>
                   )}
                   <div className="detect__card-actions">
-                    <button className="detect__promote" type="button" onClick={() => promote(a.id)} disabled={busyId !== null}>
-                      {busy ? 'Generating...' : a.status === 'promoted' ? 'Generate again' : 'Generate workflow'}
+                    <button className="detect__promote" type="button" onClick={() => promote(a.id)} disabled={generationInProgress}>
+                      {busy ? 'Generating...' : a.status === 'promoted' || failed || cancelled ? 'Generate again' : 'Generate workflow'}
                     </button>
-                    <button className="detect__dismiss" type="button" onClick={() => dismiss(a.id)} disabled={busyId !== null}>Dismiss</button>
+                    {busy ? (
+                      <button className="detect__dismiss detect__cancel" type="button" onClick={() => cancelPromote(a.id)} disabled={cancelingId === a.id}>
+                        {cancelingId === a.id ? 'Cancelling...' : 'Cancel'}
+                      </button>
+                    ) : (
+                      <button className="detect__dismiss" type="button" onClick={() => dismiss(a.id)} disabled={generationInProgress}>Dismiss</button>
+                    )}
                   </div>
+                  {cancelled && a.statusDetail && <p className="detect__card-failed detect__card-muted">{a.statusDetail}</p>}
+                  {failed && a.statusDetail && <p className="detect__card-failed">{a.statusDetail}</p>}
                   {busy && (
                     <div className="detect__card-busy">
                       <div className="detect__progress" role="progressbar" aria-label="Generating workflow">

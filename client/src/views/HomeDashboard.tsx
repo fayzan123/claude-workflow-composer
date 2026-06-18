@@ -17,7 +17,9 @@ type WorkflowListItem = { path: string; name: string; nodeCount: number; updated
 type Tab = 'new' | 'workflows' | 'deployed'
 
 export function relativeTime(isoString: string, now = Date.now()): string {
-  const diff = now - new Date(isoString).getTime()
+  const then = new Date(isoString).getTime()
+  if (!Number.isFinite(then)) return 'unknown'
+  const diff = Math.max(0, now - then)
   const sec = Math.floor(diff / 1_000)
   if (sec < 60) return 'just now'
   const min = Math.floor(sec / 60)
@@ -292,7 +294,7 @@ export function HomeDashboard() {
             </div>
             <h2 className="hd-not-installed__title">Claude Code not found</h2>
             <p className="hd-not-installed__desc">
-              Install Claude Code first, then relaunch <code>npx cwc</code>.
+              Install Claude Code first, then relaunch <code>npx claude-cwc</code>.
             </p>
           </div>
         </div>
@@ -672,7 +674,7 @@ export function HomeDashboard() {
                 <p className="hd-auto__persistence">
                   {servicePersistent
                     ? 'Runs at login. The server restarts automatically.'
-                    : 'Session-bound. Stops on reboot. Run `npx cwc install-service` for 24/7.'}
+                    : 'Session-bound. Stops on reboot. Run `npx claude-cwc install-service` for 24/7.'}
                 </p>
               )}
             </div>

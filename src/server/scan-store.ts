@@ -19,15 +19,24 @@ export interface ScanResult {
 export interface ScanStore {
   getLatest(): ScanResult | null
   isRunning(): boolean
+  hasActivePromotion(): boolean
   onLog(cb: (e: LogEntry) => void): () => void
   appendLog(e: StreamLogEvent): void
   runScan(job: () => Promise<DetectedAutomation[]>): Promise<void>
-  setStatus(id: string, status: DetectedAutomation['status']): Promise<DetectedAutomation | null>
+  setStatus(id: string, status: DetectedAutomation['status'], statusDetail?: string): Promise<DetectedAutomation | null>
 }
 
 export function createScanStore(filePath: string): ScanStore {
   let latest: ScanResult | null = null
   try { latest = JSON.parse(readFileSync(filePath, 'utf-8')) } catch { /* none yet */ }
+  if (latest) {
+    for (const a of latest.automations) {
+      if (a.status === 'promoting') {
+        a.status = 'promotion_failed'
+        a.statusDetail = 'Workflow generation was interrupted before it finished.'
+      }
+    }
+  }
   let running = false
   const emitter = new EventEmitter()
   emitter.setMaxListeners(0)   // SSE fan-out: many concurrent /stream clients, cleaned up on disconnect
@@ -39,7 +48,7 @@ export function createScanStore(filePath: string): ScanStore {
     await fs.rename(tmp, filePath)
   }
 
-  /** Carry dismissed/promoted status forward onto freshly-detected automations by id. */
+  /** Carry terminal user decisions forward onto freshly-detected automations by id. */
   function reconcile(fresh: DetectedAutomation[], prior: DetectedAutomation[]): DetectedAutomation[] {
     const priorMap = new Map(prior.map(a => [a.id, a.status]))
     return fresh.map(a => {
@@ -51,6 +60,7 @@ export function createScanStore(filePath: string): ScanStore {
   return {
     getLatest: () => latest,
     isRunning: () => running,
+    hasActivePromotion: () => latest?.automations.some(a => a.status === 'promoting') ?? false,
     onLog(cb) { emitter.on('log', cb); return () => emitter.off('log', cb) },
     appendLog(e) {
       const entry: LogEntry = { ts: new Date().toISOString(), ...e }
@@ -73,10 +83,12 @@ export function createScanStore(filePath: string): ScanStore {
         await persist()
       }
     },
-    async setStatus(id, status) {
+    async setStatus(id, status, statusDetail) {
       const a = latest?.automations.find(x => x.id === id)
       if (!a) return null
       a.status = status
+      if (statusDetail) a.statusDetail = statusDetail
+      else delete a.statusDetail
       await persist()
       return a
     },

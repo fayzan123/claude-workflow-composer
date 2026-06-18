@@ -43,6 +43,19 @@ describe('workflow-generator', () => {
     expect(p).toMatch(/Do NOT attach skills to an agentRef node/i)
   })
 
+  it('asks for the smallest faithful workflow instead of defaulting to one generic agent', () => {
+    const p = buildWorkflowGenPrompt(auto)
+    expect(p).toContain('smallest workflow that faithfully executes')
+    expect(p).toMatch(/Do NOT default to a\s+single generic agent/i)
+    expect(p).toContain('Use as\nmany or as few agents as the automation needs')
+    expect(p).toContain('Do not add agents just to make the graph look more complex')
+    expect(p).toContain("Stop splitting when another agent would not improve the user's ability")
+    expect(p).toContain('every major observed step must be handled')
+    expect(p).not.toContain('Default to ONE agent')
+    expect(p).not.toContain('2-4 nodes')
+    expect(p).not.toContain('cap at 6')
+  })
+
   it('omits the skills block when no skills are provided', () => {
     expect(buildWorkflowGenPrompt(auto)).not.toContain('ALREADY HAS')
   })

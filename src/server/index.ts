@@ -176,7 +176,7 @@ export function startServer(port: number, staticDir: string | null): Promise<voi
     })
     server.on('error', (err: NodeJS.ErrnoException) => {
       if (err.code === 'EADDRINUSE') {
-        console.error(`Port ${port} is already in use. Run 'cwc stop' to kill the existing server.`)
+        console.error(`Port ${port} is already in use. Run 'npx claude-cwc stop' to kill the existing server.`)
       }
       reject(err)
     })

@@ -15,6 +15,7 @@ export interface RunClaudeOptions {
   timeoutMs?: number
   env?: Record<string, string>
   model?: string          // --model override (e.g. 'claude-sonnet-4-6'); omitted → CLI default
+  signal?: AbortSignal
 }
 
 export interface RunClaudeResult {
@@ -63,12 +64,18 @@ export const runClaude: ClaudeRunner = (prompt, opts = {}) => {
         timeout: opts.timeoutMs ?? DEFAULT_TIMEOUT_MS,
         maxBuffer: 10 * 1024 * 1024,
         env: { ...process.env, ...(opts.env ?? {}) },
+        signal: opts.signal,
         // .cmd/.bat cannot be spawned directly (Node rejects them with EINVAL);
         // args here are fixed tokens plus a session UUID, so shell mode is safe.
         shell: isWinShim,
       },
       (err, stdout, stderr) => {
         if (err) {
+          const abortErr = err as NodeJS.ErrnoException & { killed?: boolean; name?: string }
+          if (opts.signal?.aborted || abortErr.name === 'AbortError' || abortErr.code === 'ABORT_ERR') {
+            reject(new Error('claude cancelled.'))
+            return
+          }
           if ((err as NodeJS.ErrnoException & { killed?: boolean }).killed) {
             reject(new Error(`claude timed out after ${(opts.timeoutMs ?? DEFAULT_TIMEOUT_MS) / 1000}s`))
             return

@@ -5,12 +5,14 @@ import * as path from 'node:path'
 import * as http from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { createApp } from '../../src/server/index.js'
+import type { ClaudeRunner } from '../../src/server/claude-runner.js'
 import type { StreamingRunner } from '../../src/server/streaming-analyzer.js'
 import { triggersForAutomation } from '../../src/server/api/automation-scan.js'
 import type { DetectedAutomation } from '../../src/detection/types.js'
 
 let lastScanModel: string | undefined
 let lastWorkflowPrompt: string | undefined
+let workflowRunnerDelay: Promise<void> | null = null
 const fakeStreaming: StreamingRunner = async (_prompt, { onLog, model }) => {
   lastScanModel = model
   onLog({ level: 'info', message: 'session started' })
@@ -32,8 +34,23 @@ const cannedRunner = async () => ({
   }] }), sessionId: 's',
 })
 
-const smartRunner = async (prompt: string) => {
+async function waitWithAbort(promise: Promise<void>, signal: AbortSignal | undefined): Promise<void> {
+  if (!signal) { await promise; return }
+  if (signal.aborted) throw new Error('claude cancelled.')
+  await new Promise<void>((resolve, reject) => {
+    const cleanup = () => signal.removeEventListener('abort', onAbort)
+    const onAbort = () => { cleanup(); reject(new Error('claude cancelled.')) }
+    signal.addEventListener('abort', onAbort, { once: true })
+    promise.then(
+      () => { cleanup(); resolve() },
+      err => { cleanup(); reject(err) },
+    )
+  })
+}
+
+const smartRunner: ClaudeRunner = async (prompt, opts) => {
   if (prompt.includes('.cwc') || prompt.includes('"nodes"')) {
+    if (workflowRunnerDelay) await waitWithAbort(workflowRunnerDelay, opts?.signal)
     lastWorkflowPrompt = prompt
     return { result: JSON.stringify({
       meta: { id: 'wf-1', name: 'Tests And Push', description: 'd', version: 1, created: '2026-06-17T00:00:00Z', updated: '2026-06-17T00:00:00Z' },
@@ -53,6 +70,7 @@ const smartRunner = async (prompt: string) => {
 beforeEach(async () => {
   lastScanModel = undefined
   lastWorkflowPrompt = undefined
+  workflowRunnerDelay = null
   home = await fs.mkdtemp(path.join(os.tmpdir(), 'cwc-scanapi-'))
   scanPath = path.join(home, 'scan.json')
   wfDir = path.join(home, 'workflows')
@@ -82,6 +100,15 @@ async function waitForDone(): Promise<{ automations: { id: string; title: string
     await new Promise(res => setTimeout(res, 25))
   }
   throw new Error('scan did not finish')
+}
+
+async function waitForAutomationStatus(id: string, status: string): Promise<{ automations: { id: string; title: string; status: string; statusDetail?: string }[] }> {
+  for (let i = 0; i < 40; i++) {
+    const r = await (await fetch(`${base}/api/automation-scan`)).json() as { automations?: { id: string; status: string }[] }
+    if (r.automations?.some(a => a.id === id && a.status === status)) return r as never
+    await new Promise(res => setTimeout(res, 25))
+  }
+  throw new Error(`automation ${id} did not reach ${status}`)
 }
 
 describe('automation-scan API', () => {
@@ -135,6 +162,8 @@ describe('automation-scan API', () => {
     const cwc = JSON.parse(await fs.readFile(path.join(wfDir, files[0]), 'utf-8'))
     // The written file must carry the server-assigned id (same as the returned workflowId)
     expect(cwc.meta.id).toBe(workflowId)
+    expect(Date.parse(cwc.meta.created)).toBeGreaterThan(Date.parse('2026-06-17T00:00:00Z'))
+    expect(cwc.meta.updated).toBe(cwc.meta.created)
     expect(cwc.meta.triggers[0].type).toBe('cron')
     expect(cwc.meta.triggers[0].enabled).toBe(false)
     expect(cwc.meta.triggers[0].cwd).toBe('')
@@ -152,6 +181,64 @@ describe('automation-scan API', () => {
 
     const after = await (await fetch(`${base}/api/automation-scan`)).json() as { automations: { status: string }[] }
     expect(after.automations[0].status).toBe('promoted')
+  })
+
+  it('persists promoting status during workflow generation and blocks conflicting actions', async () => {
+    await fetch(`${base}/api/automation-scan`, { method: 'POST' })
+    const done = await waitForDone()
+    const id = done.automations[0].id
+    let releaseDelay = () => {}
+    workflowRunnerDelay = new Promise<void>(resolve => { releaseDelay = () => resolve() })
+
+    const promotePromise = fetch(`${base}/api/automation-scan/${id}/promote`, { method: 'POST' })
+    try {
+      const during = await waitForAutomationStatus(id, 'promoting')
+      expect(during.automations[0].status).toBe('promoting')
+
+      const startAgain = await fetch(`${base}/api/automation-scan`, { method: 'POST' })
+      expect(startAgain.status).toBe(409)
+      const dismiss = await fetch(`${base}/api/automation-scan/${id}/dismiss`, { method: 'POST' })
+      expect(dismiss.status).toBe(409)
+      const promoteAgain = await fetch(`${base}/api/automation-scan/${id}/promote`, { method: 'POST' })
+      expect(promoteAgain.status).toBe(409)
+
+      releaseDelay()
+      workflowRunnerDelay = null
+      const res = await promotePromise
+      expect(res.status).toBe(200)
+      await waitForAutomationStatus(id, 'promoted')
+    } finally {
+      releaseDelay()
+      workflowRunnerDelay = null
+      await promotePromise.catch(() => undefined)
+    }
+  })
+
+  it('cancels active workflow generation and leaves the candidate retryable', async () => {
+    await fetch(`${base}/api/automation-scan`, { method: 'POST' })
+    const done = await waitForDone()
+    const id = done.automations[0].id
+    workflowRunnerDelay = new Promise<void>(() => {})
+
+    const promotePromise = fetch(`${base}/api/automation-scan/${id}/promote`, { method: 'POST' })
+    try {
+      await waitForAutomationStatus(id, 'promoting')
+
+      const cancel = await fetch(`${base}/api/automation-scan/${id}/promote/cancel`, { method: 'POST' })
+      expect(cancel.status).toBe(200)
+      expect(await cancel.json()).toEqual({ cancelled: true })
+
+      const promoted = await promotePromise
+      expect(promoted.status).toBe(499)
+      expect(await promoted.json()).toMatchObject({ cancelled: true })
+
+      const after = await waitForAutomationStatus(id, 'promotion_cancelled')
+      expect(after.automations[0].statusDetail).toContain('cancelled')
+      await expect(fs.readdir(wfDir)).rejects.toThrow()
+    } finally {
+      workflowRunnerDelay = null
+      await promotePromise.catch(() => undefined)
+    }
   })
 })
 

@@ -91,4 +91,38 @@ describe('createScanStore', () => {
     await store.runScan(async () => [auto({ id: 'id1', status: 'new' })])
     expect(store.getLatest()?.automations[0].status).toBe('promoted')
   })
+
+  it('persists active promotion state with detail and exposes a single-flight flag', async () => {
+    const store = createScanStore(file)
+    await store.runScan(async () => [auto({ id: 'id1' })])
+
+    await store.setStatus('id1', 'promoting')
+    expect(store.hasActivePromotion()).toBe(true)
+
+    await store.setStatus('id1', 'promotion_failed', 'rate limit reached')
+    expect(store.hasActivePromotion()).toBe(false)
+    expect(store.getLatest()?.automations[0].statusDetail).toBe('rate limit reached')
+    expect(createScanStore(file).getLatest()?.automations[0].statusDetail).toBe('rate limit reached')
+  })
+
+  it('persists cancelled promotion state without treating it as active', async () => {
+    const store = createScanStore(file)
+    await store.runScan(async () => [auto({ id: 'id1' })])
+
+    await store.setStatus('id1', 'promotion_cancelled', 'user cancelled')
+    expect(store.hasActivePromotion()).toBe(false)
+    expect(createScanStore(file).getLatest()?.automations[0].status).toBe('promotion_cancelled')
+    expect(createScanStore(file).getLatest()?.automations[0].statusDetail).toBe('user cancelled')
+  })
+
+  it('does not revive an interrupted promotion as still running after reload', async () => {
+    const store = createScanStore(file)
+    await store.runScan(async () => [auto({ id: 'id1' })])
+    await store.setStatus('id1', 'promoting')
+
+    const reloaded = createScanStore(file)
+    expect(reloaded.hasActivePromotion()).toBe(false)
+    expect(reloaded.getLatest()?.automations[0].status).toBe('promotion_failed')
+    expect(reloaded.getLatest()?.automations[0].statusDetail).toContain('interrupted')
+  })
 })

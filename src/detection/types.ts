@@ -36,5 +36,6 @@ export interface DetectedAutomation {
   evidence: AutomationEvidence
   suggestedTrigger: InferredTrigger & { cron?: string }
   confidence: number         // 0..1
-  status: 'new' | 'dismissed' | 'promoted'
+  status: 'new' | 'dismissed' | 'promoting' | 'promotion_cancelled' | 'promotion_failed' | 'promoted'
+  statusDetail?: string
 }

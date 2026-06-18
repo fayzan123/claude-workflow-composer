@@ -19,6 +19,18 @@ const SKILL_DEST = path.join(CLAUDE_SKILLS_DIR, 'cwc-generate-workflow', 'SKILL.
 
 const LAUNCH_AGENTS_DIR = path.join(os.homedir(), 'Library', 'LaunchAgents')
 const PLIST_PATH = path.join(LAUNCH_AGENTS_DIR, `${SERVICE_LABEL}.plist`)
+const SERVICE_LOG_DIR = path.join(CWC_DIR, 'logs')
+const SERVICE_STDOUT = path.join(SERVICE_LOG_DIR, 'server.out.log')
+const SERVICE_STDERR = path.join(SERVICE_LOG_DIR, 'server.err.log')
+const SERVICE_PATH = [
+  path.join(os.homedir(), '.local', 'bin'),
+  '/opt/homebrew/bin',
+  '/usr/local/bin',
+  '/usr/bin',
+  '/bin',
+  '/usr/sbin',
+  '/sbin',
+].join(':')
 
 // ─── Skill management ────────────────────────────────────────────────────────
 
@@ -133,23 +145,57 @@ function launchctl(args: string[]): Promise<void> {
   return new Promise((resolve) => { child_process.execFile('launchctl', args, () => resolve()) })
 }
 
+function launchctlStrict(args: string[]): Promise<void> {
+  return new Promise((resolve, reject) => {
+    child_process.execFile('launchctl', args, (err, _stdout, stderr) => {
+      if (!err) { resolve(); return }
+      const detail = String(stderr || err.message || '').trim()
+      reject(new Error(`launchctl ${args.join(' ')} failed${detail ? `: ${detail}` : ''}`))
+    })
+  })
+}
+
 function serverResponding(): Promise<boolean> {
   return new Promise((resolve) => {
     const req = http.get({ host: '127.0.0.1', port: PORT, path: '/api/health', timeout: 1000 }, (res) => {
-      res.resume()
-      resolve((res.statusCode ?? 500) < 500)
+      let body = ''
+      res.setEncoding('utf-8')
+      res.on('data', chunk => { body += chunk })
+      res.on('end', () => {
+        resolve(res.statusCode === 200 && body.includes('"status":"ok"'))
+      })
     })
     req.on('error', () => resolve(false))
     req.on('timeout', () => { req.destroy(); resolve(false) })
   })
 }
 
+async function waitForServer(timeoutMs: number): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs
+  while (Date.now() < deadline) {
+    if (await serverResponding()) return true
+    await new Promise((r) => setTimeout(r, 300))
+  }
+  return serverResponding()
+}
+
+async function stopPidBackedServer(): Promise<void> {
+  const pid = await readPid()
+  if (!pid || !(await isRunning(pid))) {
+    try { await fs.unlink(PID_FILE) } catch { /* already gone */ }
+    return
+  }
+  try { process.kill(pid, 'SIGTERM') } catch { /* exited between check and signal */ }
+  for (let i = 0; i < 15 && await isRunning(pid); i++) await new Promise((r) => setTimeout(r, 100))
+  try { await fs.unlink(PID_FILE) } catch { /* already gone */ }
+}
+
 async function stopServer(): Promise<void> {
   if (await isServiceInstalled()) {
     // unload -w stops it now AND disables autostart, so KeepAlive can't respawn it and
-    // it won't return at next login until re-enabled (`cwc` or `cwc install-service`).
+    // it won't return at next login until re-enabled (`npx claude-cwc` or install-service).
     await launchctl(['unload', '-w', PLIST_PATH])
-    console.log('CWC service stopped (autostart disabled). Run `cwc` to start it again, or `cwc uninstall-service` to remove it.')
+    console.log('CWC service stopped (autostart disabled). Run `npx claude-cwc` to start it again, or `npx claude-cwc uninstall-service` to remove it.')
     return
   }
   const pid = await readPid()
@@ -164,7 +210,7 @@ async function stopServer(): Promise<void> {
 
 async function startServer(): Promise<void> {
   // If a service is installed, ensure it's loaded (idempotent) rather than spawning a
-  // second server that would collide on the port. load -w re-enables it if `cwc stop`
+  // second server that would collide on the port. load -w re-enables it if stop
   // had disabled it.
   if (await isServiceInstalled()) {
     await launchctl(['load', '-w', PLIST_PATH])
@@ -173,7 +219,7 @@ async function startServer(): Promise<void> {
       console.log(`CWC is running as a service at http://localhost:${PORT}`)
       await open(`http://localhost:${PORT}`)
     } else {
-      console.error('CWC service is installed but the server did not come up. Check `launchctl list | grep cwc`, or `cwc uninstall-service` to run it manually.')
+      console.error('CWC service is installed but the server did not come up. Check `launchctl list | grep cwc`, or run `npx claude-cwc uninstall-service` to run it manually.')
     }
     return
   }
@@ -209,20 +255,40 @@ async function startServer(): Promise<void> {
 
 async function installService(): Promise<void> {
   if (process.platform !== 'darwin') {
-    console.log('install-service is macOS-only (launchd). On other platforms, keep `npx cwc` running.')
+    console.log('install-service is macOS-only (launchd). On other platforms, keep `npx claude-cwc` running.')
     return
   }
   const serverEntry = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'src', 'server', 'start.js')
-  const plist = buildServerPlist({ nodePath: process.execPath, serverEntry, port: PORT })
+  await fs.access(serverEntry).catch(() => {
+    throw new Error(`CWC server entry was not found at ${serverEntry}. Run this command from the published package or rebuild with \`npm run build\`.`)
+  })
+  await fs.mkdir(CWC_DIR, { recursive: true })
   await fs.mkdir(LAUNCH_AGENTS_DIR, { recursive: true })
+  await fs.mkdir(SERVICE_LOG_DIR, { recursive: true })
+  await launchctl(['unload', '-w', PLIST_PATH])
+  await stopPidBackedServer()
+  if (await serverResponding()) {
+    throw new Error(`Port ${PORT} is already in use by another CWC server or process. Stop it first, then rerun \`npx claude-cwc install-service\`.`)
+  }
+  const plist = buildServerPlist({
+    nodePath: process.execPath,
+    serverEntry,
+    port: PORT,
+    workingDirectory: os.homedir(),
+    standardOutPath: SERVICE_STDOUT,
+    standardErrorPath: SERVICE_STDERR,
+    environment: { HOME: os.homedir(), PATH: SERVICE_PATH },
+    throttleInterval: 10,
+  })
   await fs.writeFile(PLIST_PATH, plist, 'utf-8')
-  await new Promise<void>((resolve) => {
-    child_process.execFile('launchctl', ['unload', '-w', PLIST_PATH], () => resolve())  // ignore "not loaded"
-  })
-  await new Promise<void>((resolve, reject) => {
-    child_process.execFile('launchctl', ['load', '-w', PLIST_PATH], (err) => err ? reject(err) : resolve())
-  })
-  console.log(`CWC service installed — the server now starts at login (${PLIST_PATH}).`)
+  await launchctlStrict(['load', '-w', PLIST_PATH])
+  if (!(await waitForServer(12000))) {
+    await launchctl(['unload', '-w', PLIST_PATH])
+    throw new Error(`CWC service did not respond on http://localhost:${PORT}; it has been unloaded so launchd will not keep retrying. Check ${SERVICE_STDERR} and ${SERVICE_STDOUT}.`)
+  }
+  console.log(`CWC service installed and running at http://localhost:${PORT}`)
+  console.log(`LaunchAgent: ${PLIST_PATH}`)
+  console.log(`Logs: ${SERVICE_STDERR}`)
 }
 
 async function uninstallService(): Promise<void> {
@@ -234,20 +300,27 @@ async function uninstallService(): Promise<void> {
   catch { console.log('CWC service was not installed.') }
 }
 
-const [,, command] = process.argv
+async function main(): Promise<void> {
+  const [,, command] = process.argv
 
-if (command === 'stop') {
-  await stopServer()
-} else if (command === 'uninstall-skill') {
-  await uninstallSkill()
-} else if (command === 'install-service') {
-  await installService()
-} else if (command === 'uninstall-service') {
-  await uninstallService()
-} else {
-  const { version } = JSON.parse(
-    await fs.readFile(path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..', 'package.json'), 'utf-8')
-  ) as { version: string }
-  await maybeManageSkill(version)
-  await startServer()
+  if (command === 'stop') {
+    await stopServer()
+  } else if (command === 'uninstall-skill') {
+    await uninstallSkill()
+  } else if (command === 'install-service') {
+    await installService()
+  } else if (command === 'uninstall-service') {
+    await uninstallService()
+  } else {
+    const { version } = JSON.parse(
+      await fs.readFile(path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..', 'package.json'), 'utf-8')
+    ) as { version: string }
+    await maybeManageSkill(version)
+    await startServer()
+  }
 }
+
+await main().catch((err) => {
+  console.error(err instanceof Error ? err.message : String(err))
+  process.exit(1)
+})

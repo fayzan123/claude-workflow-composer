@@ -49,9 +49,12 @@ REUSE THE DEVELOPER'S EXISTING SKILLS — this is the most important instruction
 They already have these skills (slug — what it does):
 ${skills.map(s => `  - ${s.slug} — ${s.description}`).join('\n')}
 Rules for using them:
-- If this automation is ESSENTIALLY one of these skills, generate a MINIMAL workflow — ideally a
-  SINGLE agent whose job is to invoke that skill (put the exact slug in its "skills"; its
-  systemPrompt says "Run the /<slug> skill on <input>"). The skill already does the work end to end.
+- If this automation is ESSENTIALLY one of these skills and the skill clearly covers every major
+  observed step, generate a MINIMAL workflow — ideally a SINGLE agent whose job is to invoke that
+  skill (put the exact slug in its "skills"; its systemPrompt says "Run the /<slug> skill on
+  <input>"). The skill already does the work end to end.
+- If a skill covers only part of the automation, use it for that phase and create additional nodes
+  for the remaining observed phases. Do not hide uncovered work inside one oversized prompt.
 - Attach AT MOST ONE skill per agent — the single best fit. NEVER stack multiple skills on one
   agent; that is wasteful, unclear, and not how these skills are used.
 - Many skills already perform their own later phases internally — e.g. an implementation/development
@@ -91,6 +94,8 @@ ${c.bodyExcerpt || '(no body excerpt)'}`
 Composition guidance:
 - If one skill clearly covers the detected automation end to end, generate a one-node wrapper
   using that single skill. Do not decompose its internal review, verification, or finish steps.
+- If capability coverage is partial, use the skill/agent for the phase it truly covers and add
+  explicit nodes for the uncovered phases.
 - If an existing agent already embodies a needed role, use agentRef instead of recreating it.
 - Only create bespoke agents for gaps not covered by these capabilities.`
 
@@ -102,11 +107,21 @@ What it does: ${a.description}
 Observed steps: ${a.steps.map(s => `\n  - ${s}`).join('') || ' (infer from the title)'}
 Runs in repo: ${a.evidence.repos[0] ?? '(unspecified)'}${skillsBlock}${agentsBlock}${cardsBlock}
 
-Default to ONE agent. Only add another agent for a genuinely distinct phase that NO single skill
-already covers — never split work that one skill handles end-to-end into multiple agents, and never
-add review/commit/finish agents after a skill that already does those internally. Fewer agents means
-fewer tokens at runtime. Cap at 6. Each agent needs ONE clear responsibility, a specific
-completionCriteria, and a concrete systemPrompt. Respond with ONLY a
+Choose the smallest workflow that faithfully executes the observed automation. Do NOT default to a
+single generic agent unless one existing skill/agent explicitly covers the whole automation end to
+end, or the automation is genuinely one indivisible task.
+
+If no capability fully subsumes it, model the observed steps as durable workflow phases. Use as
+many or as few agents as the automation needs to run efficiently and predictably. Add a separate
+agent when doing so improves correctness, reuse, parallelism, checkpointing, validation, handoff
+clarity, or failure recovery. Do not add agents just to make the graph look more complex.
+
+Preserve the evidence: every major observed step must be handled either by a reused skill/agent that
+clearly covers it or by an explicit node/edge. Never split work that one skill handles end-to-end
+into multiple agents, and never add review/commit/finish agents after a skill that already does
+those internally. Stop splitting when another agent would not improve the user's ability to
+understand, run, monitor, or trust the automation. Each agent needs ONE clear responsibility, a
+specific completionCriteria, and a concrete systemPrompt. Respond with ONLY a
 JSON object — no prose, no markdown fences — matching exactly:
 {
   "meta": { "id": string, "name": string, "description": string, "version": 1, "created": string, "updated": string },

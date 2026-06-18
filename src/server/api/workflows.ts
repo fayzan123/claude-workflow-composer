@@ -9,6 +9,13 @@ export function workflowsRouter(workflowsDir: string, recentsPath: string, onSav
   const router = createRouter()
   const root = path.resolve(workflowsDir)
 
+  function workflowListUpdated(metaUpdated: unknown, fileMtime: Date): string {
+    const mtimeMs = fileMtime.getTime()
+    const metaMs = typeof metaUpdated === 'string' ? Date.parse(metaUpdated) : Number.NaN
+    const updatedMs = Number.isFinite(metaMs) ? Math.max(metaMs, mtimeMs) : mtimeMs
+    return new Date(updatedMs).toISOString()
+  }
+
   function resolveWorkflowPath(filePath: string): string | null {
     if (!filePath.endsWith('.cwc')) return null
     const resolved = path.resolve(filePath)
@@ -31,9 +38,16 @@ export function workflowsRouter(workflowsDir: string, recentsPath: string, onSav
           .map(async (f) => {
             const fullPath = path.join(workflowsDir, f)
             try {
+              const stat = await fs.stat(fullPath)
               const raw = await fs.readFile(fullPath, 'utf-8')
               const cwc: CwcFile = JSON.parse(raw)
-              return { id: cwc.meta.id, path: fullPath, name: cwc.meta.name, updated: cwc.meta.updated, nodeCount: cwc.nodes.length }
+              return {
+                id: cwc.meta.id,
+                path: fullPath,
+                name: cwc.meta.name,
+                updated: workflowListUpdated(cwc.meta.updated, stat.mtime),
+                nodeCount: cwc.nodes.length,
+              }
             } catch {
               return null
             }

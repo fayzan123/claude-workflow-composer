@@ -40,6 +40,23 @@ export function automationScanRouter(opts: AutomationScanRouterOptions): Router 
   const runner = opts.runner ?? defaultRunner
   const streamingRunner = opts.streamingRunner ?? runClaudeStreaming
   const router = Router()
+  let activePromotion: { id: string; controller: AbortController } | null = null
+
+  function hasPromotionWork(): boolean {
+    return opts.store.hasActivePromotion() || activePromotion !== null
+  }
+
+  function throwIfCancelled(signal: AbortSignal): void {
+    if (signal.aborted) throw new Error('Workflow generation cancelled.')
+  }
+
+  async function markPromotionCancelled(id: string): Promise<void> {
+    const current = opts.store.getLatest()?.automations.find(a => a.id === id)
+    if (current?.status !== 'promotion_cancelled') {
+      opts.store.appendLog({ level: 'info', message: 'Workflow generation cancelled' })
+      await opts.store.setStatus(id, 'promotion_cancelled', 'Workflow generation was cancelled.')
+    }
+  }
 
   router.get('/', (_req, res) => {
     res.json(opts.store.getLatest() ?? { status: 'idle', automations: [] })
@@ -53,6 +70,7 @@ export function automationScanRouter(opts: AutomationScanRouterOptions): Router 
 
   router.post('/', (req, res) => {
     if (opts.store.isRunning()) return void res.status(409).json({ error: 'A scan is already running.' })
+    if (hasPromotionWork()) return void res.status(409).json({ error: 'A workflow generation is already running.' })
     const model = resolveScanModel((req.body ?? {}).model)
     res.status(202).json({ status: 'running' })
     void opts.store.runScan(async () => {
@@ -72,19 +90,44 @@ export function automationScanRouter(opts: AutomationScanRouterOptions): Router 
   })
 
   router.post('/:id/dismiss', async (req, res) => {
+    if (hasPromotionWork()) return void res.status(409).json({ error: 'A workflow generation is already running.' })
     const a = await opts.store.setStatus(req.params.id, 'dismissed')
     if (!a) return void res.status(404).json({ error: 'not found' })
     res.json({ ok: true })
   })
 
-  router.post('/:id/promote', async (req, res) => {
+  router.post('/:id/promote/cancel', async (req, res) => {
     const a = opts.store.getLatest()?.automations.find(x => x.id === req.params.id)
     if (!a) return void res.status(404).json({ error: 'not found' })
+    if (a.status !== 'promoting') return void res.status(409).json({ error: 'No workflow generation is running for this automation.' })
+    if (activePromotion?.id === a.id) activePromotion.controller.abort()
+    await markPromotionCancelled(a.id)
+    res.json({ cancelled: true })
+  })
+
+  router.post('/:id/promote', async (req, res) => {
+    if (opts.store.isRunning()) return void res.status(409).json({ error: 'A scan is already running.' })
+    if (hasPromotionWork()) return void res.status(409).json({ error: 'A workflow generation is already running.' })
+    const a = opts.store.getLatest()?.automations.find(x => x.id === req.params.id)
+    if (!a) return void res.status(404).json({ error: 'not found' })
+    const controller = new AbortController()
+    activePromotion = { id: a.id, controller }
     try {
+      const startedAt = Date.now()
+      await opts.store.setStatus(a.id, 'promoting')
+      opts.store.appendLog({ level: 'info', message: `Generating workflow for "${a.title}"` })
+      opts.store.appendLog({ level: 'info', message: 'Selecting matching skills and agents' })
       const skills = selectRelevantSkills(await listReusableSkills(opts.homeDir), a)
+      throwIfCancelled(controller.signal)
       const agents = selectRelevantAgents(await listReusableAgents(opts.homeDir), a)
+      throwIfCancelled(controller.signal)
+      opts.store.appendLog({ level: 'info', message: `Reading ${Math.min(skills.length, 5)} skill and ${Math.min(agents.length, 5)} agent capability file(s)` })
       const capabilityCards = await buildCapabilityCards({ skills, agents, maxSkills: 5, maxAgents: 5 })
-      const out = await runner(buildWorkflowGenPrompt(a, { skills, agents, capabilityCards }), { model: opts.genModel ?? 'claude-sonnet-4-6' })
+      throwIfCancelled(controller.signal)
+      opts.store.appendLog({ level: 'info', message: 'Asking Claude to compose the workflow' })
+      const out = await runner(buildWorkflowGenPrompt(a, { skills, agents, capabilityCards }), { model: opts.genModel ?? 'claude-sonnet-4-6', signal: controller.signal })
+      throwIfCancelled(controller.signal)
+      opts.store.appendLog({ level: 'info', message: 'Validating generated workflow JSON' })
       const cwc = parseWorkflowJson(out.result)
       // Keep only real skills/agent refs. Skills are capped to one per bespoke agent;
       // reference nodes must stay pure references because the existing agent owns its behavior.
@@ -103,15 +146,29 @@ export function automationScanRouter(opts: AutomationScanRouterOptions): Router 
       }
       // Overwrite the LLM-generated id with a server-assigned UUID to guarantee
       // uniqueness and safe post-promote navigation (/w/<id>/build).
+      const now = new Date().toISOString()
       cwc.meta.id = randomUUID()
+      cwc.meta.created = now
+      cwc.meta.updated = now
       cwc.meta.triggers = triggersForAutomation(a)
       const file = path.join(opts.workflowsDir, `${slugify(cwc.meta.name)}-${Date.now()}.cwc`)
       await fs.mkdir(opts.workflowsDir, { recursive: true })
       await fs.writeFile(file, JSON.stringify(cwc, null, 2))
+      opts.store.appendLog({ level: 'info', message: `Generated workflow "${cwc.meta.name}" in ${Math.round((Date.now() - startedAt) / 1000)}s` })
       await opts.store.setStatus(a.id, 'promoted')
       res.json({ workflowId: cwc.meta.id })
     } catch (err) {
-      res.status(502).json({ error: err instanceof Error ? err.message : 'promote failed' })
+      if (controller.signal.aborted || (err instanceof Error && /cancelled/i.test(err.message))) {
+        await markPromotionCancelled(a.id)
+        res.status(499).json({ cancelled: true, error: 'Workflow generation cancelled.' })
+        return
+      }
+      const message = err instanceof Error ? err.message : 'promote failed'
+      opts.store.appendLog({ level: 'error', message: `Workflow generation failed: ${message}` })
+      await opts.store.setStatus(a.id, 'promotion_failed', message)
+      res.status(502).json({ error: message })
+    } finally {
+      if (activePromotion?.id === a.id && activePromotion.controller === controller) activePromotion = null
     }
   })
 
