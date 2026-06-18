@@ -126,9 +126,6 @@ export const api = {
 
   serviceStatus: () => req<{ persistent: boolean; platform: string }>('GET', '/service-status'),
 
-  automationCandidates: () =>
-    req<{ signature: string; count: number; summary: string; trigger: { kind: string; label: string }; cwds: string[]; lastSeen: string }[]>('GET', '/automation-candidates'),
-
   automationScan: {
     latest: () => fetch('/api/automation-scan').then(r => r.json()) as Promise<{
       status: string

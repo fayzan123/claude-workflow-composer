@@ -31,7 +31,6 @@ import { resolveTargets } from './trigger-targets.js'
 import type { RunStore } from './run-store.js'
 import type { CwcTrigger } from '../schema.js'
 import { serviceRouter } from './api/service.js'
-import { automationCandidatesRouter } from './api/automation-candidates.js'
 import { automationScanRouter } from './api/automation-scan.js'
 import { createScanStore } from './scan-store.js'
 
