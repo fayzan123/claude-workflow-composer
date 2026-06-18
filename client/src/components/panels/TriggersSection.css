@@ -174,8 +174,8 @@
 
 .triggers-section__arm {
   padding: 5px 12px;
-  background: var(--color-warning, #fbbf24);
-  color: #7c4a00;
+  background: var(--color-warning);
+  color: var(--color-warning-dark);
   border: none;
   border-radius: var(--radius-md);
   font-size: var(--text-sm);
@@ -191,7 +191,7 @@
 .triggers-section__armed {
   font-size: var(--text-sm);
   font-weight: 600;
-  color: var(--color-success, #34d399);
+  color: var(--color-success);
 }
 
 .triggers-section__add {

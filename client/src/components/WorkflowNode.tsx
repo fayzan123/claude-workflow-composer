@@ -35,7 +35,7 @@ export function WorkflowNode({ data }: NodeProps) {
     return (
       <div className={`workflow-node workflow-node--gate ${nodeData.isSelected ? 'workflow-node--selected' : ''} ${nodeData.runState === 'active' ? 'workflow-node--run-active' : ''}`}>
         <Handle type="target" position={Position.Left} />
-        <span className="workflow-node__gate-icon">🚦</span>
+        <span className="workflow-node__gate-icon" aria-hidden="true" />
         <span className="workflow-node__gate-label">{nodeData.agent.name || 'Approval Gate'}</span>
         <Handle type="source" position={Position.Right} />
       </div>
@@ -69,7 +69,7 @@ export function WorkflowNode({ data }: NodeProps) {
           {isRouter && <span className="workflow-node__router-indicator" title="Conditional branch: one outgoing edge fires based on result">⬦ Router</span>}
           {hasErrors && <span className="workflow-node__status-badge workflow-node__status-badge--error" title={nodeData.errors.map(e => e.message).join('\n')}>!</span>}
           {!hasErrors && hasIssues && <span className="workflow-node__status-badge workflow-node__status-badge--warning" title={nodeData.warnings.map(w => w.message).join('\n')}>!</span>}
-          {nodeData.runState === 'done' && <span className="workflow-node__run-check">✓</span>}
+          {nodeData.runState === 'done' && <span className="workflow-node__run-check">Done</span>}
         </div>
       </div>
       {nodeData.agent.description && (

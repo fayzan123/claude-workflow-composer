@@ -116,7 +116,7 @@ export function RunModal({ workflowId, workflowSlug, onStarted, onClose, onExpor
           </select>
         </label>
         <p className="run-modal__consent">
-          ⚠ The run executes with <strong>bypassPermissions</strong>: it runs headlessly, so agents may
+          Caution: the run executes with <strong>bypassPermissions</strong>, so agents may
           create/modify files and run commands (git, tests, etc.) in this directory without asking.
           Use worktree isolation to keep your checkout untouched.
         </p>
@@ -130,7 +130,7 @@ export function RunModal({ workflowId, workflowSlug, onStarted, onClose, onExpor
             title={exported === false ? 'Export the workflow before running it' : undefined}
             onClick={start}
           >
-            {starting ? 'Starting…' : exported === null ? 'Checking…' : '▶ Start run'}
+            {starting ? 'Starting...' : exported === null ? 'Checking...' : 'Start run'}
           </button>
         </div>
       </div>

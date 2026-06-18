@@ -56,7 +56,7 @@ export function GenerateModal<TSpec>({ open, onClose, onCreated, adapter }: Prop
     if (!msg || busy) return
     setError(null)
     setBusy(true)
-    setStatus('Refining…')
+    setStatus('Refining...')
     setMessages((m) => [...m, { role: 'user', text: msg }])
     setInput('')
     try {
@@ -144,7 +144,7 @@ export function GenerateModal<TSpec>({ open, onClose, onCreated, adapter }: Prop
           <span className="gen-agent__title">{adapter.title}</span>
           <div className="gen-agent__header-actions">
             {phase !== 'done' && hasProgress && (
-              <button className="gen-agent__newbtn" onClick={startNew} disabled={busy}>↺ Start new</button>
+              <button className="gen-agent__newbtn" onClick={startNew} disabled={busy}>Start new</button>
             )}
             <button className="gen-agent__close" onClick={onClose} aria-label="Close">×</button>
           </div>
@@ -174,7 +174,7 @@ export function GenerateModal<TSpec>({ open, onClose, onCreated, adapter }: Prop
                   onKeyDown={(e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) sendMessage() }}
                 />
                 <button className="gen-agent__send" onClick={sendMessage} disabled={busy || !input.trim()}>
-                  {spec !== null ? 'Refine' : 'Refine →'}
+                  {spec !== null ? 'Refine' : 'Start'}
                 </button>
               </div>
             </div>
@@ -200,10 +200,10 @@ export function GenerateModal<TSpec>({ open, onClose, onCreated, adapter }: Prop
             </div>
             <pre className="gen-agent__preview">{draft.content}</pre>
             <div className="gen-agent__build-actions">
-              <button onClick={() => { setPhase('spec'); setDraft(null) }} disabled={busy}>← Back to spec</button>
+              <button onClick={() => { setPhase('spec'); setDraft(null) }} disabled={busy}>Back to spec</button>
               <button onClick={build} disabled={busy}>Regenerate</button>
               <button className="gen-agent__save" onClick={() => save()} disabled={busy}>
-                {busy ? 'Saving…' : adapter.saveButtonLabel}
+                {busy ? 'Saving...' : adapter.saveButtonLabel}
               </button>
             </div>
           </div>
@@ -211,7 +211,7 @@ export function GenerateModal<TSpec>({ open, onClose, onCreated, adapter }: Prop
 
         {phase === 'done' && saved && (
           <div className="gen-agent__done">
-            <div className="gen-agent__done-check">✓</div>
+            <div className="gen-agent__done-check">Done</div>
             <div className="gen-agent__done-title">{adapter.savedTitle}</div>
             <div className="gen-agent__done-name">{saved.name}</div>
             <div className="gen-agent__slugline">

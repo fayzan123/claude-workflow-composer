@@ -286,7 +286,7 @@ export function TopBar({
           type="button"
           title="Run this workflow headlessly"
         >
-          {runActive ? '● Running…' : '▶ Test Run'}
+          {runActive ? 'Running...' : 'Test run'}
         </button>
 
         <button
@@ -295,7 +295,7 @@ export function TopBar({
           type="button"
           title={pausedCount > 0 ? `${pausedCount} run${pausedCount !== 1 ? 's' : ''} waiting for your approval` : 'Run history & automations'}
         >
-          {pausedCount > 0 ? `⏸ ${pausedCount} to approve` : 'Runs'}
+          {pausedCount > 0 ? `Approvals ${pausedCount}` : 'Runs'}
         </button>
 
         <button

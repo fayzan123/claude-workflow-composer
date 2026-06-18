@@ -8,10 +8,17 @@ type Auto = Latest['automations'][number]
 type Log = NonNullable<Latest['log']>[number]
 
 const MODELS = [
-  { key: 'haiku',  label: 'Haiku',  pro: 'Fastest & cheapest', con: 'May miss subtler patterns' },
-  { key: 'sonnet', label: 'Sonnet · rec', pro: 'Balanced — strong clustering, low cost', con: 'Best default for most histories' },
+  { key: 'haiku',  label: 'Haiku',  pro: 'Fastest and cheapest', con: 'May miss subtler patterns' },
+  { key: 'sonnet', label: 'Sonnet', pro: 'Balanced clustering at moderate cost', con: 'Best default for most histories' },
   { key: 'opus',   label: 'Opus',   pro: 'Deepest reasoning on messy history', con: 'Slowest, priciest, heavy on rate limit' },
 ] as const
+
+const STATUS_LABEL: Record<string, string> = {
+  idle: 'Ready',
+  running: 'Scanning',
+  done: 'Complete',
+  error: 'Scan failed',
+}
 
 /** Merge log entries, deduped by ts+message, so GET-replay and live SSE can't drop or double a line regardless of arrival order. */
 function mergeLogs(prev: Log[], incoming: Log[]): Log[] {
@@ -103,73 +110,121 @@ export function DetectView() {
   }
 
   const running = status === 'running'
+  const selectedModel = MODELS.find(m => m.key === model) ?? MODELS[1]
+  const statusLabel = STATUS_LABEL[status] ?? status
+
   return (
     <div className="detect">
       <header className="detect__bar">
-        <button className="detect__back" type="button" onClick={() => navigate('/')}>← Home</button>
-        <h1 className="detect__title">Detect automations</h1>
-        <button className="detect__scan" type="button" onClick={scan} disabled={running}>
-          {running ? 'Scanning…' : logs.length ? 'Re-scan' : 'Scan my history'}
-        </button>
+        <button className="detect__back" type="button" onClick={() => navigate('/')}>Home</button>
+        <div className="detect__heading">
+          <span className="detect__eyebrow">History scan</span>
+          <h1 className="detect__title">Detect automations</h1>
+          <p className="detect__subtitle">Find repeated Claude Code work and turn the strongest patterns into workflows.</p>
+        </div>
+        <div className="detect__bar-actions">
+          <span className={`detect__status detect__status--${status}`}>{statusLabel}</span>
+          <button className="detect__scan" type="button" onClick={scan} disabled={running}>
+            {running ? 'Scanning...' : logs.length ? 'Scan again' : 'Scan history'}
+          </button>
+        </div>
       </header>
       <div className="detect__models" role="radiogroup" aria-label="Analysis model">
-        <span className="detect__models-label">Analyze with</span>
-        {MODELS.map(m => (
-          <button
-            key={m.key}
-            type="button"
-            className={`detect__model${model === m.key ? ' detect__model--on' : ''}`}
-            onClick={() => setModel(m.key)}
-            disabled={running}
-            aria-pressed={model === m.key}
-          >
-            <span className="detect__model-name">{m.label}</span>
-            <span className="detect__model-pro">+ {m.pro}</span>
-            <span className="detect__model-con">− {m.con}</span>
-          </button>
-        ))}
+        <span className="detect__models-label">Model</span>
+        <div className="detect__model-group">
+          {MODELS.map(m => (
+            <button
+              key={m.key}
+              type="button"
+              className={`detect__model${model === m.key ? ' detect__model--on' : ''}`}
+              onClick={() => setModel(m.key)}
+              disabled={running}
+              aria-pressed={model === m.key}
+            >
+              <span className="detect__model-name">{m.label}</span>
+            </button>
+          ))}
+        </div>
+        <span className="detect__model-note">{selectedModel.pro}. {selectedModel.con}.</span>
       </div>
       <div className="detect__body">
-        <section className="detect__log" aria-label="Scan log">
-          {logs.length === 0 && !running && <p className="detect__empty">Click "Scan my history" to deeply analyze your Claude Code history.</p>}
-          {logs.map((l, i) => (
-            <div key={i} className={`detect__line detect__line--${l.level}`}>
-              <span className="detect__ts">{l.ts ? new Date(l.ts).toLocaleTimeString() : ''}</span>
-              <span className="detect__msg">{l.message}</span>
-            </div>
-          ))}
-          <div ref={logEndRef} />
-        </section>
-        <aside className="detect__results" aria-label="Detected automations">
-          <h2 className="detect__results-h">{autos.length > 0 ? `${autos.length} detected` : 'Results'}</h2>
+        <main className="detect__results" aria-label="Detected automations">
+          <div className="detect__results-head">
+            <h2 className="detect__results-h">{autos.length > 0 ? `${autos.length} automation${autos.length === 1 ? '' : 's'} found` : 'Automation candidates'}</h2>
+            {running && <span className="detect__results-sub">Reading history and clustering repeat work</span>}
+          </div>
           {actionError && <p className="detect__error">{actionError}</p>}
-          {autos.map(a => {
-            const busy = busyId === a.id
-            return (
-            <div key={a.id} className={`detect__card${busy ? ' detect__card--busy' : ''}`}>
-              <div className="detect__card-title">
-                {a.title}
-                {a.status === 'promoted' && <span className="detect__badge">✓ Promoted</span>}
-              </div>
-              <div className="detect__card-meta">seen {a.evidence.count}× · {a.suggestedTrigger.label || 'on demand'}</div>
-              <div className="detect__card-actions">
-                <button type="button" onClick={() => promote(a.id)} disabled={busyId !== null}>
-                  {busy ? 'Generating…' : a.status === 'promoted' ? 'Promote again' : 'Promote ▸'}
-                </button>
-                <button type="button" onClick={() => dismiss(a.id)} disabled={busyId !== null}>Dismiss</button>
-              </div>
-              {busy && (
-                <div className="detect__card-busy">
-                  <div className="detect__progress" role="progressbar" aria-label="Generating workflow">
-                    <div className="detect__progress-bar" />
-                  </div>
-                  Building agents &amp; wiring the graph — this takes a few moments. You can leave; it keeps generating and lands in your workflows.
-                </div>
-              )}
+          {autos.length === 0 ? (
+            <div className="detect__empty-state">
+              <p className="detect__empty-title">
+                {running ? 'Looking for repeatable work' : status === 'done' ? 'No strong patterns found' : 'Start with a history scan'}
+              </p>
+              <p className="detect__empty-copy">
+                {running
+                  ? 'Candidates will appear here as soon as the scan finishes.'
+                  : status === 'done'
+                    ? 'Try a deeper model later if your recent history is sparse or messy.'
+                    : 'CWC will inspect your local Claude Code history, cluster repeated work, and show the workflows worth generating.'}
+              </p>
             </div>
-            )
-          })}
-          {status === 'done' && autos.length === 0 && <p className="detect__empty">No recurring automations found.</p>}
+          ) : (
+            <div className="detect__cards">
+              {autos.map(a => {
+                const busy = busyId === a.id
+                return (
+                <article key={a.id} className={`detect__card${busy ? ' detect__card--busy' : ''}`}>
+                  <div className="detect__card-top">
+                    <h3 className="detect__card-title">{a.title}</h3>
+                    {a.status === 'promoted' && <span className="detect__badge">Promoted</span>}
+                  </div>
+                  <div className="detect__card-meta">
+                    <span>{a.evidence.count} sighting{a.evidence.count === 1 ? '' : 's'}</span>
+                    <span>{a.suggestedTrigger.label || 'On demand'}</span>
+                    <span>{Math.round(a.confidence * 100)}% confidence</span>
+                  </div>
+                  {a.description && <p className="detect__card-desc">{a.description}</p>}
+                  {a.steps.length > 0 && (
+                    <ol className="detect__steps">
+                      {a.steps.slice(0, 4).map((step, i) => (
+                        <li key={`${a.id}-${i}`}>{step}</li>
+                      ))}
+                    </ol>
+                  )}
+                  <div className="detect__card-actions">
+                    <button className="detect__promote" type="button" onClick={() => promote(a.id)} disabled={busyId !== null}>
+                      {busy ? 'Generating...' : a.status === 'promoted' ? 'Generate again' : 'Generate workflow'}
+                    </button>
+                    <button className="detect__dismiss" type="button" onClick={() => dismiss(a.id)} disabled={busyId !== null}>Dismiss</button>
+                  </div>
+                  {busy && (
+                    <div className="detect__card-busy">
+                      <div className="detect__progress" role="progressbar" aria-label="Generating workflow">
+                        <div className="detect__progress-bar" />
+                      </div>
+                      Reading the matching skills and agents, then writing a workflow. You can leave this page; the result will land in your workflows.
+                    </div>
+                  )}
+                </article>
+                )
+              })}
+            </div>
+          )}
+        </main>
+        <aside className="detect__log-panel" aria-label="Scan log">
+          <div className="detect__log-head">
+            <h2 className="detect__log-title">Scan log</h2>
+            <span className="detect__log-count">{logs.length} events</span>
+          </div>
+          <section className="detect__log">
+            {logs.length === 0 && !running && <p className="detect__empty">Scan events will appear here.</p>}
+            {logs.map((l, i) => (
+              <div key={i} className={`detect__line detect__line--${l.level}`}>
+                <span className="detect__ts">{l.ts ? new Date(l.ts).toLocaleTimeString() : ''}</span>
+                <span className="detect__msg">{l.message}</span>
+              </div>
+            ))}
+            <div ref={logEndRef} />
+          </section>
         </aside>
       </div>
     </div>

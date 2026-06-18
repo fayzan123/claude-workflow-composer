@@ -283,7 +283,7 @@ export function WorkflowView() {
         type="button"
         title="Run this workflow headlessly"
       >
-        {runState.activeRun !== null ? '● Running…' : '▶ Test Run'}
+        {runState.activeRun !== null ? 'Running...' : 'Test run'}
       </button>
 
       <button
@@ -309,7 +309,7 @@ export function WorkflowView() {
       type="button"
       title="Run this workflow headlessly"
     >
-      {runState.activeRun !== null ? '● Running…' : '▶ Test Run'}
+      {runState.activeRun !== null ? 'Running...' : 'Test run'}
     </button>
   )
 

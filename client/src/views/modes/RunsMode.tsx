@@ -82,7 +82,7 @@ export function RunsMode({ workflow, runState }: ModeProps) {
     if (!done && !paused && total === 0) return null
     const outcome = done
       ? (STATUS_LABEL[done.status ?? ''] ?? done.status ?? 'finished')
-      : paused ? '⏸ waiting for approval' : '● running'
+      : paused ? 'waiting for approval' : 'running'
     return (
       <div className="runs-mode__timeline-summary">
         <span className="runs-mode__summary-outcome">{outcome}</span>
@@ -113,7 +113,7 @@ export function RunsMode({ workflow, runState }: ModeProps) {
           <h4 className="runs-mode__section-heading">History</h4>
           {runs.length === 0 ? (
             <p className="runs-mode__empty">
-              No runs yet. Start one with ▶ Test Run, or run the workflow from any terminal.
+              No runs yet. Start one with Test run, or run the workflow from any terminal.
             </p>
           ) : (
             <ul className="runs-mode__run-list">
@@ -151,7 +151,10 @@ export function RunsMode({ workflow, runState }: ModeProps) {
             aria-label="Notification settings"
             aria-expanded={showSettings}
           >
-            ⚙
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <circle cx="12" cy="12" r="3" />
+              <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 0 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6v.2a2 2 0 0 1-4 0V21a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1A2 2 0 0 1 4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.6-1H3a2 2 0 0 1 0-4h.2a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9l-.1-.1A2 2 0 0 1 7.2 4.2l.1.1a1.7 1.7 0 0 0 1.9.3 1.7 1.7 0 0 0 1-1.6V3a2 2 0 0 1 4 0v.2a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1A2 2 0 0 1 20 7.2l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.2a2 2 0 0 1 0 4h-.2a1.7 1.7 0 0 0-1.8.8Z" />
+            </svg>
           </button>
           {activeRun && (
             <button
@@ -159,7 +162,7 @@ export function RunsMode({ workflow, runState }: ModeProps) {
               className="runs-mode__stop"
               onClick={() => api.runs.stop(activeRun.runId)}
             >
-              ■ Stop
+              Stop
             </button>
           )}
         </div>
@@ -175,7 +178,7 @@ export function RunsMode({ workflow, runState }: ModeProps) {
           <div className="runs-mode__detail-empty">
             <p>No runs yet.</p>
             <p className="runs-mode__detail-empty-hint">
-              Start one with ▶ Test Run above, or run the workflow from any terminal.
+              Start one with Test run above, or run the workflow from any terminal.
             </p>
           </div>
         ) : timeline.length === 0 && !selectedRun ? (

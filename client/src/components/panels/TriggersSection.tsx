@@ -103,7 +103,7 @@ export function TriggersSection({ workflow, dispatch }: Props) {
 
             <footer className="triggers-section__card-footer">
               {st?.armed
-                ? <span className="triggers-section__armed">✓ armed</span>
+                ? <span className="triggers-section__armed">armed</span>
                 : <button type="button" className="triggers-section__arm" onClick={() => void arm(t)} title="Commands in this trigger run on your machine — arming confirms you trust them"><Term name="arm">Arm</Term> trigger</button>}
               {st?.lastFiredAt && <small className="triggers-section__hint">last fired {new Date(st.lastFiredAt).toLocaleString()}</small>}
               {st?.lastSkip && <small className="triggers-section__hint">last skip: {st.lastSkip.reason}</small>}

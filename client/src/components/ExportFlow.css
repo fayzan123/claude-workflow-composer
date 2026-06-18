@@ -57,7 +57,7 @@
   font-weight: 700;
   color: var(--color-text);
   margin: 0 0 6px;
-  letter-spacing: -0.02em;
+  letter-spacing: 0;
 }
 
 .export-flow-modal__subtitle {

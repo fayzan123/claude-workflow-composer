@@ -90,7 +90,7 @@ export function MyAgentsTab() {
               e.dataTransfer.effectAllowed = 'copy'
             }}
           >
-            <strong className="my-agents__name">🚦 Approval Gate</strong>
+            <strong className="my-agents__name">Approval Gate</strong>
             <span className="my-agents__slug">Pauses the run for your sign-off</span>
           </div>
         </div>

@@ -127,7 +127,7 @@ export function InboxItem({ run, onChanged }: InboxItemProps) {
               disabled={acting || approveDisabled}
               title={approveTooltip}
             >
-              {acting ? 'Approving…' : '✓ Approve'}
+              {acting ? 'Approving...' : 'Approve'}
             </button>
             <button
               type="button"
@@ -135,7 +135,7 @@ export function InboxItem({ run, onChanged }: InboxItemProps) {
               onClick={doReject}
               disabled={acting}
             >
-              {acting ? 'Rejecting…' : '✕ Reject'}
+              {acting ? 'Rejecting...' : 'Reject'}
             </button>
           </div>
         </div>

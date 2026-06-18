@@ -42,13 +42,13 @@ function shortenPath(p: string): string {
 }
 
 const RUN_STATUS_LABEL: Record<string, string> = {
-  running:   '● running',
-  stale:     '◌ stale',
-  complete:  '✓ done',
-  escalated: '⚠ escalated',
-  aborted:   '■ aborted',
-  error:     '✕ error',
-  paused:    '⏸ paused',
+  running:   'running',
+  stale:     'stale',
+  complete:  'done',
+  escalated: 'escalated',
+  aborted:   'aborted',
+  error:     'error',
+  paused:    'paused',
 }
 
 // ─── Icons (inline, no extra dep) ────────────────────────────────────────────
@@ -442,7 +442,7 @@ export function HomeDashboard() {
                 <div className="hd-blank-card__text">
                   <span className="hd-blank-card__title">Blank canvas</span>
                   <span className="hd-blank-card__desc">
-                    Start from scratch — drag agents, wire handoffs, export
+                    Start from scratch with agents, handoffs, and export
                   </span>
                 </div>
               </button>
@@ -558,7 +558,7 @@ export function HomeDashboard() {
                   </div>
                   <p className="hd-empty__title">No deployed workflows</p>
                   <p className="hd-empty__hint">
-                    Export a workflow to write it as a Claude Code skill — it will appear here.
+                    Export a workflow to write it as a Claude Code skill. It will appear here.
                   </p>
                 </div>
               ) : (
@@ -671,8 +671,8 @@ export function HomeDashboard() {
               {servicePersistent !== null && (
                 <p className="hd-auto__persistence">
                   {servicePersistent
-                    ? 'Runs at login — the server restarts automatically.'
-                    : 'Session-bound — stops on reboot. Run `npx cwc install-service` for 24/7.'}
+                    ? 'Runs at login. The server restarts automatically.'
+                    : 'Session-bound. Stops on reboot. Run `npx cwc install-service` for 24/7.'}
                 </p>
               )}
             </div>
@@ -683,20 +683,37 @@ export function HomeDashboard() {
             <div className="hd-widget">
               <h2 className="hd-widget__heading">Schedules</h2>
               <ul className="hd-triggers" role="list">
-                {triggers.map((t) => (
-                  <li key={t.triggerId} className="hd-triggers__item">
-                    <span className="hd-triggers__name">{t.workflowName}</span>
-                    <span className="hd-triggers__state">
-                      {!t.armed ? 'draft' : t.enabled ? 'on' : 'off'}
-                    </span>
-                    <span className="hd-triggers__next">
-                      {t.armed && t.enabled && t.nextFireAt ? `next ${untilTime(t.nextFireAt)}` : '—'}
-                    </span>
-                    {t.lastSkip && (
-                      <span className="hd-triggers__skip">skip: {t.lastSkip.reason}</span>
-                    )}
-                  </li>
-                ))}
+                {triggers.map((t) => {
+                  const suppressed = globalPaused === true && t.armed && t.enabled
+                  const stateLabel = !t.armed ? 'Needs setup' : suppressed ? 'Paused globally' : t.enabled ? 'Active' : 'Disabled'
+                  const nextLabel = !t.armed
+                    ? 'Open to arm'
+                    : suppressed
+                      ? 'Suppressed'
+                    : t.enabled && t.nextFireAt
+                      ? `Next ${untilTime(t.nextFireAt)}`
+                      : 'Not scheduled'
+                  return (
+                    <li key={t.triggerId} className="hd-triggers__item">
+                      <button
+                        className="hd-triggers__row"
+                        type="button"
+                        onClick={() => navigate(`/w/${t.workflowId}/automate`)}
+                        title={`Edit schedule for ${t.workflowName}`}
+                      >
+                        <span className="hd-triggers__name">{t.workflowName}</span>
+                        <span className={`hd-triggers__state${t.armed && t.enabled ? ' hd-triggers__state--active' : !t.armed ? ' hd-triggers__state--setup' : ''}`}>
+                          {stateLabel}
+                        </span>
+                        <span className="hd-triggers__next">{nextLabel}</span>
+                        <span className="hd-triggers__schedule">{t.schedule}</span>
+                        {t.lastSkip && (
+                          <span className="hd-triggers__skip">Last skipped: {t.lastSkip.reason}</span>
+                        )}
+                      </button>
+                    </li>
+                  )
+                })}
               </ul>
             </div>
           )}

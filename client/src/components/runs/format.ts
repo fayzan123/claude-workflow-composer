@@ -13,9 +13,13 @@ export function fmtRelative(iso: string): string {
 }
 
 export const STATUS_LABEL: Record<string, string> = {
-  running: '● running', stale: '◌ stale', complete: '✓ complete',
-  escalated: '⚠ escalated', aborted: '■ aborted', error: '✕ error',
-  paused: '⏸ paused',
+  running: 'running',
+  stale: 'stale',
+  complete: 'complete',
+  escalated: 'escalated',
+  aborted: 'aborted',
+  error: 'error',
+  paused: 'paused',
 }
 
 // Plain-English labels for the run timeline. Raw event types like "step_started"

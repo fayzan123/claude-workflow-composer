@@ -99,23 +99,23 @@
 }
 
 .build-mode__badge--error {
-  background: var(--color-error-light, #fef2f2);
+  background: var(--color-error-light);
   color: var(--color-error);
-  border-color: var(--color-error-border, #fecaca);
+  border-color: var(--color-error-border);
 }
 
 .build-mode__badge--error:hover {
-  background: var(--color-error-lighter, #fee2e2);
+  background: var(--color-error-lighter);
 }
 
 .build-mode__badge--warning {
-  background: var(--color-warning-light, #fffbeb);
-  color: var(--color-warning-text, #92400e);
-  border-color: var(--color-warning-border, #fde68a);
+  background: var(--color-warning-light);
+  color: var(--color-warning-text);
+  border-color: var(--color-warning-border);
 }
 
 .build-mode__badge--warning:hover {
-  background: var(--color-warning-lighter, #fef3c7);
+  background: var(--color-warning-lighter);
 }
 
 .build-mode__popover {
@@ -133,11 +133,11 @@
 }
 
 .build-mode__popover--error {
-  border-color: var(--color-error-border, #fecaca);
+  border-color: var(--color-error-border);
 }
 
 .build-mode__popover--warning {
-  border-color: var(--color-warning-border, #fde68a);
+  border-color: var(--color-warning-border);
 }
 
 .build-mode__popover-heading {

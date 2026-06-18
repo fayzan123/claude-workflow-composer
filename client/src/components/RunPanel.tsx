@@ -28,9 +28,13 @@ function fmtRelative(iso: string): string {
 }
 
 const STATUS_LABEL: Record<string, string> = {
-  running: '● running', stale: '◌ stale', complete: '✓ complete',
-  escalated: '⚠ escalated', aborted: '■ aborted', error: '✕ error',
-  paused: '⏸ paused',
+  running: 'running',
+  stale: 'stale',
+  complete: 'complete',
+  escalated: 'escalated',
+  aborted: 'aborted',
+  error: 'error',
+  paused: 'paused',
 }
 
 // Plain-English labels for the run timeline. Raw event types like "step_started"
@@ -174,7 +178,7 @@ function InboxItem({ run, onChanged }: InboxItemProps) {
               disabled={acting || approveDisabled}
               title={approveTooltip}
             >
-              {acting ? 'Approving…' : '✓ Approve'}
+              {acting ? 'Approving...' : 'Approve'}
             </button>
             <button
               type="button"
@@ -182,7 +186,7 @@ function InboxItem({ run, onChanged }: InboxItemProps) {
               onClick={doReject}
               disabled={acting}
             >
-              {acting ? 'Rejecting…' : '✕ Reject'}
+              {acting ? 'Rejecting...' : 'Reject'}
             </button>
           </div>
         </div>
@@ -305,11 +309,14 @@ export function RunPanel({ workflowId, runs, liveEvents, activeRun, pausedRuns, 
         <h3>Runs</h3>
         <PauseToggle />
         <button type="button" className="run-panel__gear" onClick={() => setShowSettings(s => !s)} title="Notification settings" aria-label="Settings">
-          ⚙
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="3" />
+            <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 0 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6v.2a2 2 0 0 1-4 0V21a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1A2 2 0 0 1 4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.6-1H3a2 2 0 0 1 0-4h.2a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9l-.1-.1A2 2 0 0 1 7.2 4.2l.1.1a1.7 1.7 0 0 0 1.9.3 1.7 1.7 0 0 0 1-1.6V3a2 2 0 0 1 4 0v.2a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1A2 2 0 0 1 20 7.2l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.2a2 2 0 0 1 0 4h-.2a1.7 1.7 0 0 0-1.8.8Z" />
+          </svg>
         </button>
         {activeRun && (
           <button type="button" className="run-panel__stop" onClick={() => api.runs.stop(activeRun.runId)}>
-            ■ Stop
+            Stop
           </button>
         )}
         <button type="button" className="run-panel__close" onClick={onClose} aria-label="Close">×</button>
@@ -358,7 +365,7 @@ export function RunPanel({ workflowId, runs, liveEvents, activeRun, pausedRuns, 
             if (!done && !paused && total === 0) return null
             const outcome = done
               ? (STATUS_LABEL[done.status ?? ''] ?? done.status ?? 'finished')
-              : paused ? '⏸ waiting for approval' : '● running'
+              : paused ? 'waiting for approval' : 'running'
             return (
               <div className="run-panel__timeline-summary">
                 <span className="run-panel__summary-outcome">{outcome}</span>

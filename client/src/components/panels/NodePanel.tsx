@@ -384,9 +384,9 @@ export function NodePanel({ node, isEntryNode, terminalEdge, workflow, dispatch,
             onChange={handleTerminalTypeChange}
           >
             <option value="">Not an end node</option>
-            <option value="complete">Complete — workflow succeeded</option>
-            <option value="escalated">Escalated — needs human review</option>
-            <option value="aborted">Aborted — workflow failed</option>
+            <option value="complete">Complete - workflow succeeded</option>
+            <option value="escalated">Escalated - needs human review</option>
+            <option value="aborted">Aborted - workflow failed</option>
           </select>
         </div>
 
@@ -394,8 +394,10 @@ export function NodePanel({ node, isEntryNode, terminalEdge, workflow, dispatch,
           <button
             className="node-panel__collapsible"
             onClick={() => setPromptExpanded((v) => !v)}
+            aria-expanded={promptExpanded}
           >
-            {promptExpanded ? '▼' : '▶'} System Prompt
+            <span className={`node-panel__disclosure${promptExpanded ? ' is-open' : ''}`} aria-hidden="true" />
+            System prompt
           </button>
           {promptExpanded && (
             <>

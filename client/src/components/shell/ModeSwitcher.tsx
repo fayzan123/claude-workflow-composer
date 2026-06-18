@@ -32,7 +32,7 @@ export function ModeSwitcher({ id, active, pausedCount }: Props) {
             type="button"
             aria-current={isActive ? 'page' : undefined}
           >
-            {showBadge ? `⏸ ${pausedCount} to approve` : label}
+            {showBadge ? `Approvals ${pausedCount}` : label}
           </button>
         )
       })}

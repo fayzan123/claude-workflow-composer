@@ -30,7 +30,7 @@
   font-family: var(--font-display);
   font-size: var(--text-2xl);
   font-weight: 700;
-  letter-spacing: -0.02em;
+  letter-spacing: 0;
   color: var(--color-text);
 }
 
