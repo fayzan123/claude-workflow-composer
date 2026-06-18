@@ -6,6 +6,8 @@ import * as http from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { createApp } from '../../src/server/index.js'
 import type { StreamingRunner } from '../../src/server/streaming-analyzer.js'
+import { triggersForAutomation } from '../../src/server/api/automation-scan.js'
+import type { DetectedAutomation } from '../../src/detection/types.js'
 
 let lastScanModel: string | undefined
 const fakeStreaming: StreamingRunner = async (_prompt, { onLog, model }) => {
@@ -128,5 +130,27 @@ describe('automation-scan API', () => {
 
     const after = await (await fetch(`${base}/api/automation-scan`)).json() as { automations: { status: string }[] }
     expect(after.automations[0].status).toBe('promoted')
+  })
+})
+
+describe('triggersForAutomation', () => {
+  const base = (kind: 'schedule' | 'manual' | 'event'): DetectedAutomation => ({
+    id: 'i', title: 't', description: 'd', steps: [], stepTokens: [],
+    evidence: { count: 3, repos: ['/r'], sessionIds: [], firstSeen: '', lastSeen: '' },
+    suggestedTrigger: { kind, cron: kind === 'schedule' ? '0 9 * * 1' : undefined, label: '' },
+    confidence: 0.9, status: 'new',
+  })
+
+  it('seeds a disabled cron trigger only for schedule-shaped automations', () => {
+    const sched = triggersForAutomation(base('schedule'))
+    expect(sched).toHaveLength(1)
+    expect(sched[0].type).toBe('cron')
+    expect(sched[0].enabled).toBe(false)
+    expect(sched[0].schedule).toBe('0 9 * * 1')
+  })
+
+  it('seeds NO trigger for manual or event automations', () => {
+    expect(triggersForAutomation(base('manual'))).toEqual([])
+    expect(triggersForAutomation(base('event'))).toEqual([])
   })
 })

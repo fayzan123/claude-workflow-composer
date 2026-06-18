@@ -147,11 +147,14 @@ export function DetectView() {
             const busy = busyId === a.id
             return (
             <div key={a.id} className={`detect__card${busy ? ' detect__card--busy' : ''}`}>
-              <div className="detect__card-title">{a.title}</div>
-              <div className="detect__card-meta">seen {a.evidence.count}× · {a.suggestedTrigger.label || 'manual'}</div>
+              <div className="detect__card-title">
+                {a.title}
+                {a.status === 'promoted' && <span className="detect__badge">✓ Promoted</span>}
+              </div>
+              <div className="detect__card-meta">seen {a.evidence.count}× · {a.suggestedTrigger.label || 'on demand'}</div>
               <div className="detect__card-actions">
                 <button type="button" onClick={() => promote(a.id)} disabled={busyId !== null}>
-                  {busy ? 'Generating…' : 'Promote ▸'}
+                  {busy ? 'Generating…' : a.status === 'promoted' ? 'Promote again' : 'Promote ▸'}
                 </button>
                 <button type="button" onClick={() => dismiss(a.id)} disabled={busyId !== null}>Dismiss</button>
               </div>

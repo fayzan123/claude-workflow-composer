@@ -90,7 +90,7 @@ export function automationScanRouter(opts: AutomationScanRouterOptions): Router 
       // Overwrite the LLM-generated id with a server-assigned UUID to guarantee
       // uniqueness and safe post-promote navigation (/w/<id>/build).
       cwc.meta.id = randomUUID()
-      cwc.meta.triggers = [cronTriggerFor(a)]
+      cwc.meta.triggers = triggersForAutomation(a)
       const file = path.join(opts.workflowsDir, `${slugify(cwc.meta.name)}-${Date.now()}.cwc`)
       await fs.mkdir(opts.workflowsDir, { recursive: true })
       await fs.writeFile(file, JSON.stringify(cwc, null, 2))
@@ -102,6 +102,14 @@ export function automationScanRouter(opts: AutomationScanRouterOptions): Router 
   })
 
   return router
+}
+
+/**
+ * Seed triggers from the automation's detected shape. Only SCHEDULE-shaped automations get a
+ * cron trigger — manual/event ones become plain on-demand workflows (no schedule shoehorned on).
+ */
+export function triggersForAutomation(a: DetectedAutomation): CwcTrigger[] {
+  return a.suggestedTrigger.kind === 'schedule' ? [cronTriggerFor(a)] : []
 }
 
 /** A disabled, unarmed cron trigger seeded from the automation; user confirms + arms in the UI. */
