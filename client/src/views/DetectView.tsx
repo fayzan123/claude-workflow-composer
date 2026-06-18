@@ -7,6 +7,14 @@ type Latest = Awaited<ReturnType<typeof api.automationScan.latest>>
 type Auto = Latest['automations'][number]
 type Log = NonNullable<Latest['log']>[number]
 
+/** Merge log entries, deduped by ts+message, so GET-replay and live SSE can't drop or double a line regardless of arrival order. */
+function mergeLogs(prev: Log[], incoming: Log[]): Log[] {
+  if (incoming.length === 0) return prev
+  const seen = new Set(prev.map(l => `${l.ts}|${l.message}`))
+  const added = incoming.filter(l => !seen.has(`${l.ts}|${l.message}`))
+  return added.length === 0 ? prev : [...prev, ...added]
+}
+
 export function DetectView() {
   const navigate = useNavigate()
   const [params, setParams] = useSearchParams()
@@ -19,7 +27,7 @@ export function DetectView() {
   async function refresh() {
     const r = await api.automationScan.latest()
     setStatus(r.status)
-    setLogs(r.log ?? [])
+    setLogs(prev => mergeLogs(prev, r.log ?? []))
     setAutos(r.automations.filter(a => a.status !== 'dismissed'))
     return r
   }
@@ -32,7 +40,7 @@ export function DetectView() {
   // mount: replay current state, subscribe to live log, optionally autostart
   useEffect(() => {
     const es = new EventSource('/api/automation-scan/stream')
-    es.onmessage = (m) => { try { setLogs(prev => [...prev, JSON.parse(m.data)]) } catch { /* ignore */ } }
+    es.onmessage = (m) => { try { const e = JSON.parse(m.data) as Log; setLogs(prev => mergeLogs(prev, [e])) } catch { /* ignore */ } }
     refresh().then(r => {
       if (params.get('autostart') === '1' && r.status !== 'running' && !startedRef.current) {
         startedRef.current = true
