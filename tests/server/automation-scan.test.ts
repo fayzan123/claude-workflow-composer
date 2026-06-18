@@ -54,7 +54,7 @@ beforeEach(async () => {
   // A real user skill so promote's slug validation has a valid set to filter against.
   const skillDir = path.join(home, '.claude', 'skills', 'real-skill')
   await fs.mkdir(skillDir, { recursive: true })
-  await fs.writeFile(path.join(skillDir, 'SKILL.md'), '---\nname: Real\ndescription: a real skill\n---\nbody\n')
+  await fs.writeFile(path.join(skillDir, 'SKILL.md'), '---\nname: Real\ndescription: run the test suite then push to remote\n---\nbody\n')
   const app = createApp({ staticDir: null, userHomeDir: home, automationScanPath: scanPath, workflowsDir: wfDir, claudeRunner: smartRunner, streamingRunner: fakeStreaming, enableNotifier: false })
   server = app.listen(0)
   base = `http://localhost:${(server.address() as AddressInfo).port}`

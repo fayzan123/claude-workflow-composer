@@ -2,7 +2,8 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import * as fs from 'node:fs/promises'
 import * as os from 'node:os'
 import * as path from 'node:path'
-import { listReusableSkills } from '../../src/server/skill-catalog.js'
+import { listReusableSkills, selectRelevantSkills } from '../../src/server/skill-catalog.js'
+import type { DetectedAutomation } from '../../src/detection/types.js'
 
 let home: string
 beforeEach(async () => { home = await fs.mkdtemp(path.join(os.tmpdir(), 'cwc-skillcat-')) })
@@ -30,5 +31,34 @@ describe('listReusableSkills', () => {
 
   it('returns [] when there is no skills dir', async () => {
     expect(await listReusableSkills(home)).toEqual([])
+  })
+
+  it('includes plugin skills with a namespaced plugin:slug', async () => {
+    const dir = path.join(home, '.claude', 'plugins', 'cache', 'official', 'superpowers', '6.0.2', 'skills', 'subagent-driven-development')
+    await fs.mkdir(dir, { recursive: true })
+    await fs.writeFile(path.join(dir, 'SKILL.md'), '---\nname: SDD\ndescription: execute a plan with subagents\n---\nx\n')
+    const skills = await listReusableSkills(home)
+    expect(skills.map(s => s.slug)).toContain('superpowers:subagent-driven-development')
+  })
+})
+
+describe('selectRelevantSkills', () => {
+  const auto = (p: Partial<DetectedAutomation>): DetectedAutomation => ({
+    id: 'i', title: '', description: '', steps: [], stepTokens: [],
+    evidence: { count: 3, repos: [], sessionIds: [], firstSeen: '', lastSeen: '' },
+    suggestedTrigger: { kind: 'manual', label: '' }, confidence: 0.9, status: 'new', ...p,
+  })
+
+  it('keeps skills whose slug/description overlaps the automation, drops the rest', () => {
+    const skills = [
+      { slug: 'superpowers:subagent-driven-development', description: 'execute a plan with subagents' },
+      { slug: 'colorize', description: 'add color to a design' },
+    ]
+    const out = selectRelevantSkills(skills, auto({ title: 'Subagent driven development run', stepTokens: ['subagent', 'plan'] }))
+    expect(out.map(s => s.slug)).toEqual(['superpowers:subagent-driven-development'])
+  })
+
+  it('returns [] when nothing is relevant', () => {
+    expect(selectRelevantSkills([{ slug: 'colorize', description: 'add color' }], auto({ title: 'publish to npm' }))).toEqual([])
   })
 })
