@@ -50,4 +50,45 @@ describe('createScanStore', () => {
     await store.runScan(async () => [auto({ id: 'id1', status: 'new' })])
     expect(store.getLatest()?.automations[0].status).toBe('dismissed')
   })
+
+  it('survives a corrupt persisted scan file on load', async () => {
+    await fs.writeFile(file, '{ this is not valid json')
+    const store = createScanStore(file)
+    expect(store.getLatest()).toBeNull()
+    // and a fresh scan still works, overwriting the corrupt file
+    await store.runScan(async () => [auto({})])
+    expect(store.getLatest()?.status).toBe('done')
+  })
+
+  it('records a job failure as an error result, clears running, and persists it', async () => {
+    const store = createScanStore(file)
+    // runScan swallows the job error into an error status — it does not reject
+    await store.runScan(async () => { throw new Error('claude analysis blew up') })
+    expect(store.getLatest()?.status).toBe('error')
+    expect(store.getLatest()?.error).toContain('claude analysis blew up')
+    expect(store.isRunning()).toBe(false)
+    // error state is durable across reload
+    expect(createScanStore(file).getLatest()?.status).toBe('error')
+  })
+
+  it('can run a new scan after a failed one', async () => {
+    const store = createScanStore(file)
+    await store.runScan(async () => { throw new Error('boom') })
+    await store.runScan(async () => [auto({})])
+    expect(store.getLatest()?.status).toBe('done')
+  })
+
+  it('setStatus returns null for an unknown automation id', async () => {
+    const store = createScanStore(file)
+    await store.runScan(async () => [auto({ id: 'id1' })])
+    expect(await store.setStatus('does-not-exist', 'dismissed')).toBeNull()
+  })
+
+  it('preserves a promoted status across re-scans', async () => {
+    const store = createScanStore(file)
+    await store.runScan(async () => [auto({ id: 'id1' })])
+    await store.setStatus('id1', 'promoted')
+    await store.runScan(async () => [auto({ id: 'id1', status: 'new' })])
+    expect(store.getLatest()?.automations[0].status).toBe('promoted')
+  })
 })

@@ -18,8 +18,12 @@ type ParsedLine =
 export function parseStreamLine(line: string): ParsedLine {
   const t = line.trim()
   if (!t) return null
-  let o: Record<string, unknown>
-  try { o = JSON.parse(t) } catch { return null }
+  let parsed: unknown
+  try { parsed = JSON.parse(t) } catch { return null }
+  // Valid JSON can still be a primitive, null, or array — none of which carry a `type`.
+  // Guard before indexing so a stray `null`/`123` line can't throw out of the stdout handler.
+  if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) return null
+  const o = parsed as Record<string, unknown>
   switch (o['type']) {
     case 'system':
       if (o['subtype'] === 'init') return { kind: 'log', event: { level: 'info', message: `Claude session started (model ${o['model'] ?? '?'})` } }
