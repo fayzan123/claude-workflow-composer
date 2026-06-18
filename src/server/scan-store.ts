@@ -28,6 +28,7 @@ export function createScanStore(filePath: string): ScanStore {
   try { latest = JSON.parse(readFileSync(filePath, 'utf-8')) } catch { /* none yet */ }
   let running = false
   const emitter = new EventEmitter()
+  emitter.setMaxListeners(0)   // SSE fan-out: many concurrent /stream clients, cleaned up on disconnect
 
   async function persist(): Promise<void> {
     await fs.mkdir(path.dirname(filePath), { recursive: true })
