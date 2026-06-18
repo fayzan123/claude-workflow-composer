@@ -56,4 +56,16 @@ process.exit(0)
     const bin = await makeBin(dir, 'claude', source)
     await expect(runClaudeStreaming('p', { binPath: bin, onLog: () => {} })).rejects.toThrow('boom')
   })
+
+  it('captures the result even when the final line has no trailing newline', async () => {
+    const source = `process.stdout.write(JSON.stringify({ type: 'result', result: '{"automations":[]}', total_cost_usd: 0.02, is_error: false })); process.exit(0)`
+    const bin = await makeBin(dir, 'claude', source)
+    const out = await runClaudeStreaming('p', { binPath: bin, onLog: () => {} })
+    expect(out.resultText).toBe('{"automations":[]}')
+  })
+
+  it('rejects when the process exits 0 with no result at all', async () => {
+    const bin = await makeBin(dir, 'claude', `process.exit(0)`)
+    await expect(runClaudeStreaming('p', { binPath: bin, onLog: () => {} })).rejects.toThrow(/no result/i)
+  })
 })

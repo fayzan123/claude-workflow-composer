@@ -73,8 +73,17 @@ export const runClaudeStreaming: StreamingRunner = (prompt, opts) => {
     child.on('error', (err) => { clearTimeout(timer); reject(err) })
     child.on('close', (code) => {
       clearTimeout(timer)
+      // Flush any final line that lacked a trailing newline — the result line is the
+      // critical one and we must not depend on the CLI always newline-terminating it.
+      if (buf.trim()) {
+        const parsed = parseStreamLine(buf)
+        if (parsed?.kind === 'log') opts.onLog(parsed.event)
+        else if (parsed?.kind === 'result') { resultText = parsed.text; costUsd = parsed.costUsd; if (parsed.isError) errored = parsed.text || 'analysis returned an error' }
+        buf = ''
+      }
       if (errored) return reject(new Error(errored))
       if (code !== 0 && !resultText) return reject(new Error(stderr.trim() || `claude exited with code ${code}`))
+      if (!resultText) return reject(new Error('Analysis produced no result.'))
       resolve({ resultText, costUsd })
     })
     child.stdin.end(prompt)
