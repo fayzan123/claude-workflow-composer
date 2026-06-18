@@ -46,6 +46,18 @@ describe('listReusableSkills', () => {
     const skills = await listReusableSkills(home)
     expect(skills.map(s => s.slug)).toContain('superpowers:subagent-driven-development')
   })
+
+  it('picks the highest plugin version numerically, not lexically', async () => {
+    const base = path.join(home, '.claude', 'plugins', 'cache', 'official', 'superpowers')
+    for (const [version, desc] of [['1.9.0', 'old'], ['1.10.0', 'new']] as const) {
+      const dir = path.join(base, version, 'skills', 'demo')
+      await fs.mkdir(dir, { recursive: true })
+      await fs.writeFile(path.join(dir, 'SKILL.md'), `---\nname: Demo\ndescription: ${desc}\n---\nx\n`)
+    }
+    const skills = await listReusableSkills(home)
+    const demo = skills.find(s => s.slug === 'superpowers:demo')
+    expect(demo?.description).toBe('new')
+  })
 })
 
 describe('listReusableAgents', () => {

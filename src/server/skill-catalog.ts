@@ -65,7 +65,7 @@ export async function listReusableSkills(userHomeDir: string): Promise<CatalogSk
   for (const publisher of await fs.readdir(pluginCache).catch(() => [] as string[])) {
     for (const plugin of await fs.readdir(path.join(pluginCache, publisher)).catch(() => [] as string[])) {
       const versions = await fs.readdir(path.join(pluginCache, publisher, plugin)).catch(() => [] as string[])
-      const latest = versions.sort().at(-1)
+      const latest = versions.sort(compareVersions).at(-1)
       if (!latest) continue
       const skillsDir = path.join(pluginCache, publisher, plugin, latest, 'skills')
       for (const slug of await fs.readdir(skillsDir).catch(() => [] as string[])) {
@@ -96,6 +96,18 @@ export async function listReusableAgents(userHomeDir: string): Promise<CatalogAg
     } catch { /* skip malformed/unreadable agents */ }
   }
   return out.sort((a, b) => a.slug.localeCompare(b.slug))
+}
+
+/** Compare dotted version strings numerically (so 1.10.0 > 1.9.0, unlike a lexical sort). */
+function compareVersions(a: string, b: string): number {
+  const pa = a.split('.').map(n => parseInt(n, 10))
+  const pb = b.split('.').map(n => parseInt(n, 10))
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+    const x = pa[i] ?? 0, y = pb[i] ?? 0
+    if (Number.isNaN(x) || Number.isNaN(y)) return a.localeCompare(b)
+    if (x !== y) return x - y
+  }
+  return 0
 }
 
 function tokenize(s: string): string[] {
