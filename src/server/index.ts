@@ -17,6 +17,7 @@ import { fileContentRouter } from './api/file-content.js'
 import { openFileRouter } from './api/open-file.js'
 import { exportedWorkflowsRouter } from './api/exported-workflows.js'
 import type { ClaudeRunner } from './claude-runner.js'
+import type { StreamingRunner } from './streaming-analyzer.js'
 import { agentsGenerateRouter } from './api/agents-generate.js'
 import { runsRouter } from './api/runs.js'
 import { createRunStore } from './run-store.js'
@@ -46,6 +47,7 @@ export interface AppOptions {
   automationStatePath?: string    // default ~/.cwc/automation-state.json
   configPath?: string             // default ~/.cwc/config.json
   automationScanPath?: string     // default ~/.cwc/automation-scan.json
+  streamingRunner?: StreamingRunner
   enableScheduler?: boolean       // default false; bin/cwc start passes true
   enableNotifier?: boolean        // default true; tests pass false
 }
@@ -87,7 +89,7 @@ export function createApp(opts: AppOptions): express.Express {
 
   const scanPath = opts.automationScanPath ?? path.join(os.homedir(), '.cwc', 'automation-scan.json')
   const scanStore = createScanStore(scanPath)
-  app.use('/api/automation-scan', automationScanRouter({ homeDir, workflowsDir: wfDir, store: scanStore, runner: opts.claudeRunner }))
+  app.use('/api/automation-scan', automationScanRouter({ homeDir, workflowsDir: wfDir, store: scanStore, runner: opts.claudeRunner, streamingRunner: opts.streamingRunner }))
 
   // Sweep orphan worktrees on real server start only (paused/running runs keep theirs).
   // Gated on enableScheduler so test apps with default paths never touch ~/.cwc/worktrees.

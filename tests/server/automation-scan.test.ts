@@ -5,6 +5,17 @@ import * as path from 'node:path'
 import * as http from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { createApp } from '../../src/server/index.js'
+import type { StreamingRunner } from '../../src/server/streaming-analyzer.js'
+
+const fakeStreaming: StreamingRunner = async (_prompt, { onLog }) => {
+  onLog({ level: 'info', message: 'session started' })
+  onLog({ level: 'claude', message: 'clustering recurring tasks' })
+  return { resultText: JSON.stringify({ automations: [{
+    title: 'Run tests then push', description: 'd', steps: ['test', 'push'],
+    stepTokens: ['run-tests', 'push'], refs: ['r0', 'r1', 'r2'],
+    suggestedTrigger: { kind: 'schedule', cron: '0 9 * * *', label: 'daily' }, confidence: 0.9,
+  }] }), costUsd: 0.01 }
+}
 
 let home: string, scanPath: string, wfDir: string, server: http.Server, base: string
 
@@ -37,7 +48,7 @@ beforeEach(async () => {
   const push = (ts: string) => L({ type: 'user', sessionId: 'S' + ts, cwd: '/r', timestamp: ts, message: { role: 'user', content: [{ type: 'text', text: 'ship it' }] } })
     + L({ type: 'assistant', sessionId: 'S' + ts, cwd: '/r', timestamp: ts, message: { role: 'assistant', content: [{ type: 'tool_use', name: 'Bash', input: { command: 'npm test && git push' } }] } })
   await fs.writeFile(path.join(proj, 'S.jsonl'), push('2026-06-01T10:00:00Z') + push('2026-06-02T10:00:00Z') + push('2026-06-03T10:00:00Z'))
-  const app = createApp({ staticDir: null, userHomeDir: home, automationScanPath: scanPath, workflowsDir: wfDir, claudeRunner: smartRunner, enableNotifier: false })
+  const app = createApp({ staticDir: null, userHomeDir: home, automationScanPath: scanPath, workflowsDir: wfDir, claudeRunner: smartRunner, streamingRunner: fakeStreaming, enableNotifier: false })
   server = app.listen(0)
   base = `http://localhost:${(server.address() as AddressInfo).port}`
 })
@@ -59,6 +70,10 @@ describe('automation-scan API', () => {
     const done = await waitForDone()
     expect(done.automations).toHaveLength(1)
     expect(done.automations[0].title).toBe('Run tests then push')
+    // NEW: the streamed log is buffered and returned
+    const withLog = await (await fetch(`${base}/api/automation-scan`)).json() as { log: { level: string; message: string }[] }
+    expect(withLog.log.some(l => l.message === 'clustering recurring tasks')).toBe(true)
+    expect(withLog.log.some(l => l.level === 'info' && /digest lines|task units|transcript/i.test(l.message))).toBe(true)
 
     const id = done.automations[0].id
     const dis = await fetch(`${base}/api/automation-scan/${id}/dismiss`, { method: 'POST' })

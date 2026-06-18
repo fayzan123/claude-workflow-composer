@@ -6,7 +6,8 @@ import { randomUUID } from 'node:crypto'
 import { Cron } from 'croner'
 import { runClaude as defaultRunner, type ClaudeRunner } from '../claude-runner.js'
 import { findTranscripts, parseSession } from '../../detection/transcript-parser.js'
-import { analyzeUnits } from '../../detection/analyzer.js'
+import { buildAnalysisContext, parseAutomations } from '../../detection/analyzer.js'
+import { runClaudeStreaming, type StreamingRunner } from '../streaming-analyzer.js'
 import type { TaskUnit, DetectedAutomation } from '../../detection/types.js'
 import type { ScanStore } from '../scan-store.js'
 import { buildWorkflowGenPrompt, parseWorkflowJson } from '../../workflow-generator.js'
@@ -18,10 +19,12 @@ export interface AutomationScanRouterOptions {
   workflowsDir: string
   store: ScanStore
   runner?: ClaudeRunner
+  streamingRunner?: StreamingRunner
 }
 
 export function automationScanRouter(opts: AutomationScanRouterOptions): Router {
   const runner = opts.runner ?? defaultRunner
+  const streamingRunner = opts.streamingRunner ?? runClaudeStreaming
   const router = Router()
 
   router.get('/', (_req, res) => {
@@ -30,7 +33,7 @@ export function automationScanRouter(opts: AutomationScanRouterOptions): Router 
 
   router.get('/stream', (req, res) => {
     res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive' })
-    const off = opts.store.onProgress(p => res.write(`data: ${JSON.stringify(p)}\n\n`))
+    const off = opts.store.onLog(e => res.write(`data: ${JSON.stringify(e)}\n\n`))
     req.on('close', () => { off(); res.end() })
   })
 
@@ -38,13 +41,17 @@ export function automationScanRouter(opts: AutomationScanRouterOptions): Router 
     if (opts.store.isRunning()) return void res.status(409).json({ error: 'A scan is already running.' })
     res.status(202).json({ status: 'running' })
     void opts.store.runScan(async () => {
-      opts.store.emitProgress({ stage: 'reading' })
       const files = await findTranscripts(opts.homeDir)
+      opts.store.appendLog({ level: 'info', message: `Found ${files.length} transcript file(s)` })
       const units: TaskUnit[] = []
       for (const f of files) units.push(...await parseSession(f))
-      opts.store.emitProgress({ stage: 'analyzing', detail: `${units.length} tasks` })
-      const found = await analyzeUnits(units, runner)
-      opts.store.emitProgress({ stage: 'done', detail: `${found.length} found` })
+      opts.store.appendLog({ level: 'info', message: `Parsed ${units.length} task unit(s)` })
+      const ctx = buildAnalysisContext(units)
+      if (!ctx) { opts.store.appendLog({ level: 'info', message: 'No meaningful history to analyze yet.' }); return [] }
+      opts.store.appendLog({ level: 'info', message: `Analyzing ${ctx.refIndex.size} digest line(s) with Claude…` })
+      const { resultText } = await streamingRunner(ctx.prompt, { onLog: e => opts.store.appendLog(e) })
+      const found = parseAutomations(resultText, ctx.refIndex)
+      opts.store.appendLog({ level: 'info', message: `${found.length} automation(s) detected` })
       return found
     }).catch(() => { /* store records the error */ })
   })
