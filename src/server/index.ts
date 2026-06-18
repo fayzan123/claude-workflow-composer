@@ -56,7 +56,9 @@ export interface AppOptions {
 
 export function createApp(opts: AppOptions): express.Express {
   const app = express()
-  app.use(restrictCors(opts.allowedOrigins))
+  // Auth off ⇒ local dev (CWC_DISABLE_AUTH): tolerate loopback origins so the Vite dev
+  // server works. Packaged mode (auth on) stays strict same-origin.
+  app.use(restrictCors(opts.allowedOrigins, { allowLoopback: !opts.authToken }))
   if (opts.authToken) {
     app.use(installUiTokenCookie(opts.authToken))
     app.use(requireApiToken(opts.authToken))

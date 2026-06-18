@@ -56,18 +56,47 @@ export function requireApiToken(token: string) {
   }
 }
 
-export function restrictCors(allowedOrigins: string[] = []) {
+function parseOrigin(origin: string): URL | null {
+  try {
+    return new URL(origin)
+  } catch {
+    return null
+  }
+}
+
+function isLoopbackHostname(hostname: string): boolean {
+  return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1' || hostname === '[::1]'
+}
+
+/**
+ * @param allowLoopback when true, any loopback Origin (localhost/127.0.0.1) is accepted even
+ * if its Host differs — needed for the Vite dev server, which forwards Origin :5173 but rewrites
+ * Host to :3579. Only enabled in dev (auth off); a remote page can't forge a loopback Origin, so
+ * this does not reopen the CSRF hole. Packaged mode keeps it false (strict same-origin only).
+ */
+export function restrictCors(allowedOrigins: string[] = [], opts: { allowLoopback?: boolean } = {}) {
   const allowed = new Set(allowedOrigins)
   return (req: Request, res: Response, next: NextFunction) => {
     const origin = req.header('origin')
+
+    // No Origin header: a same-origin navigation or a non-browser client (curl, the
+    // spawned claude run-logger posting to /api/runs/events). Nothing cross-origin to gate.
     if (!origin) {
       if (req.method === 'OPTIONS') return void res.sendStatus(204)
       return next()
     }
-    if (!allowed.has(origin)) {
-      if (req.method === 'OPTIONS') return void res.sendStatus(403)
-      return next()
+
+    const url = parseOrigin(origin)
+    const sameOrigin = !!url && url.host === req.headers.host
+    const loopbackOk = !!opts.allowLoopback && !!url && isLoopbackHostname(url.hostname)
+
+    // Disallowed cross-origin: reject outright so the handler never runs. Withholding CORS
+    // headers alone would still execute the request server-side — that lets a malicious page
+    // drive-by the token-exempt mutating endpoints (e.g. POST /api/runs/events) via CSRF.
+    if (!sameOrigin && !loopbackOk && !allowed.has(origin)) {
+      return void res.status(403).json({ error: 'cross-origin request not allowed' })
     }
+
     res.header('Access-Control-Allow-Origin', origin)
     res.header('Vary', 'Origin')
     res.header('Access-Control-Allow-Credentials', 'true')

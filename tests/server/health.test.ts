@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import http from 'node:http'
+import { readFileSync } from 'node:fs'
 import { createApp } from '../../src/server/index.js'
 
 let server: http.Server
@@ -25,10 +26,12 @@ function get(path: string): Promise<{ status: number; body: unknown }> {
 }
 
 describe('GET /api/health', () => {
-  it('returns 200 with status ok', async () => {
+  it('returns 200 with status ok and the real package version', async () => {
     const { status, body } = await get('/api/health')
     expect(status).toBe(200)
     expect((body as { status: string }).status).toBe('ok')
+    const pkg = JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf-8'))
+    expect((body as { version: string }).version).toBe(pkg.version)
   })
 
   it('keeps health public but protects other APIs when auth is enabled', async () => {
