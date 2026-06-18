@@ -21,4 +21,8 @@
 .detect__card-meta { font-size: var(--text-xs); color: var(--color-text-secondary); margin: 2px 0 6px; }
 .detect__card-actions { display: flex; gap: var(--space-xs); }
 .detect__card-actions button { font: inherit; font-size: var(--text-xs); padding: 3px 9px; border-radius: var(--radius-sm); border: 1px solid var(--color-border); background: var(--color-surface); cursor: pointer; }
+.detect__card-actions button:disabled { opacity: .5; cursor: default; }
+.detect__card--busy { border-color: var(--color-primary); }
+.detect__card-busy { font-size: var(--text-xs); color: var(--color-primary); margin-top: 6px; }
+.detect__error { font-size: var(--text-xs); color: var(--color-error); margin: 0 0 var(--space-sm); }
 .detect__empty { font-size: var(--text-xs); color: var(--color-text-secondary); padding: var(--space-md) 0; }

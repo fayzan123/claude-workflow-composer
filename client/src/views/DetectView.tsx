@@ -23,6 +23,8 @@ export function DetectView() {
   const [autos, setAutos] = useState<Auto[]>([])
   const logEndRef = useRef<HTMLDivElement>(null)
   const startedRef = useRef(false)
+  const [busyId, setBusyId] = useState<string | null>(null)
+  const [actionError, setActionError] = useState<string | null>(null)
 
   async function refresh() {
     const r = await api.automationScan.latest()
@@ -59,12 +61,24 @@ export function DetectView() {
   // autoscroll log to bottom
   useEffect(() => { logEndRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [logs])
 
+  // Promote spawns Claude to generate the workflow (seconds). Guard against double-fire and
+  // give visible feedback; block dismiss on the same card while a promote is in flight.
   async function promote(id: string) {
-    const r = await api.automationScan.promote(id)
-    if (r.workflowId) navigate(`/w/${r.workflowId}/build`)
+    if (busyId) return
+    setBusyId(id); setActionError(null)
+    try {
+      const r = await api.automationScan.promote(id)
+      if (r.workflowId) { navigate(`/w/${r.workflowId}/build`); return }
+      setActionError(r.error || 'Could not generate a workflow from this automation.')
+    } catch {
+      setActionError('Promote failed — is the server still running?')
+    } finally {
+      setBusyId(null)
+    }
   }
   async function dismiss(id: string) {
-    await api.automationScan.dismiss(id)
+    if (busyId) return
+    try { await api.automationScan.dismiss(id) } catch { /* best effort */ }
     setAutos(prev => prev.filter(a => a.id !== id))
   }
 
@@ -91,16 +105,23 @@ export function DetectView() {
         </section>
         <aside className="detect__results" aria-label="Detected automations">
           <h2 className="detect__results-h">{autos.length > 0 ? `${autos.length} detected` : 'Results'}</h2>
-          {autos.map(a => (
-            <div key={a.id} className="detect__card">
+          {actionError && <p className="detect__error">{actionError}</p>}
+          {autos.map(a => {
+            const busy = busyId === a.id
+            return (
+            <div key={a.id} className={`detect__card${busy ? ' detect__card--busy' : ''}`}>
               <div className="detect__card-title">{a.title}</div>
               <div className="detect__card-meta">seen {a.evidence.count}× · {a.suggestedTrigger.label || 'manual'}</div>
               <div className="detect__card-actions">
-                <button type="button" onClick={() => promote(a.id)}>Promote ▸</button>
-                <button type="button" onClick={() => dismiss(a.id)}>Dismiss</button>
+                <button type="button" onClick={() => promote(a.id)} disabled={busyId !== null}>
+                  {busy ? 'Generating…' : 'Promote ▸'}
+                </button>
+                <button type="button" onClick={() => dismiss(a.id)} disabled={busyId !== null}>Dismiss</button>
               </div>
+              {busy && <div className="detect__card-busy">Building agents &amp; wiring the graph — this takes a few seconds…</div>}
             </div>
-          ))}
+            )
+          })}
           {status === 'done' && autos.length === 0 && <p className="detect__empty">No recurring automations found.</p>}
         </aside>
       </div>
