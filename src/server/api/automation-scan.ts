@@ -24,6 +24,18 @@ export interface AutomationScanRouterOptions {
   genModel?: string         // model for Promote's workflow generation; default Sonnet
 }
 
+/** Models the scan analysis may run on (friendly key → CLI model id). Allowlisted so a request can't pass an arbitrary --model. */
+export const SCAN_MODELS: Record<string, string> = {
+  haiku: 'claude-haiku-4-5',
+  sonnet: 'claude-sonnet-4-6',
+  opus: 'claude-opus-4-8',
+}
+
+function resolveScanModel(key: unknown): { id: string; label: string } {
+  if (typeof key === 'string' && key in SCAN_MODELS) return { id: SCAN_MODELS[key], label: key }
+  return { id: SCAN_MODELS['sonnet'], label: 'sonnet' }
+}
+
 export function automationScanRouter(opts: AutomationScanRouterOptions): Router {
   const runner = opts.runner ?? defaultRunner
   const streamingRunner = opts.streamingRunner ?? runClaudeStreaming
@@ -39,8 +51,9 @@ export function automationScanRouter(opts: AutomationScanRouterOptions): Router 
     req.on('close', () => { off(); res.end() })
   })
 
-  router.post('/', (_req, res) => {
+  router.post('/', (req, res) => {
     if (opts.store.isRunning()) return void res.status(409).json({ error: 'A scan is already running.' })
+    const model = resolveScanModel((req.body ?? {}).model)
     res.status(202).json({ status: 'running' })
     void opts.store.runScan(async () => {
       const files = await findTranscripts(opts.homeDir)
@@ -50,8 +63,8 @@ export function automationScanRouter(opts: AutomationScanRouterOptions): Router 
       opts.store.appendLog({ level: 'info', message: `Parsed ${units.length} task unit(s)` })
       const ctx = buildAnalysisContext(units)
       if (!ctx) { opts.store.appendLog({ level: 'info', message: 'No meaningful history to analyze yet.' }); return [] }
-      opts.store.appendLog({ level: 'info', message: `Analyzing ${ctx.refIndex.size} digest line(s) with Claude…` })
-      const { resultText } = await streamingRunner(ctx.prompt, { onLog: e => opts.store.appendLog(e) })
+      opts.store.appendLog({ level: 'info', message: `Analyzing ${ctx.refIndex.size} digest line(s) with Claude (${model.label})…` })
+      const { resultText } = await streamingRunner(ctx.prompt, { onLog: e => opts.store.appendLog(e), model: model.id })
       const found = parseAutomations(resultText, ctx.refIndex)
       opts.store.appendLog({ level: 'info', message: `${found.length} automation(s) detected` })
       return found

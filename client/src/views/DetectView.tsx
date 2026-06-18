@@ -7,6 +7,12 @@ type Latest = Awaited<ReturnType<typeof api.automationScan.latest>>
 type Auto = Latest['automations'][number]
 type Log = NonNullable<Latest['log']>[number]
 
+const MODELS = [
+  { key: 'haiku',  label: 'Haiku',  pro: 'Fastest & cheapest', con: 'May miss subtler patterns' },
+  { key: 'sonnet', label: 'Sonnet · rec', pro: 'Balanced — strong clustering, low cost', con: 'Best default for most histories' },
+  { key: 'opus',   label: 'Opus',   pro: 'Deepest reasoning on messy history', con: 'Slowest, priciest, heavy on rate limit' },
+] as const
+
 /** Merge log entries, deduped by ts+message, so GET-replay and live SSE can't drop or double a line regardless of arrival order. */
 function mergeLogs(prev: Log[], incoming: Log[]): Log[] {
   if (incoming.length === 0) return prev
@@ -25,6 +31,7 @@ export function DetectView() {
   const startedRef = useRef(false)
   const [busyId, setBusyId] = useState<string | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
+  const [model, setModel] = useState<string>('sonnet')
 
   async function refresh() {
     const r = await api.automationScan.latest()
@@ -36,7 +43,7 @@ export function DetectView() {
 
   async function scan() {
     setStatus('running'); setLogs([]); setAutos([])
-    await api.automationScan.start()
+    await api.automationScan.start(model)
   }
 
   // mount: replay current state, subscribe to live log, optionally autostart
@@ -92,6 +99,23 @@ export function DetectView() {
           {running ? 'Scanning…' : logs.length ? 'Re-scan' : 'Scan my history'}
         </button>
       </header>
+      <div className="detect__models" role="radiogroup" aria-label="Analysis model">
+        <span className="detect__models-label">Analyze with</span>
+        {MODELS.map(m => (
+          <button
+            key={m.key}
+            type="button"
+            className={`detect__model${model === m.key ? ' detect__model--on' : ''}`}
+            onClick={() => setModel(m.key)}
+            disabled={running}
+            aria-pressed={model === m.key}
+          >
+            <span className="detect__model-name">{m.label}</span>
+            <span className="detect__model-pro">+ {m.pro}</span>
+            <span className="detect__model-con">− {m.con}</span>
+          </button>
+        ))}
+      </div>
       <div className="detect__body">
         <section className="detect__log" aria-label="Scan log">
           {logs.length === 0 && !running && <p className="detect__empty">Click "Scan my history" to deeply analyze your Claude Code history.</p>}

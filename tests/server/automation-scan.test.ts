@@ -7,7 +7,9 @@ import type { AddressInfo } from 'node:net'
 import { createApp } from '../../src/server/index.js'
 import type { StreamingRunner } from '../../src/server/streaming-analyzer.js'
 
-const fakeStreaming: StreamingRunner = async (_prompt, { onLog }) => {
+let lastScanModel: string | undefined
+const fakeStreaming: StreamingRunner = async (_prompt, { onLog, model }) => {
+  lastScanModel = model
   onLog({ level: 'info', message: 'session started' })
   onLog({ level: 'claude', message: 'clustering recurring tasks' })
   return { resultText: JSON.stringify({ automations: [{
@@ -39,6 +41,7 @@ const smartRunner = async (prompt: string) => {
 }
 
 beforeEach(async () => {
+  lastScanModel = undefined
   home = await fs.mkdtemp(path.join(os.tmpdir(), 'cwc-scanapi-'))
   scanPath = path.join(home, 'scan.json')
   wfDir = path.join(home, 'workflows')
@@ -84,6 +87,18 @@ describe('automation-scan API', () => {
     expect(dis.status).toBe(200)
     const after = await (await fetch(`${base}/api/automation-scan`)).json() as { automations: { status: string }[] }
     expect(after.automations[0].status).toBe('dismissed')
+  })
+
+  it('runs the analysis on the requested allowlisted model', async () => {
+    await fetch(`${base}/api/automation-scan`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ model: 'haiku' }) })
+    await waitForDone()
+    expect(lastScanModel).toBe('claude-haiku-4-5')
+  })
+
+  it('falls back to sonnet for an unknown/absent model', async () => {
+    await fetch(`${base}/api/automation-scan`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ model: 'gpt-9' }) })
+    await waitForDone()
+    expect(lastScanModel).toBe('claude-sonnet-4-6')
   })
 
   it('promote generates a .cwc with a disabled cron trigger and marks the candidate promoted', async () => {

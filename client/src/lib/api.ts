@@ -132,7 +132,11 @@ export const api = {
       log?: Array<{ ts: string; level: string; message: string }>
       automations: Array<{ id: string; title: string; description: string; steps: string[]; evidence: { count: number; repos: string[] }; suggestedTrigger: { label: string; cron?: string }; confidence: number; status: string }>
     }>,
-    start: () => fetch('/api/automation-scan', { method: 'POST' }),
+    start: (model?: string) => fetch('/api/automation-scan', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(model ? { model } : {}),
+    }),
     dismiss: (id: string) => fetch(`/api/automation-scan/${id}/dismiss`, { method: 'POST' }),
     promote: (id: string) => fetch(`/api/automation-scan/${id}/promote`, { method: 'POST' }).then(r => r.json()) as Promise<{ workflowId?: string; error?: string }>,
   },
