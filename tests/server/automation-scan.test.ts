@@ -6,7 +6,7 @@ import * as http from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { createApp } from '../../src/server/index.js'
 
-let home: string, scanPath: string, server: http.Server, base: string
+let home: string, scanPath: string, wfDir: string, server: http.Server, base: string
 
 const cannedRunner = async () => ({
   result: JSON.stringify({ automations: [{
@@ -16,16 +16,28 @@ const cannedRunner = async () => ({
   }] }), sessionId: 's',
 })
 
+const smartRunner = async (prompt: string) => {
+  if (prompt.includes('.cwc') || prompt.includes('"nodes"')) {
+    return { result: JSON.stringify({
+      meta: { id: 'wf-1', name: 'Tests And Push', description: 'd', version: 1, created: '2026-06-17T00:00:00Z', updated: '2026-06-17T00:00:00Z' },
+      nodes: [{ id: 'n1', position: { x: 100, y: 300 }, exportedSlug: null, agent: { name: 'Runner', description: 'd', completionCriteria: 'c' } }],
+      edges: [{ id: 'e1', from: 'n1', to: null, trigger: 'done', terminalType: 'complete' }],
+    }), sessionId: 's' }
+  }
+  return cannedRunner()
+}
+
 beforeEach(async () => {
   home = await fs.mkdtemp(path.join(os.tmpdir(), 'cwc-scanapi-'))
   scanPath = path.join(home, 'scan.json')
+  wfDir = path.join(home, 'workflows')
   const proj = path.join(home, '.claude', 'projects', 'p1')
   await fs.mkdir(proj, { recursive: true })
   const L = (o: unknown) => JSON.stringify(o) + '\n'
   const push = (ts: string) => L({ type: 'user', sessionId: 'S' + ts, cwd: '/r', timestamp: ts, message: { role: 'user', content: [{ type: 'text', text: 'ship it' }] } })
     + L({ type: 'assistant', sessionId: 'S' + ts, cwd: '/r', timestamp: ts, message: { role: 'assistant', content: [{ type: 'tool_use', name: 'Bash', input: { command: 'npm test && git push' } }] } })
   await fs.writeFile(path.join(proj, 'S.jsonl'), push('2026-06-01T10:00:00Z') + push('2026-06-02T10:00:00Z') + push('2026-06-03T10:00:00Z'))
-  const app = createApp({ staticDir: null, userHomeDir: home, automationScanPath: scanPath, claudeRunner: cannedRunner, enableNotifier: false })
+  const app = createApp({ staticDir: null, userHomeDir: home, automationScanPath: scanPath, workflowsDir: wfDir, claudeRunner: smartRunner, enableNotifier: false })
   server = app.listen(0)
   base = `http://localhost:${(server.address() as AddressInfo).port}`
 })
@@ -53,5 +65,25 @@ describe('automation-scan API', () => {
     expect(dis.status).toBe(200)
     const after = await (await fetch(`${base}/api/automation-scan`)).json() as { automations: { status: string }[] }
     expect(after.automations[0].status).toBe('dismissed')
+  })
+
+  it('promote generates a .cwc with a disabled cron trigger and marks the candidate promoted', async () => {
+    await fetch(`${base}/api/automation-scan`, { method: 'POST' })
+    const done = await waitForDone()
+    const id = done.automations[0].id
+
+    const res = await fetch(`${base}/api/automation-scan/${id}/promote`, { method: 'POST' })
+    expect(res.status).toBe(200)
+    const { workflowId } = await res.json() as { workflowId: string }
+    expect(workflowId).toBe('wf-1')
+
+    const files = await fs.readdir(wfDir)
+    expect(files.some(f => f.endsWith('.cwc'))).toBe(true)
+    const cwc = JSON.parse(await fs.readFile(path.join(wfDir, files[0]), 'utf-8'))
+    expect(cwc.meta.triggers[0].type).toBe('cron')
+    expect(cwc.meta.triggers[0].enabled).toBe(false)
+
+    const after = await (await fetch(`${base}/api/automation-scan`)).json() as { automations: { status: string }[] }
+    expect(after.automations[0].status).toBe('promoted')
   })
 })
