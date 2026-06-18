@@ -1,0 +1,46 @@
+// src/detection/analysis-prompt.ts
+import type { RepoDigest } from './digest-builder.js'
+
+/**
+ * Build the deep-analysis prompt. The model reads ref-tagged digest lines (one per
+ * task the user ran with Claude) and returns recurring, automatable work. It returns
+ * the refs that ground each automation; the SERVER computes counts/evidence and the
+ * stable id from those refs — never trust the model's arithmetic.
+ */
+export function buildAnalysisPrompt(digests: RepoDigest[]): string {
+  const body = digests.map(d =>
+    `## Repo: ${d.repo}\n${d.lines.map(l => l.text).join('\n')}`
+  ).join('\n\n')
+
+  return `You are analyzing a developer's Claude Code history to find recurring work worth automating.
+
+Below are task digests, grouped by repository. Each line is one task the developer ran:
+[ref] date time · "their prompt" · tools used · salient command labels
+
+${body}
+
+Find distinct recurring tasks that appear to be done REPEATEDLY (3 or more times) and would
+be worth running automatically. Merge duplicates — the same real task may appear under slightly
+different prompts; treat those as ONE automation. Ignore one-off or exploratory work.
+
+Respond with ONLY a JSON object — no prose, no markdown fences:
+{
+  "automations": [
+    {
+      "title": string,            // short, e.g. "Triage flaky tests and commit the fix"
+      "description": string,      // one sentence: what it does and why it recurs
+      "steps": string[],          // the procedure, 2-6 concrete steps
+      "stepTokens": string[],     // lowercase canonical tokens for the steps, e.g. ["run-tests","commit","push"]
+      "refs": string[],           // EVERY digest ref that belongs to this automation, e.g. ["r0","r4","r9"]
+      "suggestedTrigger": {
+        "kind": "schedule" | "event" | "manual",
+        "cron": string,           // a cron expression if kind is "schedule", else ""
+        "label": string           // human text, e.g. "weekday mornings ~9am"
+      },
+      "confidence": number        // 0..1 — how clearly this is a real, automatable recurring task
+    }
+  ]
+}
+
+Rank automations by confidence, highest first. Return an empty array if nothing recurs 3+ times.`
+}

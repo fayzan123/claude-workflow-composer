@@ -25,3 +25,24 @@ export interface Candidate {
   cwds: string[]             // distinct repos it was seen in
   lastSeen: string           // ISO of most recent occurrence
 }
+
+export interface AutomationEvidence {
+  count: number
+  repos: string[]
+  sessionIds: string[]
+  firstSeen: string
+  lastSeen: string
+  timing?: string
+}
+
+export interface DetectedAutomation {
+  id: string                 // server-derived: hash(sorted repos + sorted stepTokens)
+  title: string
+  description: string
+  steps: string[]
+  stepTokens: string[]       // grounding tokens Claude returns; feed the id
+  evidence: AutomationEvidence
+  suggestedTrigger: InferredTrigger & { cron?: string }
+  confidence: number         // 0..1
+  status: 'new' | 'dismissed' | 'promoted'
+}
