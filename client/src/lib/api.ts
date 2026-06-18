@@ -129,6 +129,16 @@ export const api = {
   automationCandidates: () =>
     req<{ signature: string; count: number; summary: string; trigger: { kind: string; label: string }; cwds: string[]; lastSeen: string }[]>('GET', '/automation-candidates'),
 
+  automationScan: {
+    latest: () => fetch('/api/automation-scan').then(r => r.json()) as Promise<{
+      status: string
+      automations: Array<{ id: string; title: string; description: string; steps: string[]; evidence: { count: number; repos: string[] }; suggestedTrigger: { label: string; cron?: string }; confidence: number; status: string }>
+    }>,
+    start: () => fetch('/api/automation-scan', { method: 'POST' }),
+    dismiss: (id: string) => fetch(`/api/automation-scan/${id}/dismiss`, { method: 'POST' }),
+    promote: (id: string) => fetch(`/api/automation-scan/${id}/promote`, { method: 'POST' }).then(r => r.json()) as Promise<{ workflowId?: string; error?: string }>,
+  },
+
   automations: {
     state: () => req<{ paused: boolean }>('GET', '/automations/state'),
     setPaused: (paused: boolean) => req<{ paused: boolean }>('PUT', '/automations/state', { paused }),

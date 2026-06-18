@@ -8,6 +8,7 @@ import { api } from '../lib/api.ts'
 import { shouldRefreshDashboard } from '../lib/dashboard-events.ts'
 import { TEMPLATES } from '../templates/index.ts'
 import { HelpModal } from '../components/HelpModal.tsx'
+import { DetectedAutomations } from './DetectedAutomations.tsx'
 import './HomeDashboard.css'
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -125,7 +126,6 @@ export function HomeDashboard() {
   const [toggling, setToggling] = useState(false)
   const [servicePersistent, setServicePersistent] = useState<boolean | null>(null)
   const [triggers, setTriggers] = useState<Awaited<ReturnType<typeof api.automations.triggers>>>([])
-  const [candidates, setCandidates] = useState<Awaited<ReturnType<typeof api.automationCandidates>>>([])
 
   // ── Help modal
   const [showHelp, setShowHelp] = useState(false)
@@ -142,7 +142,6 @@ export function HomeDashboard() {
     api.automations.state().then((s) => setGlobalPaused(s.paused)).catch(() => {})
     api.serviceStatus().then((s) => setServicePersistent(s.persistent)).catch(() => {})
     api.automations.triggers().then(setTriggers).catch(() => setTriggers([]))
-    api.automationCandidates().then(setCandidates).catch(() => setCandidates([]))
   }, [])
 
   // ── Live mission control: refresh approvals + recent runs as runs change.
@@ -702,23 +701,7 @@ export function HomeDashboard() {
             </div>
           )}
 
-          {/* Detected automations — only when candidates found */}
-          {candidates.length > 0 && (
-            <div className="hd-widget">
-              <h2 className="hd-widget__heading">Detected automations</h2>
-              <ul className="hd-candidates" role="list">
-                {candidates.slice(0, 6).map((c) => (
-                  <li key={c.signature} className="hd-candidates__item">
-                    <span className="hd-candidates__summary">{c.summary}</span>
-                    <span className="hd-candidates__meta">
-                      seen {c.count}× · {c.trigger.label}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-              <p className="hd-candidates__note">Read-only preview — detected from your Claude Code history.</p>
-            </div>
-          )}
+          <DetectedAutomations />
         </aside>
       </div>
 

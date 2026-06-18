@@ -956,6 +956,15 @@
   margin: var(--space-xs) 0 0 0;
 }
 
+/* ── Rail: detected automations scan widget ─────────────────────────────── */
+
+.hd-widget__head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-sm); }
+.hd-scan-btn { font: inherit; font-size: var(--text-xs); padding: 4px 10px; border-radius: var(--radius-sm); border: 1px solid var(--color-border); background: var(--color-primary-lighter); color: var(--color-primary); cursor: pointer; }
+.hd-scan-btn:disabled { opacity: .6; cursor: default; }
+.hd-candidates__actions { display: flex; gap: var(--space-xs); margin-top: 4px; }
+.hd-candidates__actions button { font: inherit; font-size: var(--text-xs); padding: 2px 8px; border-radius: var(--radius-sm); border: 1px solid var(--color-border); background: var(--color-surface); cursor: pointer; }
+.hd-candidates__more { font: inherit; font-size: var(--text-xs); background: none; border: none; color: var(--color-primary); cursor: pointer; padding: 4px 0; }
+
 /* ── Responsive ──────────────────────────────────────────────────────────── */
 
 @media (max-width: 860px) {
