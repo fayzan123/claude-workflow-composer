@@ -10,6 +10,7 @@ import { triggersForAutomation } from '../../src/server/api/automation-scan.js'
 import type { DetectedAutomation } from '../../src/detection/types.js'
 
 let lastScanModel: string | undefined
+let lastWorkflowPrompt: string | undefined
 const fakeStreaming: StreamingRunner = async (_prompt, { onLog, model }) => {
   lastScanModel = model
   onLog({ level: 'info', message: 'session started' })
@@ -33,10 +34,17 @@ const cannedRunner = async () => ({
 
 const smartRunner = async (prompt: string) => {
   if (prompt.includes('.cwc') || prompt.includes('"nodes"')) {
+    lastWorkflowPrompt = prompt
     return { result: JSON.stringify({
       meta: { id: 'wf-1', name: 'Tests And Push', description: 'd', version: 1, created: '2026-06-17T00:00:00Z', updated: '2026-06-17T00:00:00Z' },
-      nodes: [{ id: 'n1', position: { x: 100, y: 300 }, exportedSlug: null, agent: { name: 'Runner', description: 'd', completionCriteria: 'c', skills: ['real-skill', 'fake-skill'] } }],
-      edges: [{ id: 'e1', from: 'n1', to: null, trigger: 'done', terminalType: 'complete' }],
+      nodes: [
+        { id: 'n1', position: { x: 100, y: 300 }, exportedSlug: null, agentRef: 'runner-agent', agent: { name: 'Runner Agent', description: 'd', completionCriteria: 'c', skills: ['real-skill'] } },
+        { id: 'n2', position: { x: 450, y: 300 }, exportedSlug: null, agentRef: 'ghost-agent', agent: { name: 'Generated Runner', description: 'd', completionCriteria: 'c', skills: ['real-skill', 'fake-skill'] } },
+      ],
+      edges: [
+        { id: 'e1', from: 'n1', to: 'n2', trigger: 'handoff' },
+        { id: 'e2', from: 'n2', to: null, trigger: 'done', terminalType: 'complete' },
+      ],
     }), sessionId: 's' }
   }
   return cannedRunner()
@@ -44,6 +52,7 @@ const smartRunner = async (prompt: string) => {
 
 beforeEach(async () => {
   lastScanModel = undefined
+  lastWorkflowPrompt = undefined
   home = await fs.mkdtemp(path.join(os.tmpdir(), 'cwc-scanapi-'))
   scanPath = path.join(home, 'scan.json')
   wfDir = path.join(home, 'workflows')
@@ -56,7 +65,10 @@ beforeEach(async () => {
   // A real user skill so promote's slug validation has a valid set to filter against.
   const skillDir = path.join(home, '.claude', 'skills', 'real-skill')
   await fs.mkdir(skillDir, { recursive: true })
-  await fs.writeFile(path.join(skillDir, 'SKILL.md'), '---\nname: Real\ndescription: run the test suite then push to remote\n---\nbody\n')
+  await fs.writeFile(path.join(skillDir, 'SKILL.md'), '---\nname: Real\ndescription: run the test suite then push to remote\n---\nRuns tests, pushes to remote, verifies the result, and finishes the branch.\n')
+  const agentDir = path.join(home, '.claude', 'agents')
+  await fs.mkdir(agentDir, { recursive: true })
+  await fs.writeFile(path.join(agentDir, 'runner-agent.md'), '---\nname: Runner Agent\ndescription: run tests and push changes\n---\nExisting agent body for running tests and pushing changes safely.\n')
   const app = createApp({ staticDir: null, userHomeDir: home, automationScanPath: scanPath, workflowsDir: wfDir, claudeRunner: smartRunner, streamingRunner: fakeStreaming, enableNotifier: false })
   server = app.listen(0)
   base = `http://localhost:${(server.address() as AddressInfo).port}`
@@ -126,8 +138,17 @@ describe('automation-scan API', () => {
     expect(cwc.meta.triggers[0].type).toBe('cron')
     expect(cwc.meta.triggers[0].enabled).toBe(false)
     expect(cwc.meta.triggers[0].cwd).toBe('')
-    // Skill reuse: the valid user skill is kept, the hallucinated one is dropped.
-    expect(cwc.nodes[0].agent.skills).toEqual(['real-skill'])
+    expect(lastWorkflowPrompt).toContain('Runs tests, pushes to remote')
+    expect(lastWorkflowPrompt).toContain('Existing agent body for running tests')
+    // Reuse validation: valid agentRef is kept and stays a pure reference;
+    // hallucinated agentRef is dropped, while valid skill reuse is capped to one.
+    expect(cwc.nodes[0].agentRef).toBe('runner-agent')
+    expect(cwc.nodes[0].agent.skills).toEqual([])
+    expect(cwc.nodes[0].agent.tools).toEqual([])
+    expect(cwc.nodes[0].agent.systemPrompt).toBe('')
+    expect(cwc.nodes[0].agent.completionCriteria).toBe('')
+    expect(cwc.nodes[1].agentRef).toBeUndefined()
+    expect(cwc.nodes[1].agent.skills).toEqual(['real-skill'])
 
     const after = await (await fetch(`${base}/api/automation-scan`)).json() as { automations: { status: string }[] }
     expect(after.automations[0].status).toBe('promoted')

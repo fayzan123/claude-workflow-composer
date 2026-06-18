@@ -11,7 +11,7 @@ import { runClaudeStreaming, type StreamingRunner } from '../streaming-analyzer.
 import type { TaskUnit, DetectedAutomation } from '../../detection/types.js'
 import type { ScanStore } from '../scan-store.js'
 import { buildWorkflowGenPrompt, parseWorkflowJson } from '../../workflow-generator.js'
-import { listReusableSkills, selectRelevantSkills } from '../skill-catalog.js'
+import { buildCapabilityCards, listReusableAgents, listReusableSkills, selectRelevantAgents, selectRelevantSkills } from '../skill-catalog.js'
 import { slugify } from '../../slugify.js'
 import type { CwcTrigger } from '../../schema.js'
 
@@ -82,11 +82,25 @@ export function automationScanRouter(opts: AutomationScanRouterOptions): Router 
     if (!a) return void res.status(404).json({ error: 'not found' })
     try {
       const skills = selectRelevantSkills(await listReusableSkills(opts.homeDir), a)
-      const out = await runner(buildWorkflowGenPrompt(a, skills), { model: opts.genModel ?? 'claude-sonnet-4-6' })
+      const agents = selectRelevantAgents(await listReusableAgents(opts.homeDir), a)
+      const capabilityCards = await buildCapabilityCards({ skills, agents, maxSkills: 5, maxAgents: 5 })
+      const out = await runner(buildWorkflowGenPrompt(a, { skills, agents, capabilityCards }), { model: opts.genModel ?? 'claude-sonnet-4-6' })
       const cwc = parseWorkflowJson(out.result)
-      // Keep only real skills, and AT MOST ONE per agent — no hallucinated slugs, no skill-cramming.
+      // Keep only real skills/agent refs. Skills are capped to one per bespoke agent;
+      // reference nodes must stay pure references because the existing agent owns its behavior.
       const validSlugs = new Set(skills.map(s => s.slug))
-      for (const n of cwc.nodes) n.agent.skills = (n.agent.skills ?? []).filter(s => validSlugs.has(s)).slice(0, 1)
+      const validAgentRefs = new Set(agents.map(a => a.slug))
+      for (const n of cwc.nodes) {
+        if (n.agentRef && validAgentRefs.has(n.agentRef)) {
+          n.agent.skills = []
+          n.agent.tools = []
+          n.agent.systemPrompt = ''
+          n.agent.completionCriteria = ''
+        } else {
+          delete n.agentRef
+          n.agent.skills = (n.agent.skills ?? []).filter(s => validSlugs.has(s)).slice(0, 1)
+        }
+      }
       // Overwrite the LLM-generated id with a server-assigned UUID to guarantee
       // uniqueness and safe post-promote navigation (/w/<id>/build).
       cwc.meta.id = randomUUID()

@@ -24,6 +24,25 @@ describe('workflow-generator', () => {
     expect(p).toMatch(/do NOT add separate review/i)
   })
 
+  it('includes capability excerpts and agentRef reuse instructions', () => {
+    const p = buildWorkflowGenPrompt(auto, {
+      skills: [{ slug: 'superpowers:subagent-driven-development', description: 'execute plans with subagents' }],
+      agents: [{ slug: 'reviewer', name: 'Reviewer', description: 'reviews code' }],
+      capabilityCards: [{
+        kind: 'skill',
+        slug: 'superpowers:subagent-driven-development',
+        description: 'execute plans with subagents',
+        bodyExcerpt: 'This skill implements a plan end to end, requests code review, verifies, and finishes the development branch.',
+        signals: ['end-to-end', 'review', 'verification', 'branch-finish'],
+      }],
+    })
+    expect(p).toContain('CAPABILITY DETAILS')
+    expect(p).toContain('requests code review')
+    expect(p).toContain('agentRef')
+    expect(p).toContain('reviewer')
+    expect(p).toMatch(/Do NOT attach skills to an agentRef node/i)
+  })
+
   it('omits the skills block when no skills are provided', () => {
     expect(buildWorkflowGenPrompt(auto)).not.toContain('ALREADY HAS')
   })
