@@ -129,6 +129,7 @@ export const api = {
   automationScan: {
     latest: () => fetch('/api/automation-scan').then(r => r.json()) as Promise<{
       status: string
+      log?: Array<{ ts: string; level: string; message: string }>
       automations: Array<{ id: string; title: string; description: string; steps: string[]; evidence: { count: number; repos: string[] }; suggestedTrigger: { label: string; cron?: string }; confidence: number; status: string }>
     }>,
     start: () => fetch('/api/automation-scan', { method: 'POST' }),
