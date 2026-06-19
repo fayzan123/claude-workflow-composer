@@ -115,6 +115,20 @@ describe('createScanStore', () => {
     expect(createScanStore(file).getLatest()?.automations[0].statusDetail).toBe('user cancelled')
   })
 
+  it('serializes overlapping status persistence', async () => {
+    const store = createScanStore(file)
+    await store.runScan(async () => [auto({ id: 'id1' })])
+
+    await Promise.all([
+      store.setStatus('id1', 'promoting'),
+      store.setStatus('id1', 'promotion_cancelled', 'user cancelled'),
+    ])
+
+    expect(store.hasActivePromotion()).toBe(false)
+    expect(createScanStore(file).getLatest()?.automations[0].status).toBe('promotion_cancelled')
+    expect(createScanStore(file).getLatest()?.automations[0].statusDetail).toBe('user cancelled')
+  })
+
   it('does not revive an interrupted promotion as still running after reload', async () => {
     const store = createScanStore(file)
     await store.runScan(async () => [auto({ id: 'id1' })])

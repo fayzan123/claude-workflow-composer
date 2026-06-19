@@ -38,14 +38,21 @@ export function createScanStore(filePath: string): ScanStore {
     }
   }
   let running = false
+  let persistQueue: Promise<void> = Promise.resolve()
+  let persistCounter = 0
   const emitter = new EventEmitter()
   emitter.setMaxListeners(0)   // SSE fan-out: many concurrent /stream clients, cleaned up on disconnect
 
-  async function persist(): Promise<void> {
-    await fs.mkdir(path.dirname(filePath), { recursive: true })
-    const tmp = `${filePath}.tmp`
-    await fs.writeFile(tmp, JSON.stringify(latest, null, 2))
-    await fs.rename(tmp, filePath)
+  function persist(): Promise<void> {
+    const snapshot = JSON.stringify(latest, null, 2)
+    const tmp = `${filePath}.${process.pid}.${++persistCounter}.tmp`
+    const write = persistQueue.then(async () => {
+      await fs.mkdir(path.dirname(filePath), { recursive: true })
+      await fs.writeFile(tmp, snapshot)
+      await fs.rename(tmp, filePath)
+    })
+    persistQueue = write.catch(() => undefined)
+    return write
   }
 
   /** Carry terminal user decisions forward onto freshly-detected automations by id. */
