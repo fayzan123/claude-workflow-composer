@@ -1,6 +1,7 @@
 // src/server/streaming-analyzer.ts
 import { spawn } from 'node:child_process'
 import { resolveClaudeBin } from './claude-runner.js'
+import { killProcessTree } from './process-tree.js'
 
 export interface StreamLogEvent { level: 'info' | 'claude' | 'error'; message: string }
 export interface StreamingRunResult { resultText: string; costUsd?: number }
@@ -60,7 +61,7 @@ export const runClaudeStreaming: StreamingRunner = (prompt, opts) => {
     let costUsd: number | undefined
     let errored: string | null = null
     let stderr = ''
-    const timer = setTimeout(() => { child.kill('SIGTERM'); reject(new Error('Analysis timed out.')) }, opts.timeoutMs ?? 5 * 60_000)
+    const timer = setTimeout(() => { killProcessTree(child); reject(new Error('Analysis timed out.')) }, opts.timeoutMs ?? 5 * 60_000)
 
     child.stdout.on('data', (chunk: Buffer) => {
       buf += chunk.toString()

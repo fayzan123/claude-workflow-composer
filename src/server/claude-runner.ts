@@ -2,6 +2,7 @@ import { execFile } from 'node:child_process'
 import * as fs from 'node:fs'
 import * as os from 'node:os'
 import * as path from 'node:path'
+import { killProcessTree } from './process-tree.js'
 
 // Every runClaude caller is an LLM generation task (workflow promote, agent/skill build).
 // In a heavily-loaded CLI environment these routinely take 60-90s and can spike past two
@@ -56,28 +57,34 @@ export const runClaude: ClaudeRunner = (prompt, opts = {}) => {
   if (opts.resume) args.push('--resume', opts.resume)
   if (opts.model) args.push('--model', opts.model)
   const isWinShim = /\.(cmd|bat)$/i.test(bin)
+  const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS
   return new Promise<RunClaudeResult>((resolve, reject) => {
+    // We manage timeout + cancellation ourselves (rather than execFile's `timeout`/`signal`
+    // options) so the kill goes through killProcessTree: on Windows the binary runs behind a
+    // cmd.exe shim, and execFile's own kill would orphan the real grandchild process — leaking
+    // it and hanging the event loop. See process-tree.ts.
+    let killReason: 'timeout' | 'abort' | null = null
     const child = execFile(
       isWinShim ? `"${bin}"` : bin,
       args,
       {
-        timeout: opts.timeoutMs ?? DEFAULT_TIMEOUT_MS,
         maxBuffer: 10 * 1024 * 1024,
         env: { ...process.env, ...(opts.env ?? {}) },
-        signal: opts.signal,
         // .cmd/.bat cannot be spawned directly (Node rejects them with EINVAL);
         // args here are fixed tokens plus a session UUID, so shell mode is safe.
         shell: isWinShim,
       },
       (err, stdout, stderr) => {
+        clearTimeout(timer)
+        opts.signal?.removeEventListener('abort', onAbort)
         if (err) {
           const abortErr = err as NodeJS.ErrnoException & { killed?: boolean; name?: string }
-          if (opts.signal?.aborted || abortErr.name === 'AbortError' || abortErr.code === 'ABORT_ERR') {
+          if (killReason === 'abort' || opts.signal?.aborted || abortErr.name === 'AbortError' || abortErr.code === 'ABORT_ERR') {
             reject(new Error('claude cancelled.'))
             return
           }
-          if ((err as NodeJS.ErrnoException & { killed?: boolean }).killed) {
-            reject(new Error(`claude timed out after ${(opts.timeoutMs ?? DEFAULT_TIMEOUT_MS) / 1000}s`))
+          if (killReason === 'timeout' || abortErr.killed) {
+            reject(new Error(`claude timed out after ${timeoutMs / 1000}s`))
             return
           }
           reject(new Error(`claude failed: ${stderr?.toString().trim() || err.message}`))
@@ -101,6 +108,12 @@ export const runClaude: ClaudeRunner = (prompt, opts = {}) => {
         resolve({ result: parsed.result, sessionId: parsed.session_id ?? '' })
       },
     )
+    const timer = setTimeout(() => { killReason = 'timeout'; killProcessTree(child) }, timeoutMs)
+    const onAbort = () => { killReason = 'abort'; killProcessTree(child) }
+    if (opts.signal) {
+      if (opts.signal.aborted) { killReason = 'abort'; killProcessTree(child) }
+      else opts.signal.addEventListener('abort', onAbort, { once: true })
+    }
     child.stdin?.end(prompt)
   })
 }
