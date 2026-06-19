@@ -2,7 +2,7 @@
 .modal-overlay {
   position: fixed;
   inset: 0;
-  background: oklch(0 0 0 / 0.5);
+  background: var(--color-overlay-strong);
   backdrop-filter: blur(4px);
   display: flex;
   align-items: center;

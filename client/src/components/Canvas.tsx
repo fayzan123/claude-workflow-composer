@@ -19,10 +19,23 @@ import '@xyflow/react/dist/style.css'
 import type { CwcFile, CwcAgent } from '../types.ts'
 import type { WorkflowAction } from '../hooks/useWorkflow.ts'
 import type { ValidationResult } from '../lib/validation.ts'
+import { useThemePreference } from '../lib/theme.ts'
 import { WorkflowNode } from './WorkflowNode.tsx'
 import './Canvas.css'
 
 const nodeTypes = { workflowNode: WorkflowNode }
+const CANVAS_DOT_COLOR = {
+  light: 'oklch(0.85 0.015 200)',
+  dark: 'oklch(0.41 0.015 195)',
+} as const
+const MINIMAP_MASK_COLOR = {
+  light: 'oklch(0.93 0.018 195 / 0.72)',
+  dark: 'oklch(0.16 0.01 90 / 0.64)',
+} as const
+const MINIMAP_NODE_COLOR = {
+  light: 'oklch(0.99 0.004 90)',
+  dark: 'oklch(0.28 0.008 90)',
+} as const
 
 interface Props {
   workflow: CwcFile
@@ -37,6 +50,7 @@ interface Props {
 
 export function Canvas({ workflow, dispatch, validation, onSelectNode, onSelectEdge, selectedNodeId, selectedEdgeId, nodeRunStates }: Props) {
   const { screenToFlowPosition } = useReactFlow()
+  const { resolvedTheme } = useThemePreference()
 
   const rfNodes = useMemo(() => {
     const hasIncoming = new Set(workflow.edges.filter((e) => e.to).map((e) => e.to!))
@@ -264,12 +278,14 @@ export function Canvas({ workflow, dispatch, validation, onSelectNode, onSelectE
           variant={BackgroundVariant.Dots}
           gap={21}
           size={1.3}
-          /* Concrete OKLCH (not a token): React Flow puts this in an SVG fill attribute,
-             where CSS vars / color-mix don't resolve. Warm-neutral dot, faint teal tint. */
-          color="oklch(0.85 0.015 200)"
+          color={CANVAS_DOT_COLOR[resolvedTheme]}
         />
         <Controls />
-        <MiniMap />
+        <MiniMap
+          maskColor={MINIMAP_MASK_COLOR[resolvedTheme]}
+          nodeColor={MINIMAP_NODE_COLOR[resolvedTheme]}
+          nodeStrokeColor={CANVAS_DOT_COLOR[resolvedTheme]}
+        />
       </ReactFlow>
       {workflow.nodes.length === 0 && (
         <div className="canvas-empty-hint" aria-hidden="true">

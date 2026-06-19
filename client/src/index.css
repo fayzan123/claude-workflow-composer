@@ -1,4 +1,6 @@
 :root {
+  color-scheme: light;
+
   /* Signature accent — teal (~hue 195). The one color that says "CWC". */
   --color-primary: oklch(0.56 0.12 195);
   --color-primary-hover: oklch(0.49 0.12 195);
@@ -37,6 +39,17 @@
   --color-error-lighter: oklch(0.96 0.04 30);
   --color-error-border: oklch(0.80 0.12 30);
   --color-error-dark: oklch(0.4 0.16 30);
+
+  --color-overlay: oklch(0.20 0.01 90 / 0.42);
+  --color-overlay-strong: oklch(0.12 0.01 90 / 0.58);
+  --color-code-surface: oklch(0.14 0.015 255);
+  --color-code-surface-secondary: oklch(0.10 0.015 255);
+  --color-code-border: oklch(0.22 0.015 255);
+  --color-code-text: oklch(0.88 0.01 255);
+  --color-code-muted: oklch(0.64 0.01 255);
+  --color-code-hover: oklch(1 0 0 / 0.08);
+  --color-canvas-dot: oklch(0.85 0.015 200);
+  --color-minimap-mask: oklch(0.93 0.018 195);
 
   --font-sans: 'Geist', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   --font-display: 'General Sans', 'Geist', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
@@ -82,6 +95,64 @@
   --transition-slow: 0.4s var(--ease-out-expo);
 }
 
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --color-primary: oklch(0.70 0.13 195);
+  --color-primary-hover: oklch(0.76 0.12 195);
+  --color-primary-dark: oklch(0.82 0.11 195);
+  --color-primary-light: oklch(0.31 0.07 195);
+  --color-primary-lighter: oklch(0.26 0.045 195);
+  --color-primary-ring: oklch(0.70 0.13 195 / 0.34);
+  --color-accent-bright: oklch(0.76 0.13 195);
+  --color-on-primary: oklch(0.16 0.008 90);
+
+  --color-surface: oklch(0.20 0.006 90);
+  --color-surface-hover: oklch(0.27 0.008 90);
+  --color-surface-active: oklch(0.31 0.008 90);
+  --color-surface-secondary: oklch(0.24 0.007 90);
+
+  --color-border: oklch(0.34 0.008 90);
+  --color-border-hover: oklch(0.44 0.01 90);
+
+  --color-text: oklch(0.95 0.004 90);
+  --color-text-secondary: oklch(0.74 0.01 90);
+  --color-text-tertiary: oklch(0.61 0.01 90);
+  --color-text-inverse: oklch(0.16 0.008 90);
+
+  --color-success: oklch(0.72 0.13 160);
+  --color-success-light: oklch(0.30 0.055 160);
+  --color-success-dark: oklch(0.80 0.12 160);
+  --color-warning: oklch(0.76 0.12 85);
+  --color-warning-light: oklch(0.31 0.055 85);
+  --color-warning-lighter: oklch(0.26 0.035 85);
+  --color-warning-border: oklch(0.50 0.08 85);
+  --color-warning-text: oklch(0.82 0.11 85);
+  --color-warning-dark: oklch(0.82 0.11 85);
+  --color-error: oklch(0.70 0.16 30);
+  --color-error-light: oklch(0.30 0.06 30);
+  --color-error-lighter: oklch(0.25 0.04 30);
+  --color-error-border: oklch(0.50 0.10 30);
+  --color-error-dark: oklch(0.78 0.13 30);
+
+  --color-overlay: oklch(0.08 0.006 90 / 0.54);
+  --color-overlay-strong: oklch(0.06 0.006 90 / 0.70);
+  --color-code-surface: oklch(0.17 0.012 90);
+  --color-code-surface-secondary: oklch(0.14 0.01 90);
+  --color-code-border: oklch(0.34 0.008 90);
+  --color-code-text: oklch(0.91 0.006 90);
+  --color-code-muted: oklch(0.66 0.01 90);
+  --color-code-hover: oklch(0.95 0.004 90 / 0.08);
+  --color-canvas-dot: oklch(0.41 0.015 195);
+  --color-minimap-mask: oklch(0.28 0.015 195);
+
+  --shadow-sm: 0 1px 2px oklch(0 0 0 / 0.22);
+  --shadow-md: 0 8px 24px oklch(0 0 0 / 0.26);
+  --shadow-lg: 0 14px 42px oklch(0 0 0 / 0.30);
+  --shadow-xl: 0 24px 70px oklch(0 0 0 / 0.38);
+  --shadow-control: 0 1px 0 oklch(1 0 0 / 0.05);
+}
+
 *, *::before, *::after {
   box-sizing: border-box;
 }
@@ -90,6 +161,7 @@ html {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
+  background: var(--color-surface);
 }
 
 body {
@@ -126,7 +198,7 @@ a:hover {
 
 ::selection {
   background: var(--color-primary-light);
-  color: var(--color-primary-hover);
+  color: var(--color-primary-dark);
 }
 
 :focus-visible {

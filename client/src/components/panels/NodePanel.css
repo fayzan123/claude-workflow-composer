@@ -235,10 +235,10 @@
   gap: 4px;
   padding: 3px 10px;
   background: var(--color-primary-light);
-  border: 1px solid oklch(0.78 0.08 195);
+  border: 1px solid color-mix(in oklch, var(--color-primary) 42%, var(--color-border));
   border-radius: 20px;
   font-size: var(--text-sm);
-  color: oklch(0.40 0.13 195);
+  color: var(--color-primary-dark);
 }
 
 .node-panel__chip-remove {
@@ -345,11 +345,7 @@
   outline: none;
   cursor: pointer;
   transition: border-color var(--transition-fast), background var(--transition-fast);
-  appearance: none;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23888' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
-  background-repeat: no-repeat;
-  background-position: right 10px center;
-  padding-right: 28px;
+  appearance: auto;
 }
 
 .node-panel__select:focus {
@@ -400,7 +396,7 @@
   font-size: var(--text-xs);
   color: var(--color-primary);
   background: var(--color-primary-light);
-  border: 1px solid oklch(0.78 0.08 195);
+  border: 1px solid color-mix(in oklch, var(--color-primary) 42%, var(--color-border));
   border-radius: var(--radius-md);
   padding: 8px 10px;
   line-height: 1.4;
@@ -409,7 +405,7 @@
 .node-panel__ref-badge code {
   font-family: var(--font-mono);
   font-size: 0.625rem;
-  background: oklch(0.88 0.05 195);
+  background: var(--color-primary-lighter);
   padding: 1px 5px;
   border-radius: var(--radius-sm);
 }

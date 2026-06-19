@@ -8,6 +8,7 @@ import { api } from '../lib/api.ts'
 import { shouldRefreshDashboard } from '../lib/dashboard-events.ts'
 import { TEMPLATES } from '../templates/index.ts'
 import { HelpModal } from '../components/HelpModal.tsx'
+import { ThemeToggle } from '../components/common/ThemeToggle.tsx'
 import { DetectedAutomations } from './DetectedAutomations.tsx'
 import './HomeDashboard.css'
 
@@ -305,6 +306,7 @@ export function HomeDashboard() {
           aria-label="Help"
           style={{ position: 'fixed', bottom: 'var(--space-xl)', right: 'var(--space-xl)', zIndex: 50 }}
         >?</button>
+        <ThemeToggle className="hd-bar__theme hd-bar__theme--fixed" />
         {showHelp && <HelpModal onClose={() => setShowHelp(false)} />}
       </div>
     )
@@ -326,6 +328,7 @@ export function HomeDashboard() {
           </span>
         </div>
         <div className="hd-bar__actions">
+          <ThemeToggle className="hd-bar__theme" />
           <button
             className="hd-bar__cta"
             onClick={handleNewWorkflow}

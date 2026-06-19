@@ -1,7 +1,7 @@
 .export-flow-overlay {
   position: fixed;
   inset: 0;
-  background: oklch(0 0 0 / 0.5);
+  background: var(--color-overlay-strong);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -186,7 +186,7 @@
 
 .export-flow-warnings {
   background: var(--color-warning-light);
-  border: 1px solid oklch(0.8 0.1 85);
+  border: 1px solid var(--color-warning-border);
   border-radius: var(--radius-lg);
   padding: 12px 14px;
   margin-bottom: 20px;
@@ -387,7 +387,7 @@
 }
 
 .export-flow-target-btn--danger:hover:not(:disabled) .export-flow-target-btn__icon--danger {
-  background: var(--color-error-dark, oklch(0.4 0.16 30)) !important;
+  background: var(--color-error-dark) !important;
 }
 
 .export-flow-success-icon--neutral {

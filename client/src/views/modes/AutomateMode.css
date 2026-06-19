@@ -189,9 +189,9 @@
 }
 
 .automate-mode__pill--on {
-  background: oklch(0.92 0.10 160);
-  color: oklch(0.30 0.12 160);
-  border: 1px solid oklch(0.80 0.10 160);
+  background: var(--color-success-light);
+  color: var(--color-success-dark);
+  border: 1px solid color-mix(in oklch, var(--color-success) 45%, var(--color-border));
 }
 
 /* ── Row actions ── */
@@ -262,7 +262,7 @@
 
 .automate-mode__action-btn--delete:hover {
   border-color: var(--color-error);
-  background: oklch(0.96 0.02 25);
+  background: var(--color-error-lighter);
   color: var(--color-error);
 }
 
@@ -273,8 +273,8 @@
   flex-direction: column;
   gap: 8px;
   padding: 10px 12px;
-  background: oklch(0.97 0.02 80);
-  border: 1px solid oklch(0.88 0.06 80);
+  background: var(--color-warning-lighter);
+  border: 1px solid var(--color-warning-border);
   border-radius: var(--radius-md);
   max-width: 340px;
 }
@@ -282,7 +282,7 @@
 .automate-mode__trust-text {
   margin: 0;
   font-size: var(--text-xs);
-  color: oklch(0.35 0.08 60);
+  color: var(--color-warning-dark);
   line-height: 1.5;
 }
 

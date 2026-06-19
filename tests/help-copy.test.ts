@@ -7,6 +7,12 @@ describe('help-copy glossary', () => {
     expect(getTerm('gate')).toBe(getTerm('GATE'))
   })
 
+  it('defines the newer automation terms in plain language', () => {
+    expect(getTerm('detect')).toMatch(/history/i)
+    expect(getTerm('automation')).toMatch(/schedule|webhook/i)
+    expect(getTerm('global pause')).toMatch(/suspends/i)
+  })
+
   it('returns null for an unknown term', () => {
     expect(getTerm('flux capacitor')).toBeNull()
   })

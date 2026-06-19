@@ -30,6 +30,8 @@ npx claude-cwc
 
 Opens a browser at `http://localhost:3579`. The local server binds to loopback and protects API calls with a per-run local token.
 
+Use **Detect automations** from the Home dashboard to scan your local Claude Code history, find repeated work, and generate a ready-to-edit workflow from the strongest candidates.
+
 ```bash
 npx claude-cwc stop    # Stop the server
 ```
@@ -55,6 +57,7 @@ npm run build && npm start
 Drag agents onto a canvas
   → Connect them with handoff arrows (author trigger conditions)
   → Edit each agent's system prompt, tools, skills, and completion criteria
+  → Add schedules/webhooks in Automate mode when the workflow should run itself
   → Preview every file that will be written before exporting
   → Export → writes agent .md files + orchestrator SKILL.md to ~/.claude/
   → Invoke the workflow by name in Claude Code
@@ -71,6 +74,8 @@ Connect nodes by dragging between handles. Each connection becomes a **handoff**
 Edit any node's completion criteria, tool access, skills, and system prompt in the **Node Panel**. The first node can also have a **start trigger** describing what initiates the workflow.
 
 Real-time validation surfaces duplicate slugs, empty names, disconnected nodes, and missing completion criteria immediately in the top bar — before you export.
+
+Use **Generate agent** or **Generate skill** in the sidebar to draft reusable Claude Code assets from a plain-English description. CWC gives you an editable spec first, then writes the file into `~/.claude/agents/` or `~/.claude/skills/`.
 
 ### Export
 
@@ -96,11 +101,14 @@ The orchestrator skill delegates every implementation step to sub-agents via the
 
 ### Automate
 
-Open the **Node Panel** for any node and switch to the **Triggers** tab to add a schedule:
+Open a workflow's **Automate** mode to add schedules and webhooks:
 
-- **Cron** — enter a cron expression (e.g. `0 9 * * 1-5` for weekdays at 9 am) and optionally a day/time window.
-- **Webhook** — CWC generates an inbound URL; post to it to fire the workflow.
-- **Precondition** — a shell command run before the workflow starts; if it exits non-zero the run is skipped.
+- **Cron** — use the schedule builder or enter a custom cron expression (e.g. `0 9 * * 1-5` for weekdays at 9 am).
+- **Webhook** — CWC generates an inbound local URL; send an HTTP `POST` to fire the workflow.
+- **Working directory / targets** — choose where the automation runs, including optional additional repos for fan-out.
+- **Isolation** — use a git worktree for an isolated branch, or run in-place when you explicitly want the current checkout.
+- **Precondition** — a shell command that must succeed before CWC starts the run.
+- **Setup command** — a shell command CWC runs after the run starts, before Claude begins.
 
 Add a **gate node** (drag from the "Gate" section of the sidebar) at any point in the workflow. When the run reaches a gate it:
 1. Commits all changes to a `cwc/<runId>` branch and pauses.
@@ -109,6 +117,12 @@ Add a **gate node** (drag from the "Gate" section of the sidebar) at any point i
 4. On approval, the run resumes in the same Claude Code session from the gate point.
 
 The **Run panel** header has an **Automations** toggle that globally suspends all scheduled runs without disarming triggers, and a **⚙** gear that opens notification settings (macOS banners and/or a webhook URL).
+
+### Detect
+
+Click **Detect automations** on the Home dashboard to scan your local Claude Code history for repeated work. CWC parses local transcript files, builds compact digests, asks Claude to cluster recurring tasks, and shows candidates with evidence, confidence, observed steps, and a suggested trigger.
+
+Click **Generate workflow** on a candidate to promote it into a real `.cwc` workflow. CWC looks for matching local skills and existing agents, asks Claude to compose the workflow, validates the generated graph, seeds disabled schedule triggers when appropriate, and opens the workflow for review.
 
 ### Delete
 
@@ -119,7 +133,9 @@ The **Run panel** header has an **Automations** toggle that globally suspends al
 ## Features
 
 - **Visual canvas** — React Flow with background grid, minimap, zoom controls, and drag-to-connect
+- **Theme toggle** — switch between light and dark mode from the Home dashboard or workflow header
 - **Left sidebar** — My Agents (searchable, draggable from `~/.claude/agents/`) and Skills (searchable, draggable onto selected nodes)
+- **Generate agent / skill** — draft new reusable Claude Code assets from plain English, refine the spec, then save to `~/.claude/`
 - **Right panels** — Node Editor (name, description, criteria, tools, skills, system prompt, terminal type) and Edge Editor (trigger, label, context artifacts)
 - **Export modal** — target selection, full file preview, warning display before writing anything
 - **Auto-save** — 500ms debounced save to `~/.cwc/workflows/`, no manual saving needed
@@ -130,11 +146,12 @@ The **Run panel** header has an **Automations** toggle that globally suspends al
 - **▶ Test Run** — launch an exported workflow headlessly from the UI (`--permission-mode bypassPermissions`, user-chosen working directory, worktree or in-place isolation) and stop it mid-run
 - **Live run view** — the active node pulses on the canvas, completed nodes get a check, and events stream into a timeline panel
 - **Run history** — every run of every exported workflow (started from CWC *or* any terminal) persists to `~/.cwc/runs/` with status, duration, source, and cost
-- **Triggers & preconditions** — attach cron schedules, webhook URLs, or manual triggers to a workflow; add a shell command as a precondition guard and a day/time window to restrict when it fires
+- **Automate mode** — attach cron schedules or webhook URLs to a workflow, choose targets/isolation, add preconditions/setup commands, and arm trusted triggers
 - **Approval gates** — insert a gate node into any workflow; when reached the run pauses and posts a diff of its working branch, a reviewer approves or rejects from the inbox (or terminal), the run resumes on the same session
 - **Isolated runs** — Test Run (and scheduler-fired runs) create a git worktree on a `cwc/<runId>` branch so the main checkout is always untouched; the worktree is removed after the run completes
 - **Notifications** — macOS banner + optional webhook on run complete, gate pause, and approval request; configured from the settings gear in the Run panel
 - **Global pause** — one toggle in the Run panel suspends all scheduled automation runs without disarming triggers
+- **Detect automations** — scans local Claude Code transcripts, clusters repeated work, streams progress, suggests automations, and promotes a candidate into a `.cwc` workflow with matching skills/agents reused when possible
 
 ---
 
@@ -153,6 +170,7 @@ Client (React + React Flow)       Server (Express :3579)
 │ useWorkflow (reducer)    │      │ /api/runs (+SSE)    │
 │ useAutoSave (debounced)  │      │ /api/automations    │
 │ useRunEvents (SSE)       │ ◄──  │ /api/triggers       │
+│ Detect automations       │ ◄──  │ /api/automation-scan│
 └─────────────────────────┘       └─────────────────────┘
                                           │
                                           ▼
@@ -185,6 +203,7 @@ Storage:
     runs/<workflowId>/        Run event logs (one .jsonl per run)
     worktrees/                Git worktrees for isolated runs (auto-cleaned)
     automation-state.json     Global pause flag + per-trigger arm state
+    automation-scan.json      Latest history scan, suggestions, promotion state, and logs
     config.json               Notification settings (macos, webhookUrl)
     server.pid                PID of running server
   ~/.claude/
@@ -231,7 +250,7 @@ npm run build               # Production build (server + client)
 
 ### Tests
 
-434 tests across 59 files (run `npm test` for the current count) covering:
+479 tests across 61 files (run `npm test` for the current count) covering:
 
 - **BFS traversal**: linear chains, back-edges, fan-out, multi-root, terminal edges
 - **Prose generation**: start triggers, bold wrapping, context artifacts, Oxford comma, back-edge ordering
@@ -252,6 +271,8 @@ npm run build               # Production build (server + client)
 - **Automation state**: arm/disarm, paused flag persistence, trigger hashing
 - **Gate endpoints**: approve (resume), reject, 409 on wrong state, diff response
 - **Notifier**: macOS toast, webhook POST, event filtering
+- **Automation detection**: transcript parsing, digest building, analysis parsing, streamed scan logs, model allowlist, promote/cancel workflow generation, and trigger seeding
+- **Help copy and theme preference**: glossary terms, control hints, light/dark theme parsing, and dashboard event helpers
 
 ---
 

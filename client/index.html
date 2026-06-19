@@ -5,6 +5,25 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Claude Workflow Composer</title>
     <meta name="description" content="Visually compose multi-agent coding workflows for Claude Code. Drag agents, attach skills, wire handoffs, and export." />
+    <meta name="color-scheme" content="light dark" />
+    <script>
+      (() => {
+        try {
+          const stored = localStorage.getItem('cwc.theme')
+          const preference = stored === 'light' || stored === 'dark' ? stored : 'system'
+          const resolved = preference === 'system'
+            ? (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
+            : preference
+          document.documentElement.dataset.theme = resolved
+          document.documentElement.dataset.themePreference = preference
+          document.documentElement.style.colorScheme = resolved
+        } catch {
+          document.documentElement.dataset.theme = 'light'
+          document.documentElement.dataset.themePreference = 'system'
+          document.documentElement.style.colorScheme = 'light'
+        }
+      })()
+    </script>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link rel="preconnect" href="https://api.fontshare.com" crossorigin />

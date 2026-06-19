@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react'
 import './HelpModal.css'
 
-type Tab = 'overview' | 'nodes' | 'edges' | 'running'
+type Tab = 'overview' | 'nodes' | 'edges' | 'automations' | 'running'
 
 interface Props {
   onClose: () => void
@@ -38,7 +38,7 @@ export function HelpModal({ onClose, initialTab }: Props) {
         </div>
 
         <div className="help-modal__tabs" role="tablist">
-          {(['overview', 'nodes', 'edges', 'running'] as Tab[]).map((t) => (
+          {(['overview', 'nodes', 'edges', 'automations', 'running'] as Tab[]).map((t) => (
             <button
               key={t}
               role="tab"
@@ -46,7 +46,7 @@ export function HelpModal({ onClose, initialTab }: Props) {
               className={`help-modal__tab ${tab === t ? 'help-modal__tab--active' : ''}`}
               onClick={() => setTab(t)}
             >
-              {t === 'overview' ? 'Overview' : t === 'nodes' ? 'Node Fields' : t === 'edges' ? 'Edge Fields' : 'Running'}
+              {t === 'overview' ? 'Overview' : t === 'nodes' ? 'Node Fields' : t === 'edges' ? 'Edge Fields' : t === 'automations' ? 'Automations' : 'Running'}
             </button>
           ))}
         </div>
@@ -55,6 +55,7 @@ export function HelpModal({ onClose, initialTab }: Props) {
           {tab === 'overview' && <OverviewTab />}
           {tab === 'nodes' && <NodesTab />}
           {tab === 'edges' && <EdgesTab />}
+          {tab === 'automations' && <AutomationsTab />}
           {tab === 'running' && <RunningTab />}
         </div>
       </div>
@@ -124,6 +125,41 @@ function OverviewTab() {
             <li><strong>Edit an edge:</strong> click an arrow to open the Edge Panel on the right.</li>
             <li><strong>Delete:</strong> select a node or edge, then use the panel's Delete button.</li>
           </ul>
+        </div>
+      </section>
+
+      <section className="help-section">
+        <div className="help-section__icon">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M3 12h5l2-7 4 14 2-7h5" />
+          </svg>
+        </div>
+        <div>
+          <h3 className="help-section__heading">The Home dashboard</h3>
+          <p className="help-section__body">
+            Home is your control room. It shows recent workflows, run activity, paused approval gates, detected automation candidates, and the global pause switch for scheduled runs. Start here when you want to open existing work, scan your history, or check what CWC has been doing.
+          </p>
+        </div>
+      </section>
+
+      <section className="help-section">
+        <div className="help-section__icon">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M12 2v4" />
+            <path d="M12 18v4" />
+            <path d="m4.93 4.93 2.83 2.83" />
+            <path d="m16.24 16.24 2.83 2.83" />
+            <path d="M2 12h4" />
+            <path d="M18 12h4" />
+            <path d="m4.93 19.07 2.83-2.83" />
+            <path d="m16.24 7.76 2.83-2.83" />
+          </svg>
+        </div>
+        <div>
+          <h3 className="help-section__heading">Generating agents and skills</h3>
+          <p className="help-section__body">
+            The sidebar can help write a new agent or skill from a plain-English description. CWC first drafts a spec you can refine, then builds the file and saves it to <code>~/.claude/agents/</code> or <code>~/.claude/skills/</code>. Generated items are still yours to review and edit.
+          </p>
         </div>
       </section>
 
@@ -214,6 +250,10 @@ function NodesTab() {
         Instruction sets loaded into this agent every time it runs. Drag a skill from the Skills tab in the sidebar onto the node, or type a skill name in the "Add skill" field. Each skill appears as a badge on the canvas card.
       </Field>
 
+      <Field term="Gate node">
+        A gate is a human checkpoint. When a run reaches it, CWC commits the work-in-progress branch, shows you the diff in the Run panel, and waits for you to approve or reject before continuing.
+      </Field>
+
       <Field term="Terminal Type">
         Marks this node as a workflow endpoint. Set this on any node that should end the run:
         <ul className="help-field__list">
@@ -276,6 +316,127 @@ function EdgesTab() {
   )
 }
 
+function AutomationsTab() {
+  return (
+    <>
+      <section className="help-section">
+        <div className="help-section__icon">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="11" cy="11" r="8" />
+            <path d="m21 21-4.3-4.3" />
+            <path d="M8 11h6" />
+            <path d="M11 8v6" />
+          </svg>
+        </div>
+        <div>
+          <h3 className="help-section__heading">Detecting automation ideas</h3>
+          <p className="help-section__body">
+            <strong>Detect automations</strong> scans your local Claude Code history, groups repeated work, and suggests the patterns that look worth turning into workflows. It only reads local transcript files from your Claude Code history.
+          </p>
+          <ul className="help-section__list">
+            <li><strong>Model choice:</strong> Haiku is fastest, Sonnet is the default balance, and Opus is best for messy histories.</li>
+            <li><strong>Evidence:</strong> each candidate shows sightings, confidence, the suggested trigger, and the observed steps CWC found.</li>
+            <li><strong>Scan log:</strong> the right panel shows what the scan is doing so a long analysis does not feel stuck.</li>
+          </ul>
+        </div>
+      </section>
+
+      <section className="help-section">
+        <div className="help-section__icon">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M12 20h9" />
+            <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />
+          </svg>
+        </div>
+        <div>
+          <h3 className="help-section__heading">Generating a workflow from history</h3>
+          <p className="help-section__body">
+            Click <strong>Generate workflow</strong> on a candidate to ask Claude to build a real <code>.cwc</code> workflow from the evidence. CWC looks for matching local skills and existing agents first, then writes the workflow into <code>~/.cwc/workflows/</code> and opens it for review.
+          </p>
+          <p className="help-section__body">
+            Generation can take a little while. You can cancel it, leave the page, or retry a failed/cancelled candidate. CWC blocks other scans and promotions while one workflow is being generated so two jobs do not step on each other.
+          </p>
+        </div>
+      </section>
+
+      <section className="help-section">
+        <div className="help-section__icon">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="12" cy="12" r="10" />
+            <polyline points="12 6 12 12 16 14" />
+          </svg>
+        </div>
+        <div>
+          <h3 className="help-section__heading">Cron schedules</h3>
+          <p className="help-section__body">
+            A cron schedule is a compact way to say when a workflow should run, like <code>0 9 * * 1-5</code> for weekdays at 9:00. The schedule builder writes common schedules for you; use custom cron only when you need a pattern the builder does not cover.
+          </p>
+          <ul className="help-section__list">
+            <li><strong>Next run</strong> shows when the schedule will fire next.</li>
+            <li><strong>Catch up</strong> can run missed cron jobs after your computer was asleep.</li>
+            <li><strong>Max runs per day</strong> prevents a schedule from firing too often.</li>
+          </ul>
+        </div>
+      </section>
+
+      <section className="help-section">
+        <div className="help-section__icon">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M10 13a5 5 0 0 0 7.1 0l2-2a5 5 0 0 0-7.1-7.1l-1.1 1.1" />
+            <path d="M14 11a5 5 0 0 0-7.1 0l-2 2A5 5 0 0 0 12 20.1l1.1-1.1" />
+          </svg>
+        </div>
+        <div>
+          <h3 className="help-section__heading">Webhooks</h3>
+          <p className="help-section__body">
+            A webhook gives the workflow a local URL. Anything that can send an HTTP <code>POST</code> to that URL can start the workflow while CWC is running on this computer. Use webhooks for events from scripts, local tools, or services that can reach your machine.
+          </p>
+        </div>
+      </section>
+
+      <section className="help-section">
+        <div className="help-section__icon">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10" />
+            <path d="m9 12 2 2 4-4" />
+          </svg>
+        </div>
+        <div>
+          <h3 className="help-section__heading">Arming, safety, and where runs happen</h3>
+          <p className="help-section__body">
+            Scheduled and webhook automations can run commands on your machine, so CWC separates saving a trigger from <strong>arming</strong> it. Draft triggers do nothing until you confirm you trust the workflow and turn them on.
+          </p>
+          <ul className="help-section__list">
+            <li><strong>Working directory</strong> is the project folder where the run starts.</li>
+            <li><strong>Additional target repos</strong> let one trigger start separate runs in several repositories.</li>
+            <li><strong>Worktree isolation</strong> creates an isolated branch for the run; <strong>in-place</strong> works directly in the selected folder.</li>
+            <li><strong>Precondition</strong> is a shell command that must succeed before the run starts.</li>
+            <li><strong>Setup command</strong> runs before Claude starts and fails the run if it exits non-zero.</li>
+          </ul>
+        </div>
+      </section>
+
+      <section className="help-section">
+        <div className="help-section__icon">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 7h18s-3 0-3-7" />
+            <path d="M13.7 21a2 2 0 0 1-3.4 0" />
+          </svg>
+        </div>
+        <div>
+          <h3 className="help-section__heading">Run history, gates, and global pause</h3>
+          <p className="help-section__body">
+            The Run panel shows live and recent runs, including runs started by schedules, webhooks, Test Run, or Claude Code. Gate nodes pause a run for approval and put the diff in your inbox. The Home dashboard also has a global pause switch that suspends scheduled automations without deleting or disarming their triggers.
+          </p>
+          <p className="help-section__body">
+            Notifications can alert you when a run finishes or reaches a gate. On macOS, CWC can show local banners; you can also send events to a webhook URL.
+          </p>
+        </div>
+      </section>
+    </>
+  )
+}
+
 function RunningTab() {
   return (
     <>
@@ -290,11 +451,12 @@ function RunningTab() {
         <div>
           <h3 className="help-section__heading">What Export produces</h3>
           <p className="help-section__body">
-            Clicking <strong>Export</strong> writes a folder of <code>.md</code> files to your chosen output directory:
+            Clicking <strong>Export</strong> writes Claude Code files to your chosen output directory:
           </p>
           <ul className="help-section__list">
-            <li><strong>orchestrator.md</strong> (or your workflow name) — the skill file the orchestrator reads. It contains the full pipeline as step-by-step prose.</li>
-            <li><strong>One <code>.md</code> per agent node</strong> — each agent's skill file: its name, description, tools, skills, and system prompt in frontmatter + body format.</li>
+            <li><strong>One workflow skill</strong> — <code>.claude/skills/&lt;workflow-slug&gt;/SKILL.md</code>. This is the slash command Claude Code runs.</li>
+            <li><strong>One agent file per bespoke node</strong> — <code>.claude/agents/&lt;agent-slug&gt;.md</code>, with the agent's name, description, tools, skills, system prompt, and completion criteria.</li>
+            <li><strong>Reference nodes</strong> — no new file is written. They point to an existing agent file already on disk.</li>
           </ul>
           <p className="help-section__body">
             You can preview the orchestrator file before writing anything — the Export modal's file list shows the exact content that will be written.
@@ -312,11 +474,14 @@ function RunningTab() {
         <div>
           <h3 className="help-section__heading">How to run a workflow</h3>
           <p className="help-section__body">
-            After exporting, invoke the orchestrator skill from Claude Code:
+            After exporting, invoke the workflow skill from Claude Code with its slash command:
           </p>
-          <pre className="help-section__code">claude --skill path/to/orchestrator.md "your prompt"</pre>
+          <pre className="help-section__code">/&lt;workflow-slug&gt;</pre>
           <p className="help-section__body">
             Claude Code loads the orchestrator skill, reads the pipeline, and begins invoking subagents step by step using the <code>Agent</code> tool.
+          </p>
+          <p className="help-section__body">
+            From CWC, use <strong>Test Run</strong> to run the exported workflow headlessly. You choose the working directory and whether to use worktree isolation or run in-place.
           </p>
         </div>
       </section>

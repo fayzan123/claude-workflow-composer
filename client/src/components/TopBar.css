@@ -392,7 +392,7 @@
   font-family: var(--font-mono);
   padding: 1px 6px;
   border-radius: var(--radius-sm);
-  background: oklch(1 0 0 / 0.5);
+  background: var(--color-surface);
   white-space: nowrap;
 }
 

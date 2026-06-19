@@ -16,7 +16,7 @@
   padding: 15px 14px 11px;
   min-width: 180px;
   max-width: 240px;
-  box-shadow: 0 1px 0 oklch(0 0 0 / 0.04);
+  box-shadow: var(--shadow-control);
   font-size: var(--text-sm);
   cursor: pointer;
   transition: border-color var(--transition-fast), box-shadow var(--transition-fast), transform 0.15s var(--ease-out);
@@ -26,12 +26,12 @@
 
 .workflow-node:hover {
   border-color: var(--color-border-hover);
-  box-shadow: 0 1px 0 oklch(0 0 0 / 0.05), 0 8px 20px oklch(0 0 0 / 0.06);
+  box-shadow: var(--shadow-md);
 }
 
 .workflow-node--selected {
   border-color: var(--node-accent, var(--color-primary));
-  box-shadow: 0 0 0 2px var(--color-primary-ring), 0 10px 24px oklch(0 0 0 / 0.08);
+  box-shadow: 0 0 0 2px var(--color-primary-ring), var(--shadow-md);
   transform: translateY(-1px);
 }
 
@@ -272,7 +272,7 @@
 /* Run state highlighting */
 .workflow-node--run-active {
   border-color: var(--color-primary);
-  box-shadow: 0 0 0 2px var(--color-primary-ring), 0 10px 28px oklch(0 0 0 / 0.08);
+  box-shadow: 0 0 0 2px var(--color-primary-ring), var(--shadow-md);
   animation: cwc-run-pulse 1.4s ease-in-out infinite;
 }
 
@@ -349,7 +349,9 @@
 .react-flow__controls-button {
   width: 28px;
   height: 28px;
+  background: var(--color-surface);
   border-bottom: 1px solid var(--color-border);
+  color: var(--color-text-secondary);
   fill: var(--color-text-secondary);
   transition: background var(--transition-fast);
 }

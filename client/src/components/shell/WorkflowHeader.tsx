@@ -2,6 +2,7 @@ import React from 'react'
 import { useNavigate } from 'react-router-dom'
 import type { CwcFile } from '../../types.ts'
 import type { WorkflowAction } from '../../hooks/useWorkflow.ts'
+import { ThemeToggle } from '../common/ThemeToggle.tsx'
 import { ModeSwitcher } from './ModeSwitcher.tsx'
 import './WorkflowHeader.css'
 
@@ -158,6 +159,7 @@ export function WorkflowHeader({
             {isSaving ? 'Saving' : 'Saved'}
           </span>
         )}
+        <ThemeToggle className="workflow-header__theme" />
         {actions}
       </div>
     </header>

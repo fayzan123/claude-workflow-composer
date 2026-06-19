@@ -6,7 +6,7 @@
   align-items: center;
   justify-content: center;
   padding: var(--space-xl);
-  background: oklch(0.20 0.01 90 / 0.38);
+  background: var(--color-overlay);
 }
 
 .gen-agent {

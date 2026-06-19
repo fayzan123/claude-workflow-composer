@@ -20,6 +20,15 @@ export const TERMS: Record<string, string> = {
   terminal: 'Marks a step as an end of the workflow (complete, escalated, or aborted).',
   reference: 'A step that points to an existing agent file on disk instead of defining a new one.',
   observability: 'Logging that lets CWC show this workflow\'s runs live. Safe to leave on.',
+  automation: 'A saved schedule or webhook that can start a workflow for you.',
+  detect: 'Scans your local Claude Code history for repeated work CWC can turn into a workflow.',
+  candidate: 'A repeated-work pattern CWC found in your history and thinks may be worth automating.',
+  precondition: 'A shell command that must succeed before an automation is allowed to start.',
+  'setup command': 'A shell command CWC runs after the run starts, before Claude begins the workflow.',
+  'global pause': 'A dashboard switch that suspends scheduled automations without deleting or disarming them.',
+  notification: 'A local banner or webhook message CWC sends when runs finish or need approval.',
+  'test run': 'A one-off run started from CWC so you can check an exported workflow before relying on automation.',
+  'run history': 'The list of past workflow runs, including status, duration, logs, costs, and approval pauses.',
 }
 
 // One-line "what is this and why touch it" hints, shown under a control via <FieldHint>.
@@ -41,10 +50,10 @@ export const CONTROL_HINTS: Record<string, string> = {
   'run.isolation': 'Run in a safe isolated copy (a worktree, so your current checkout is untouched) or directly in this folder.',
   'export.target': 'Where to write the files — just for you, or into a project folder.',
   'export.observability': 'Adds logging so CWC can show this workflow\'s runs live.',
-  'trigger.schedule': 'When this runs automatically.',
-  'trigger.cwd': 'The folder scheduled runs work in.',
-  'trigger.precondition': 'A shell command that must succeed for the run to fire (optional).',
-  'trigger.setupCommand': 'A shell command run before the workflow starts (optional).',
+  'trigger.schedule': 'When this runs automatically. Use the builder unless you need custom cron.',
+  'trigger.cwd': 'The folder this scheduled or webhook run starts in.',
+  'trigger.precondition': 'A shell command that must succeed before CWC starts a run.',
+  'trigger.setupCommand': 'A shell command CWC runs after the run starts, before Claude begins.',
 }
 
 export function getTerm(name: string): string | null {

@@ -148,9 +148,9 @@
 }
 
 .my-agents__card--gate:hover {
-  background: oklch(0.97 0.04 80);
+  background: var(--color-warning-lighter);
   border-color: var(--color-warning);
-  box-shadow: 0 2px 8px oklch(0.85 0.1 80 / 0.4);
+  box-shadow: 0 2px 8px color-mix(in oklch, var(--color-warning) 28%, transparent);
 }
 
 .my-agents__generate {
