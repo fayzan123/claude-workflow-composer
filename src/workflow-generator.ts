@@ -107,21 +107,30 @@ What it does: ${a.description}
 Observed steps: ${a.steps.map(s => `\n  - ${s}`).join('') || ' (infer from the title)'}
 Runs in repo: ${a.evidence.repos[0] ?? '(unspecified)'}${skillsBlock}${agentsBlock}${cardsBlock}
 
-Choose the smallest workflow that faithfully executes the observed automation. Do NOT default to a
-single generic agent unless one existing skill/agent explicitly covers the whole automation end to
-end, or the automation is genuinely one indivisible task.
+Choose the smallest workflow that faithfully executes the observed automation. Prefer FEWER, more
+capable agents. A separate agent earns its place ONLY when a step genuinely needs one of:
+  - different expertise or judgment than its neighbors (e.g. writing code vs. reviewing it),
+  - a different tool policy (e.g. an agent that may only read vs. one that may publish),
+  - parallel fan-out (independent work that can run at the same time),
+  - a human approval gate / checkpoint between phases, or
+  - failure isolation, so a later retry doesn't redo earlier expensive work.
+If none of those apply, the steps belong together. In particular, a run of plain sequential
+shell/CLI commands — npm/yarn/pnpm, git, build, test, version-bump, publish, simple file edits — is
+ONE agent that runs them in order against a checklist in its systemPrompt. Splitting "run tests",
+"bump version", "build", "commit", "publish" into separate agents adds handoff latency and token
+cost with zero benefit: a single agent with the Bash tool does the whole sequence. Approval gates
+and genuinely distinct roles still get their own node.
 
-If no capability fully subsumes it, model the observed steps as durable workflow phases. Use as
-many or as few agents as the automation needs to run efficiently and predictably. Add a separate
-agent when doing so improves correctness, reuse, parallelism, checkpointing, validation, handoff
-clarity, or failure recovery. Do not add agents just to make the graph look more complex.
+Cover every observed step — but "cover" means handled by SOME node or reused skill/agent, NOT one
+node per step. Grouping several trivial steps under one agent is correct and preferred. Never split
+work that one skill handles end-to-end, and never add review/commit/finish agents after a skill that
+already does those internally. Stop splitting when another agent would not improve the user's
+ability to understand, run, monitor, or trust the automation.
 
-Preserve the evidence: every major observed step must be handled either by a reused skill/agent that
-clearly covers it or by an explicit node/edge. Never split work that one skill handles end-to-end
-into multiple agents, and never add review/commit/finish agents after a skill that already does
-those internally. Stop splitting when another agent would not improve the user's ability to
-understand, run, monitor, or trust the automation. Each agent needs ONE clear responsibility, a
-specific completionCriteria, and a concrete systemPrompt. Respond with ONLY a
+Each agent needs ONE clear responsibility (which may span several related commands), a specific
+completionCriteria, and a concrete systemPrompt. Give each bespoke agent the tools it actually
+needs and nothing more: agents that run commands need "Bash"; agents that change files need "Edit"
+and/or "Write"; a pure review/inspection agent needs only "Read". Respond with ONLY a
 JSON object — no prose, no markdown fences — matching exactly:
 {
   "meta": { "id": string, "name": string, "description": string, "version": 1, "created": string, "updated": string },

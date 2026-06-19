@@ -43,14 +43,19 @@ describe('workflow-generator', () => {
     expect(p).toMatch(/Do NOT attach skills to an agentRef node/i)
   })
 
-  it('asks for the smallest faithful workflow instead of defaulting to one generic agent', () => {
+  it('asks for the smallest faithful workflow and groups trivial sequential commands into one agent', () => {
     const p = buildWorkflowGenPrompt(auto)
     expect(p).toContain('smallest workflow that faithfully executes')
-    expect(p).toMatch(/Do NOT default to a\s+single generic agent/i)
-    expect(p).toContain('Use as\nmany or as few agents as the automation needs')
-    expect(p).toContain('Do not add agents just to make the graph look more complex')
-    expect(p).toContain("Stop splitting when another agent would not improve the user's ability")
-    expect(p).toContain('every major observed step must be handled')
+    expect(p).toMatch(/Prefer FEWER, more\s+capable agents/i)
+    // Trivial sequential CLI commands must collapse into a single agent, not one agent per step.
+    expect(p).toMatch(/sequential\s+shell\/CLI commands/i)
+    expect(p).toMatch(/is\s+ONE agent that runs them in order/i)
+    expect(p).toMatch(/NOT one\s+node per step/i)
+    expect(p).toMatch(/Stop splitting when another agent would not improve the user's\s+ability/i)
+    // A separate agent must be justified by a real reason (expertise / tool policy / parallelism / gate / isolation).
+    expect(p).toMatch(/different expertise or judgment/i)
+    // Bespoke agents get a minimal, correct tool set.
+    expect(p).toMatch(/need "Bash"/)
     expect(p).not.toContain('Default to ONE agent')
     expect(p).not.toContain('2-4 nodes')
     expect(p).not.toContain('cap at 6')

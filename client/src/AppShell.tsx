@@ -3,10 +3,12 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { HomeDashboard } from './views/HomeDashboard.tsx'
 import { WorkflowView } from './views/WorkflowView.tsx'
 import { DetectView } from './views/DetectView.tsx'
+import { Toaster } from './components/Toaster.tsx'
 
 export function AppShell() {
   return (
     <BrowserRouter>
+      <Toaster />
       <Routes>
         <Route path="/" element={<HomeDashboard />} />
         <Route path="/detect" element={<DetectView />} />

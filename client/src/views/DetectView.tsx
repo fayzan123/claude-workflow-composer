@@ -1,7 +1,15 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { api } from '../lib/api.ts'
+import { toast } from '../lib/toast.ts'
 import './DetectView.css'
+
+/** Seconds → m:ss for the live generation timer. */
+function formatElapsed(s: number): string {
+  const m = Math.floor(s / 60)
+  const sec = s % 60
+  return `${m}:${sec.toString().padStart(2, '0')}`
+}
 
 type Latest = Awaited<ReturnType<typeof api.automationScan.latest>>
 type Auto = Latest['automations'][number]
@@ -41,10 +49,35 @@ export function DetectView() {
   const [model, setModel] = useState<string>('sonnet')
   const [cancelingId, setCancelingId] = useState<string | null>(null)
   const mountedRef = useRef(true)
+  const [elapsed, setElapsed] = useState(0)
   const activePromotionId = autos.find(a => a.status === 'promoting')?.id ?? busyId
   const generationInProgress = activePromotionId !== null
   const running = status === 'running'
+  const latestStep = logs.length > 0 ? logs[logs.length - 1].message : null
   useEffect(() => () => { mountedRef.current = false }, [])
+
+  // Live elapsed timer while a workflow is generating — generation can take minutes, so a
+  // visibly-ticking clock + current step reassures the user it's working, not hung.
+  useEffect(() => {
+    if (!generationInProgress) { setElapsed(0); return }
+    const start = Date.now()
+    setElapsed(0)
+    const id = setInterval(() => setElapsed(Math.floor((Date.now() - start) / 1000)), 1000)
+    return () => clearInterval(id)
+  }, [generationInProgress])
+
+  // Prominent toast when a history scan finishes (the small status pill is easy to miss).
+  const prevStatusRef = useRef(status)
+  useEffect(() => {
+    const prev = prevStatusRef.current
+    prevStatusRef.current = status
+    if (prev === 'running' && status === 'done') {
+      const n = autos.length
+      toast.success('History scan complete', n > 0 ? `${n} automation${n === 1 ? '' : 's'} found` : 'No strong patterns found this time')
+    } else if (prev === 'running' && status === 'error') {
+      toast.error('History scan failed', 'See the scan log for details.')
+    }
+  }, [status]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Warn before a browser-level close/refresh while a workflow is generating.
   useEffect(() => {
@@ -105,15 +138,20 @@ export function DetectView() {
   // give visible feedback; block dismiss on the same card while a promote is in flight.
   async function promote(id: string) {
     if (generationInProgress) return
+    const title = autos.find(a => a.id === id)?.title
     setBusyId(id); setActionError(null)
     setAutos(prev => prev.map(a => a.id === id ? { ...a, status: 'promoting', statusDetail: undefined } : a))
     try {
       const r = await api.automationScan.promote(id)
-      // If the user navigated away while generating, the workflow is still saved
-      // server-side and appears in their library — just don't yank them back here.
+      // The workflow is saved server-side regardless of navigation; fire the toast before any
+      // early-return so it shows even if the user has navigated away (Toaster is app-level).
+      if (r.workflowId) toast.success('Workflow generated', title ? `"${title}" is ready to open` : 'Opening it now')
+      // If the user navigated away while generating, the workflow still landed in their library —
+      // just don't yank them back here.
       if (!mountedRef.current) return
       if (r.workflowId) { navigate(`/w/${r.workflowId}/build`); return }
       if (r.cancelled) { await refresh(); return }
+      toast.error('Workflow generation failed', r.error || 'Could not generate a workflow from this automation.')
       setActionError(r.error || 'Could not generate a workflow from this automation.')
       await refresh()
     } catch {
@@ -264,7 +302,11 @@ export function DetectView() {
                       <div className="detect__progress" role="progressbar" aria-label="Generating workflow">
                         <div className="detect__progress-bar" />
                       </div>
-                      Reading the matching skills and agents, then writing a workflow. You can leave this page; the result will land in your workflows.
+                      <div className="detect__busy-status">
+                        <span className="detect__busy-step">{latestStep ?? 'Starting…'}</span>
+                        <span className="detect__busy-elapsed" aria-label="Time elapsed">{formatElapsed(elapsed)}</span>
+                      </div>
+                      <span className="detect__busy-hint">You can leave this page; the result will land in your workflows.</span>
                     </div>
                   )}
                 </article>

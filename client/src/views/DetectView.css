@@ -492,6 +492,34 @@
   color: var(--color-text-tertiary);
 }
 
+.detect__busy-status {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-sm);
+}
+
+.detect__busy-step {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+}
+
+.detect__busy-elapsed {
+  flex: 0 0 auto;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text-secondary);
+}
+
+.detect__busy-hint {
+  display: block;
+  margin-top: 2px;
+  color: var(--color-text-tertiary);
+}
+
 .detect__progress {
   height: 3px;
   border-radius: 999px;
