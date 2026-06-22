@@ -5,14 +5,14 @@ import { api } from '../lib/api.ts'
 type Latest = Awaited<ReturnType<typeof api.automationScan.latest>>
 type Auto = Latest['automations'][number]
 
-/** Animate 0 → target over ~600ms with exponential ease-out. Respects reduced motion. */
+/** Animate current displayed value → target over ~600ms with exponential ease-out. Respects reduced motion. */
 function useCountUp(target: number): number {
   const [value, setValue] = useState(target)
   const prev = useRef(target)
   useEffect(() => {
     const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches
     if (reduce || target === prev.current) { setValue(target); prev.current = target; return }
-    const from = 0
+    const from = prev.current
     const start = performance.now()
     const dur = 600
     let raf = 0
@@ -70,6 +70,12 @@ export function DetectHero() {
   // Scan-line observers — hoisted above early returns to satisfy Rules of Hooks.
   const heroRef = useRef<HTMLElement>(null)
   const [onScreen, setOnScreen] = useState(true)
+  const [hidden, setHidden] = useState(() => typeof document !== 'undefined' && document.hidden)
+  useEffect(() => {
+    const handler = () => setHidden(document.hidden)
+    document.addEventListener('visibilitychange', handler)
+    return () => document.removeEventListener('visibilitychange', handler)
+  }, [])
   useEffect(() => {
     const el = heroRef.current
     if (!el || typeof IntersectionObserver === 'undefined') return
@@ -93,10 +99,10 @@ export function DetectHero() {
   // ── State: has candidates ──
   if (candidates.length > 0) {
     return (
-      <section className="hd-hero hd-hero--results" aria-label="Detected automations">
+      <section className="hd-hero" aria-label="Detected automations">
         <span className="hd-hero__eyebrow">History scan</span>
         <h1 className="hd-hero__title">
-          We found <span className="hd-hero__count" aria-live="polite">{shownCount}</span>{' '}
+          We found <span className="hd-hero__count">{shownCount}</span>{' '}
           {count === 1 ? 'thing' : 'things'} you keep doing by hand
         </h1>
         <ul className="hd-hero__candidates" role="list">
@@ -126,7 +132,7 @@ export function DetectHero() {
   // ── State: scanned, none found ──
   if (noneFound) {
     return (
-      <section className="hd-hero hd-hero--quiet" aria-label="Detect automations">
+      <section className="hd-hero" aria-label="Detect automations">
         <span className="hd-hero__eyebrow">History scan</span>
         <h1 className="hd-hero__title hd-hero__title--quiet">No strong patterns yet</h1>
         <p className="hd-hero__subtitle">
@@ -145,7 +151,7 @@ export function DetectHero() {
   return (
     <section
       ref={heroRef}
-      className={`hd-hero${onScreen ? ' hd-hero--live' : ''}`}
+      className={`hd-hero${onScreen && !hidden ? ' hd-hero--live' : ''}`}
       aria-label="Detect automations"
     >
       <div className="hd-hero__scanlines" aria-hidden="true" />
