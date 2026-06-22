@@ -28,12 +28,38 @@ const STATUS_LABEL: Record<string, string> = {
   error: 'Scan failed',
 }
 
-/** Merge log entries, deduped by ts+message, so GET-replay and live SSE can't drop or double a line regardless of arrival order. */
+/** Merge log entries, deduped by ts+level+message, so GET-replay and live SSE can't drop or double a line regardless of arrival order. */
 function mergeLogs(prev: Log[], incoming: Log[]): Log[] {
   if (incoming.length === 0) return prev
-  const seen = new Set(prev.map(l => `${l.ts}|${l.message}`))
-  const added = incoming.filter(l => !seen.has(`${l.ts}|${l.message}`))
-  return added.length === 0 ? prev : [...prev, ...added]
+  const key = (l: Log) => `${l.ts}|${l.level}|${l.message}`
+  const seen = new Set(prev.map(key))
+  const added = incoming.filter(l => !seen.has(key(l)))
+  if (added.length === 0) return prev
+  return [...prev, ...added].sort((a, b) => {
+    const at = Date.parse(a.ts)
+    const bt = Date.parse(b.ts)
+    if (!Number.isFinite(at) && !Number.isFinite(bt)) return 0
+    if (!Number.isFinite(at)) return 1
+    if (!Number.isFinite(bt)) return -1
+    return at - bt
+  })
+}
+
+function sameAutos(a: Auto[], b: Auto[]): boolean {
+  return a.length === b.length && a.every((item, i) => {
+    const other = b[i]
+    if (!other) return false
+    return item.id === other.id
+      && item.status === other.status
+      && item.statusDetail === other.statusDetail
+      && item.title === other.title
+      && item.description === other.description
+      && item.steps.join('\0') === other.steps.join('\0')
+      && item.confidence === other.confidence
+      && item.evidence.count === other.evidence.count
+      && item.suggestedTrigger.label === other.suggestedTrigger.label
+      && item.suggestedTrigger.cron === other.suggestedTrigger.cron
+  })
 }
 
 export function DetectView() {
@@ -117,7 +143,8 @@ export function DetectView() {
     const es = new EventSource('/api/automation-scan/stream')
     es.onmessage = (m) => { try { const e = JSON.parse(m.data) as Log; setLogs(prev => mergeLogs(prev, [e])) } catch { /* ignore */ } }
     refresh().then(r => {
-      if (params.get('autostart') === '1' && r.status !== 'running' && !startedRef.current) {
+      const promotionActive = r.automations.some(a => a.status === 'promoting')
+      if (params.get('autostart') === '1' && r.status !== 'running' && !promotionActive && !startedRef.current) {
         startedRef.current = true
         scan()
       }
@@ -125,8 +152,12 @@ export function DetectView() {
     }).catch(() => {})
     // poll for terminal transition (SSE carries logs, GET carries results + status)
     const poll = setInterval(async () => {
-      const r = await api.automationScan.latest()
-      if (r.status === 'done' || r.status === 'error') { setStatus(r.status); setAutos(r.automations.filter(a => a.status !== 'dismissed')) }
+      try {
+        const r = await api.automationScan.latest()
+        const visibleAutos = r.automations.filter(a => a.status !== 'dismissed')
+        setStatus(prev => prev === r.status ? prev : r.status)
+        setAutos(prev => sameAutos(prev, visibleAutos) ? prev : visibleAutos)
+      } catch { /* keep the current view usable while the API reconnects */ }
     }, 1000)
     return () => { es.close(); clearInterval(poll) }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps

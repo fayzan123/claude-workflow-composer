@@ -32,7 +32,9 @@ export const SCAN_MODELS: Record<string, string> = {
 }
 
 function resolveScanModel(key: unknown): { id: string; label: string } {
-  if (typeof key === 'string' && key in SCAN_MODELS) return { id: SCAN_MODELS[key], label: key }
+  if (typeof key === 'string' && Object.prototype.hasOwnProperty.call(SCAN_MODELS, key)) {
+    return { id: SCAN_MODELS[key], label: key }
+  }
   return { id: SCAN_MODELS['sonnet'], label: 'sonnet' }
 }
 
@@ -112,6 +114,8 @@ export function automationScanRouter(opts: AutomationScanRouterOptions): Router 
     if (!a) return void res.status(404).json({ error: 'not found' })
     const controller = new AbortController()
     activePromotion = { id: a.id, controller }
+    let tempWorkflowFile: string | null = null
+    let finalWorkflowFile: string | null = null
     try {
       const startedAt = Date.now()
       await opts.store.setStatus(a.id, 'promoting')
@@ -129,6 +133,7 @@ export function automationScanRouter(opts: AutomationScanRouterOptions): Router 
       throwIfCancelled(controller.signal)
       opts.store.appendLog({ level: 'info', message: 'Validating generated workflow JSON' })
       const cwc = parseWorkflowJson(out.result)
+      throwIfCancelled(controller.signal)
       // Keep only real skills/agent refs. Skills are capped to one per bespoke agent;
       // reference nodes must stay pure references because the existing agent owns its behavior.
       const validSlugs = new Set(skills.map(s => s.slug))
@@ -151,13 +156,25 @@ export function automationScanRouter(opts: AutomationScanRouterOptions): Router 
       cwc.meta.created = now
       cwc.meta.updated = now
       cwc.meta.triggers = triggersForAutomation(a)
-      const file = path.join(opts.workflowsDir, `${slugify(cwc.meta.name)}-${Date.now()}.cwc`)
+      throwIfCancelled(controller.signal)
+      const workflowSlug = slugify(cwc.meta.name) || 'workflow'
+      const file = path.join(opts.workflowsDir, `${workflowSlug}-${Date.now()}.cwc`)
+      const tmpFile = `${file}.${process.pid}.tmp`
       await fs.mkdir(opts.workflowsDir, { recursive: true })
-      await fs.writeFile(file, JSON.stringify(cwc, null, 2))
+      throwIfCancelled(controller.signal)
+      tempWorkflowFile = tmpFile
+      await fs.writeFile(tmpFile, JSON.stringify(cwc, null, 2))
+      throwIfCancelled(controller.signal)
+      await fs.rename(tmpFile, file)
+      tempWorkflowFile = null
+      finalWorkflowFile = file
+      throwIfCancelled(controller.signal)
       opts.store.appendLog({ level: 'info', message: `Generated workflow "${cwc.meta.name}" in ${Math.round((Date.now() - startedAt) / 1000)}s` })
       await opts.store.setStatus(a.id, 'promoted')
       res.json({ workflowId: cwc.meta.id })
     } catch (err) {
+      if (tempWorkflowFile) await fs.rm(tempWorkflowFile, { force: true }).catch(() => undefined)
+      if (finalWorkflowFile) await fs.rm(finalWorkflowFile, { force: true }).catch(() => undefined)
       if (controller.signal.aborted || (err instanceof Error && /cancelled/i.test(err.message))) {
         await markPromotionCancelled(a.id)
         res.status(499).json({ cancelled: true, error: 'Workflow generation cancelled.' })

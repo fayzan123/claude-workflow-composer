@@ -13,6 +13,7 @@ import type { DetectedAutomation } from '../../src/detection/types.js'
 let lastScanModel: string | undefined
 let lastWorkflowPrompt: string | undefined
 let workflowRunnerDelay: Promise<void> | null = null
+let workflowRunnerIgnoresAbort = false
 const fakeStreaming: StreamingRunner = async (_prompt, { onLog, model }) => {
   lastScanModel = model
   onLog({ level: 'info', message: 'session started' })
@@ -50,7 +51,10 @@ async function waitWithAbort(promise: Promise<void>, signal: AbortSignal | undef
 
 const smartRunner: ClaudeRunner = async (prompt, opts) => {
   if (prompt.includes('.cwc') || prompt.includes('"nodes"')) {
-    if (workflowRunnerDelay) await waitWithAbort(workflowRunnerDelay, opts?.signal)
+    if (workflowRunnerDelay) {
+      if (workflowRunnerIgnoresAbort) await workflowRunnerDelay
+      else await waitWithAbort(workflowRunnerDelay, opts?.signal)
+    }
     lastWorkflowPrompt = prompt
     return { result: JSON.stringify({
       meta: { id: 'wf-1', name: 'Tests And Push', description: 'd', version: 1, created: '2026-06-17T00:00:00Z', updated: '2026-06-17T00:00:00Z' },
@@ -71,6 +75,7 @@ beforeEach(async () => {
   lastScanModel = undefined
   lastWorkflowPrompt = undefined
   workflowRunnerDelay = null
+  workflowRunnerIgnoresAbort = false
   home = await fs.mkdtemp(path.join(os.tmpdir(), 'cwc-scanapi-'))
   scanPath = path.join(home, 'scan.json')
   wfDir = path.join(home, 'workflows')
@@ -138,6 +143,12 @@ describe('automation-scan API', () => {
 
   it('falls back to sonnet for an unknown/absent model', async () => {
     await fetch(`${base}/api/automation-scan`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ model: 'gpt-9' }) })
+    await waitForDone()
+    expect(lastScanModel).toBe('claude-sonnet-4-6')
+  })
+
+  it('does not accept inherited object keys as scan models', async () => {
+    await fetch(`${base}/api/automation-scan`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ model: 'toString' }) })
     await waitForDone()
     expect(lastScanModel).toBe('claude-sonnet-4-6')
   })
@@ -237,6 +248,37 @@ describe('automation-scan API', () => {
       await expect(fs.readdir(wfDir)).rejects.toThrow()
     } finally {
       workflowRunnerDelay = null
+      await promotePromise.catch(() => undefined)
+    }
+  })
+
+  it('does not write a workflow if a cancelled runner returns anyway', async () => {
+    await fetch(`${base}/api/automation-scan`, { method: 'POST' })
+    const done = await waitForDone()
+    const id = done.automations[0].id
+    let releaseDelay = () => {}
+    workflowRunnerIgnoresAbort = true
+    workflowRunnerDelay = new Promise<void>(resolve => { releaseDelay = () => resolve() })
+
+    const promotePromise = fetch(`${base}/api/automation-scan/${id}/promote`, { method: 'POST' })
+    try {
+      await waitForAutomationStatus(id, 'promoting')
+
+      const cancel = await fetch(`${base}/api/automation-scan/${id}/promote/cancel`, { method: 'POST' })
+      expect(cancel.status).toBe(200)
+
+      releaseDelay()
+      const promoted = await promotePromise
+      expect(promoted.status).toBe(499)
+      expect(await promoted.json()).toMatchObject({ cancelled: true })
+
+      const after = await waitForAutomationStatus(id, 'promotion_cancelled')
+      expect(after.automations[0].statusDetail).toContain('cancelled')
+      await expect(fs.readdir(wfDir)).rejects.toThrow()
+    } finally {
+      releaseDelay()
+      workflowRunnerDelay = null
+      workflowRunnerIgnoresAbort = false
       await promotePromise.catch(() => undefined)
     }
   })

@@ -8,20 +8,28 @@ type Auto = Latest['automations'][number]
 /** Animate current displayed value → target over ~600ms with exponential ease-out. Respects reduced motion. */
 function useCountUp(target: number): number {
   const [value, setValue] = useState(target)
-  const prev = useRef(target)
+  const displayed = useRef(target)
+  const lastTarget = useRef(target)
   useEffect(() => {
     const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches
-    if (reduce || target === prev.current) { setValue(target); prev.current = target; return }
-    const from = prev.current
+    if (reduce || target === lastTarget.current) {
+      displayed.current = target
+      lastTarget.current = target
+      setValue(target)
+      return
+    }
+    const from = displayed.current
     const start = performance.now()
     const dur = 600
     let raf = 0
     const tick = (now: number) => {
       const t = Math.min(1, (now - start) / dur)
       const eased = 1 - Math.pow(1 - t, 3) // ease-out cubic, no overshoot
-      setValue(Math.round(from + (target - from) * eased))
+      const next = Math.round(from + (target - from) * eased)
+      displayed.current = next
+      setValue(next)
       if (t < 1) raf = requestAnimationFrame(tick)
-      else prev.current = target
+      else lastTarget.current = target
     }
     raf = requestAnimationFrame(tick)
     return () => cancelAnimationFrame(raf)
@@ -63,7 +71,7 @@ export function DetectHero() {
 
   const running = status === 'running'
   const candidates = topCandidates(autos)
-  const count = autos.filter(a => a.confidence >= 0.6).length
+  const count = Math.max(autos.filter(a => a.confidence >= 0.6).length, candidates.length)
   const noneFound = status === 'done' && candidates.length === 0
   const shownCount = useCountUp(count)
 
