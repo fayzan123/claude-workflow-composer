@@ -2,11 +2,15 @@
 
 [![CI](https://github.com/fayzan123/claude-workflow-composer/actions/workflows/ci.yml/badge.svg)](https://github.com/fayzan123/claude-workflow-composer/actions/workflows/ci.yml)
 
-**n8n for coding agent workflows.** A visual desktop app for composing multi-agent [Claude Code](https://claude.ai/code) workflows — drag agents onto a canvas, wire handoffs, attach skills, and export a working workflow directly into your Claude installation. No YAML editing required.
+**Find the work you keep repeating in Claude Code — and turn it into runnable workflows.** CWC scans your local Claude Code history, surfaces the tasks you do by hand again and again, and generates a multi-agent workflow you can run, schedule, and monitor. When you want to build one by hand, there's a visual canvas for that too.
 
 ![Claude Workflow Composer demo](demo.gif)
 
 ---
+
+## Start here: scan your history
+
+Run `npx claude-cwc`, then click **Scan my history** on the dashboard. CWC reads your Claude Code sessions, clusters the work you repeat, and offers the strongest candidates as one-click workflows. The visual canvas (below) is there when you want to compose or refine one yourself.
 
 ## The Problem
 
