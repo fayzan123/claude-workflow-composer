@@ -9,7 +9,6 @@ import { shouldRefreshDashboard } from '../lib/dashboard-events.ts'
 import { TEMPLATES } from '../templates/index.ts'
 import { HelpModal } from '../components/HelpModal.tsx'
 import { ThemeToggle } from '../components/common/ThemeToggle.tsx'
-import { DetectedAutomations } from './DetectedAutomations.tsx'
 import { DetectHero } from './DetectHero.tsx'
 import './HomeDashboard.css'
 
@@ -728,7 +727,6 @@ export function HomeDashboard() {
             </div>
           )}
 
-          <DetectedAutomations />
         </aside>
       </div>
 
