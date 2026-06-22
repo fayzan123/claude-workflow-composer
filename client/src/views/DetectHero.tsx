@@ -5,6 +5,30 @@ import { api } from '../lib/api.ts'
 type Latest = Awaited<ReturnType<typeof api.automationScan.latest>>
 type Auto = Latest['automations'][number]
 
+/** Animate 0 → target over ~600ms with exponential ease-out. Respects reduced motion. */
+function useCountUp(target: number): number {
+  const [value, setValue] = useState(target)
+  const prev = useRef(target)
+  useEffect(() => {
+    const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    if (reduce || target === prev.current) { setValue(target); prev.current = target; return }
+    const from = 0
+    const start = performance.now()
+    const dur = 600
+    let raf = 0
+    const tick = (now: number) => {
+      const t = Math.min(1, (now - start) / dur)
+      const eased = 1 - Math.pow(1 - t, 3) // ease-out cubic, no overshoot
+      setValue(Math.round(from + (target - from) * eased))
+      if (t < 1) raf = requestAnimationFrame(tick)
+      else prev.current = target
+    }
+    raf = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(raf)
+  }, [target])
+  return value
+}
+
 /** Top candidates worth teasing on the hero (mirror DetectedAutomations' confidence bar). */
 function topCandidates(autos: Auto[]): Auto[] {
   const active = autos.find(a => a.status === 'promoting') ?? null
@@ -41,6 +65,7 @@ export function DetectHero() {
   const candidates = topCandidates(autos)
   const count = autos.filter(a => a.confidence >= 0.6).length
   const noneFound = status === 'done' && candidates.length === 0
+  const shownCount = useCountUp(count)
 
   // ── State: has candidates ──
   if (candidates.length > 0) {
@@ -48,7 +73,7 @@ export function DetectHero() {
       <section className="hd-hero hd-hero--results" aria-label="Detected automations">
         <span className="hd-hero__eyebrow">History scan</span>
         <h1 className="hd-hero__title">
-          We found <span className="hd-hero__count" aria-live="polite">{count}</span>{' '}
+          We found <span className="hd-hero__count" aria-live="polite">{shownCount}</span>{' '}
           {count === 1 ? 'thing' : 'things'} you keep doing by hand
         </h1>
         <ul className="hd-hero__candidates" role="list">

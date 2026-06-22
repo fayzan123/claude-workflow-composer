@@ -1167,6 +1167,21 @@
 .hd-hero__candidate-title { font-size: var(--text-base); font-weight: 500; color: var(--color-text); }
 .hd-hero__candidate-meta { font-size: var(--text-xs); color: var(--color-text-tertiary); }
 
+.hd-hero__candidate {
+  animation: hd-hero-reveal 0.42s var(--ease-out-expo) both;
+  animation-delay: calc(var(--i, 0) * 70ms);
+}
+
+@keyframes hd-hero-reveal {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hd-hero__candidate { animation: none; }
+  .hd-hero__bar-fill { animation: none; width: 100%; }
+}
+
 .hd-hero__or {
   font-size: var(--text-sm);
   color: var(--color-text-tertiary);
