@@ -10,6 +10,7 @@ import { TEMPLATES } from '../templates/index.ts'
 import { HelpModal } from '../components/HelpModal.tsx'
 import { ThemeToggle } from '../components/common/ThemeToggle.tsx'
 import { DetectedAutomations } from './DetectedAutomations.tsx'
+import { DetectHero } from './DetectHero.tsx'
 import './HomeDashboard.css'
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -390,6 +391,10 @@ export function HomeDashboard() {
               {error}
             </div>
           )}
+
+          <DetectHero />
+
+          <p className="hd-hero__or">…or start from scratch</p>
 
           {/* Tab strip */}
           <div className="hd-tabs" role="tablist">
