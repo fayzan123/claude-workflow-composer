@@ -67,6 +67,29 @@ export function DetectHero() {
   const noneFound = status === 'done' && candidates.length === 0
   const shownCount = useCountUp(count)
 
+  // Scan-line observers — hoisted above early returns to satisfy Rules of Hooks.
+  const heroRef = useRef<HTMLElement>(null)
+  const [onScreen, setOnScreen] = useState(true)
+  useEffect(() => {
+    const el = heroRef.current
+    if (!el || typeof IntersectionObserver === 'undefined') return
+    const io = new IntersectionObserver(([e]) => setOnScreen(e.isIntersecting), { threshold: 0.05 })
+    io.observe(el)
+    return () => io.disconnect()
+  }, [])
+
+  // Measure hero height so the scan-line sweeps its full height via transform only
+  // (avoids `container-type: size`, which collapses a content-sized box to zero).
+  useEffect(() => {
+    const el = heroRef.current
+    if (!el || typeof ResizeObserver === 'undefined') return
+    const ro = new ResizeObserver(() => {
+      el.style.setProperty('--hero-sweep', `${Math.max(0, el.offsetHeight - 2)}px`)
+    })
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
+
   // ── State: has candidates ──
   if (candidates.length > 0) {
     return (
@@ -120,7 +143,11 @@ export function DetectHero() {
 
   // ── State: idle / scanning ──
   return (
-    <section className="hd-hero" aria-label="Detect automations">
+    <section
+      ref={heroRef}
+      className={`hd-hero${onScreen ? ' hd-hero--live' : ''}`}
+      aria-label="Detect automations"
+    >
       <div className="hd-hero__scanlines" aria-hidden="true" />
       <span className="hd-hero__eyebrow">History scan</span>
       <h1 className="hd-hero__title">Find the work you keep repeating in Claude Code</h1>

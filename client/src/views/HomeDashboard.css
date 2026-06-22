@@ -1204,8 +1204,54 @@
   animation: hd-indeterminate 1.1s ease-in-out infinite;
 }
 
-/* scan-line container — inert until Task 4 */
-.hd-hero__scanlines { position: absolute; inset: 0; pointer-events: none; }
+/* scan-line container */
+.hd-hero__scanlines {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+/* faint horizontal session-log rules (hairline ruling, not a color gradient) */
+.hd-hero__scanlines {
+  background-image: repeating-linear-gradient(
+    to bottom,
+    transparent 0,
+    transparent 13px,
+    color-mix(in oklch, var(--color-border) 60%, transparent) 13px,
+    color-mix(in oklch, var(--color-border) 60%, transparent) 14px
+  );
+  opacity: 0.5;
+}
+
+/* the sweeping teal scan-line — the sanctioned "alive" glow signature.
+   Sweep distance is `--hero-sweep`, set by the ResizeObserver in DetectHero
+   to the hero's pixel height; falls back to 200px before first measure. */
+.hd-hero__scanlines::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 2px;
+  background: var(--color-accent-bright);
+  box-shadow: 0 0 12px 2px color-mix(in oklch, var(--color-accent-bright) 60%, transparent);
+  opacity: 0;
+}
+
+.hd-hero--live .hd-hero__scanlines::after {
+  animation: hd-hero-scan 4.2s var(--ease-out) infinite;
+}
+
+@keyframes hd-hero-scan {
+  0%   { transform: translateY(0);                          opacity: 0; }
+  12%  { opacity: 0.9; }
+  88%  { opacity: 0.9; }
+  100% { transform: translateY(var(--hero-sweep, 200px));   opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hd-hero--live .hd-hero__scanlines::after { animation: none; opacity: 0; }
+}
 
 @media (max-width: 540px) {
   .hd-hero { padding: var(--space-xl); }
