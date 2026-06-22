@@ -113,3 +113,12 @@
   color: var(--color-text-secondary);
   font-family: var(--font-mono);
 }
+
+.workflow-view { view-transition-name: detect-morph; }
+
+@media (prefers-reduced-motion: no-preference) {
+  ::view-transition-group(detect-morph) {
+    animation-duration: 420ms;
+    animation-timing-function: cubic-bezier(0.19, 1, 0.22, 1); /* --ease-out-expo */
+  }
+}

@@ -149,7 +149,7 @@ export function DetectView() {
       // If the user navigated away while generating, the workflow still landed in their library —
       // just don't yank them back here.
       if (!mountedRef.current) return
-      if (r.workflowId) { navigate(`/w/${r.workflowId}/build`); return }
+      if (r.workflowId) { navigate(`/w/${r.workflowId}/build`, { viewTransition: true }); return }
       if (r.cancelled) { await refresh(); return }
       toast.error('Workflow generation failed', r.error || 'Could not generate a workflow from this automation.')
       setActionError(r.error || 'Could not generate a workflow from this automation.')
@@ -262,7 +262,11 @@ export function DetectView() {
                 const failed = a.status === 'promotion_failed'
                 const cancelled = a.status === 'promotion_cancelled'
                 return (
-                <article key={a.id} className={`detect__card${busy ? ' detect__card--busy' : ''}${failed ? ' detect__card--failed' : ''}`}>
+                <article
+                  key={a.id}
+                  className={`detect__card${busy ? ' detect__card--busy' : ''}${failed ? ' detect__card--failed' : ''}`}
+                  style={busy ? ({ viewTransitionName: 'detect-morph' } as React.CSSProperties) : undefined}
+                >
                   <div className="detect__card-top">
                     <h3 className="detect__card-title">{a.title}</h3>
                     {a.status === 'promoted' && <span className="detect__badge">Promoted</span>}
