@@ -4,6 +4,13 @@ import { api } from '../lib/api.ts'
 
 type Latest = Awaited<ReturnType<typeof api.automationScan.latest>>
 type Auto = Latest['automations'][number]
+type Generation = NonNullable<Latest['generation']>
+
+function formatElapsed(s: number): string {
+  const m = Math.floor(s / 60)
+  const sec = s % 60
+  return `${m}:${sec.toString().padStart(2, '0')}`
+}
 
 /** Animate current displayed value → target over ~600ms with exponential ease-out. Respects reduced motion. */
 function useCountUp(target: number): number {
@@ -38,8 +45,8 @@ function useCountUp(target: number): number {
 }
 
 /** Top candidates worth teasing on the hero (mirror DetectedAutomations' confidence bar). */
-function topCandidates(autos: Auto[]): Auto[] {
-  const active = autos.find(a => a.status === 'promoting') ?? null
+function topCandidates(autos: Auto[], activeGenerationId?: string): Auto[] {
+  const active = autos.find(a => a.id === activeGenerationId) ?? autos.find(a => a.status === 'promoting') ?? null
   const high = autos.filter(a => a.confidence >= 0.6 && a.id !== active?.id).slice(0, active ? 2 : 3)
   return active ? [active, ...high] : high
 }
@@ -48,6 +55,8 @@ export function DetectHero() {
   const navigate = useNavigate()
   const [status, setStatus] = useState<Latest['status']>('idle')
   const [autos, setAutos] = useState<Auto[]>([])
+  const [generation, setGeneration] = useState<Generation | null>(null)
+  const [elapsed, setElapsed] = useState(0)
 
   useEffect(() => {
     let alive = true
@@ -56,6 +65,7 @@ export function DetectHero() {
         const r = await api.automationScan.latest()
         if (!alive) return
         setStatus(r.status)
+        setGeneration(r.generation ?? null)
         setAutos(r.automations.filter(a => a.status !== 'dismissed'))
       } catch { /* dashboard stays usable if the scan API hiccups */ }
     }
@@ -70,10 +80,22 @@ export function DetectHero() {
   }
 
   const running = status === 'running'
-  const candidates = topCandidates(autos)
+  const activeGeneration = generation && !generation.workflowId && !generation.error ? generation : null
+  const candidates = topCandidates(autos, activeGeneration?.id)
+  const generationInProgress = Boolean(activeGeneration)
   const count = Math.max(autos.filter(a => a.confidence >= 0.6).length, candidates.length)
   const noneFound = status === 'done' && candidates.length === 0
   const shownCount = useCountUp(count)
+
+  useEffect(() => {
+    if (!activeGeneration) { setElapsed(0); return }
+    const started = Date.parse(activeGeneration.startedAt)
+    if (!Number.isFinite(started)) return
+    const update = () => setElapsed(Math.max(0, Math.floor((Date.now() - started) / 1000)))
+    update()
+    const id = setInterval(update, 1000)
+    return () => clearInterval(id)
+  }, [activeGeneration?.startedAt])
 
   // Scan-line observers — hoisted above early returns to satisfy Rules of Hooks.
   const heroRef = useRef<HTMLElement>(null)
@@ -118,8 +140,8 @@ export function DetectHero() {
             <li key={a.id} className="hd-hero__candidate" style={{ ['--i' as string]: i }}>
               <span className="hd-hero__candidate-title">{a.title}</span>
               <span className="hd-hero__candidate-meta">
-                {a.status === 'promoting'
-                  ? 'Generating workflow…'
+                {a.id === activeGeneration?.id || a.status === 'promoting'
+                  ? `Generating workflow · ${formatElapsed(elapsed)}`
                   : `seen ${a.evidence.count}× · ${a.suggestedTrigger.label || 'manual'}`}
               </span>
             </li>
@@ -129,8 +151,14 @@ export function DetectHero() {
           <button className="hd-hero__cta" type="button" onClick={() => go('/detect')}>
             Review automations
           </button>
-          <button className="hd-hero__ghost" type="button" onClick={() => go('/detect?autostart=1')}>
-            Scan again
+          <button
+            className="hd-hero__ghost"
+            type="button"
+            onClick={() => go('/detect?autostart=1')}
+            disabled={generationInProgress || running}
+            title={generationInProgress ? 'A workflow is already being generated.' : undefined}
+          >
+            {generationInProgress ? 'Generating...' : 'Scan again'}
           </button>
         </div>
       </section>
@@ -174,9 +202,10 @@ export function DetectHero() {
           className="hd-hero__cta"
           type="button"
           onClick={() => go('/detect?autostart=1')}
-          disabled={running}
+          disabled={running || generationInProgress}
+          title={generationInProgress ? 'A workflow is already being generated.' : undefined}
         >
-          {running ? 'Scanning your history…' : 'Scan my history'}
+          {generationInProgress ? 'Generating workflow...' : running ? 'Scanning your history...' : 'Scan my history'}
         </button>
       </div>
       {running && (

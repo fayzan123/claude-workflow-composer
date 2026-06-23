@@ -14,6 +14,7 @@ function formatElapsed(s: number): string {
 type Latest = Awaited<ReturnType<typeof api.automationScan.latest>>
 type Auto = Latest['automations'][number]
 type Log = NonNullable<Latest['log']>[number]
+type Generation = NonNullable<Latest['generation']>
 
 const MODELS = [
   { key: 'haiku',  label: 'Haiku',  pro: 'Fastest and cheapest', con: 'May miss subtler patterns' },
@@ -71,26 +72,40 @@ export function DetectView() {
   const logEndRef = useRef<HTMLDivElement>(null)
   const startedRef = useRef(false)
   const [busyId, setBusyId] = useState<string | null>(null)
+  const [generation, setGeneration] = useState<Generation | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
   const [model, setModel] = useState<string>('sonnet')
   const [cancelingId, setCancelingId] = useState<string | null>(null)
   const mountedRef = useRef(true)
   const [elapsed, setElapsed] = useState(0)
-  const activePromotionId = autos.find(a => a.status === 'promoting')?.id ?? busyId
+  const activeGeneration = generation && !generation.workflowId && !generation.error ? generation : null
+  const activePromotionId = activeGeneration?.id ?? autos.find(a => a.status === 'promoting')?.id ?? busyId
   const generationInProgress = activePromotionId !== null
   const running = status === 'running'
-  const latestStep = logs.length > 0 ? logs[logs.length - 1].message : null
+  const latestStep = activeGeneration?.step ?? (logs.length > 0 ? logs[logs.length - 1].message : null)
+  const generationAutomation = autos.find(a => a.id === (generation?.id ?? activePromotionId))
+  const generationTitle = generationAutomation?.title
+  const completedWorkflowRef = useRef<string | null>(null)
   useEffect(() => () => { mountedRef.current = false }, [])
 
   // Live elapsed timer while a workflow is generating — generation can take minutes, so a
   // visibly-ticking clock + current step reassures the user it's working, not hung.
   useEffect(() => {
-    if (!generationInProgress) { setElapsed(0); return }
-    const start = Date.now()
-    setElapsed(0)
-    const id = setInterval(() => setElapsed(Math.floor((Date.now() - start) / 1000)), 1000)
+    if (!activeGeneration) { setElapsed(0); return }
+    const started = Date.parse(activeGeneration.startedAt)
+    if (!Number.isFinite(started)) { setElapsed(0); return }
+    const update = () => setElapsed(Math.max(0, Math.floor((Date.now() - started) / 1000)))
+    update()
+    const id = setInterval(update, 1000)
     return () => clearInterval(id)
-  }, [generationInProgress])
+  }, [activeGeneration?.startedAt])
+
+  useEffect(() => {
+    if (!generation?.workflowId || completedWorkflowRef.current === generation.workflowId) return
+    completedWorkflowRef.current = generation.workflowId
+    setBusyId(null)
+    toast.success('Workflow generated', generationTitle ? `"${generationTitle}" is ready in Workflows` : 'Ready in Workflows')
+  }, [generation?.workflowId, generationTitle])
 
   // Prominent toast when a history scan finishes (the small status pill is easy to miss).
   const prevStatusRef = useRef(status)
@@ -116,6 +131,7 @@ export function DetectView() {
   async function refresh() {
     const r = await api.automationScan.latest()
     setStatus(r.status)
+    setGeneration(r.generation ?? null)
     setLogs(prev => mergeLogs(prev, r.log ?? []))
     setAutos(r.automations.filter(a => a.status !== 'dismissed'))
     return r
@@ -143,7 +159,7 @@ export function DetectView() {
     const es = new EventSource('/api/automation-scan/stream')
     es.onmessage = (m) => { try { const e = JSON.parse(m.data) as Log; setLogs(prev => mergeLogs(prev, [e])) } catch { /* ignore */ } }
     refresh().then(r => {
-      const promotionActive = r.automations.some(a => a.status === 'promoting')
+      const promotionActive = Boolean(r.generation && !r.generation.workflowId && !r.generation.error) || r.automations.some(a => a.status === 'promoting')
       if (params.get('autostart') === '1' && r.status !== 'running' && !promotionActive && !startedRef.current) {
         startedRef.current = true
         scan()
@@ -156,6 +172,12 @@ export function DetectView() {
         const r = await api.automationScan.latest()
         const visibleAutos = r.automations.filter(a => a.status !== 'dismissed')
         setStatus(prev => prev === r.status ? prev : r.status)
+        setGeneration(prev => {
+          const next = r.generation ?? null
+          if (!prev && !next) return prev
+          if (prev?.id === next?.id && prev?.step === next?.step && prev?.startedAt === next?.startedAt && prev?.workflowId === next?.workflowId && prev?.error === next?.error) return prev
+          return next
+        })
         setAutos(prev => sameAutos(prev, visibleAutos) ? prev : visibleAutos)
       } catch { /* keep the current view usable while the API reconnects */ }
     }, 1000)
@@ -174,23 +196,20 @@ export function DetectView() {
     setAutos(prev => prev.map(a => a.id === id ? { ...a, status: 'promoting', statusDetail: undefined } : a))
     try {
       const r = await api.automationScan.promote(id)
-      // The workflow is saved server-side regardless of navigation; fire the toast before any
-      // early-return so it shows even if the user has navigated away (Toaster is app-level).
-      if (r.workflowId) toast.success('Workflow generated', title ? `"${title}" is ready to open` : 'Opening it now')
-      // If the user navigated away while generating, the workflow still landed in their library —
-      // just don't yank them back here.
       if (!mountedRef.current) return
-      if (r.workflowId) { navigate(`/w/${r.workflowId}/build`, { viewTransition: true }); return }
-      if (r.cancelled) { await refresh(); return }
-      toast.error('Workflow generation failed', r.error || 'Could not generate a workflow from this automation.')
-      setActionError(r.error || 'Could not generate a workflow from this automation.')
+      if (!r.ok) {
+        toast.error('Workflow generation failed', r.error || 'Could not start workflow generation.')
+        setActionError(r.error || 'Could not start workflow generation.')
+        setBusyId(null)
+      } else {
+        toast.success('Workflow generation started', title ? `"${title}" is running in the background` : 'You can leave this page')
+      }
       await refresh()
     } catch {
       if (mountedRef.current) setActionError('Promote failed — is the server still running?')
-      if (mountedRef.current) await refresh().catch(() => {})
-    } finally {
       if (mountedRef.current) setBusyId(null)
-    }
+      if (mountedRef.current) await refresh().catch(() => {})
+    } finally { /* busyId clears from persisted generation completion/cancel refresh */ }
   }
   async function cancelPromote(id: string) {
     setCancelingId(id)
@@ -243,7 +262,13 @@ export function DetectView() {
         </div>
         <div className="detect__bar-actions">
           <span className={`detect__status detect__status--${statusClass}`}>{statusLabel}</span>
-          <button className="detect__scan" type="button" onClick={scan} disabled={running || generationInProgress}>
+          <button
+            className="detect__scan"
+            type="button"
+            onClick={scan}
+            disabled={running || generationInProgress}
+            title={generationInProgress ? 'A workflow is already being generated.' : undefined}
+          >
             {generationInProgress ? 'Generating...' : running ? 'Scanning...' : logs.length ? 'Scan again' : 'Scan history'}
           </button>
         </div>
@@ -258,6 +283,7 @@ export function DetectView() {
               className={`detect__model${model === m.key ? ' detect__model--on' : ''}`}
               onClick={() => setModel(m.key)}
               disabled={running || generationInProgress}
+              title={generationInProgress ? 'Model changes are disabled while a workflow is being generated.' : undefined}
               aria-pressed={model === m.key}
             >
               <span className="detect__model-name">{m.label}</span>
@@ -289,7 +315,7 @@ export function DetectView() {
           ) : (
             <div className="detect__cards">
               {autos.map(a => {
-                const busy = a.status === 'promoting' || busyId === a.id
+                const busy = a.status === 'promoting' || busyId === a.id || activePromotionId === a.id
                 const failed = a.status === 'promotion_failed'
                 const cancelled = a.status === 'promotion_cancelled'
                 return (
@@ -319,7 +345,13 @@ export function DetectView() {
                     </ol>
                   )}
                   <div className="detect__card-actions">
-                    <button className="detect__promote" type="button" onClick={() => promote(a.id)} disabled={generationInProgress}>
+                    <button
+                      className="detect__promote"
+                      type="button"
+                      onClick={() => promote(a.id)}
+                      disabled={generationInProgress}
+                      title={generationInProgress && !busy ? 'A workflow is already being generated.' : undefined}
+                    >
                       {busy ? 'Generating...' : a.status === 'promoted' || failed || cancelled ? 'Generate again' : 'Generate workflow'}
                     </button>
                     {busy ? (
@@ -327,7 +359,13 @@ export function DetectView() {
                         {cancelingId === a.id ? 'Cancelling...' : 'Cancel'}
                       </button>
                     ) : (
-                      <button className="detect__dismiss" type="button" onClick={() => dismiss(a.id)} disabled={generationInProgress}>Dismiss</button>
+                      <button
+                        className="detect__dismiss"
+                        type="button"
+                        onClick={() => dismiss(a.id)}
+                        disabled={generationInProgress}
+                        title={generationInProgress ? 'Dismiss is disabled while a workflow is being generated.' : undefined}
+                      >Dismiss</button>
                     )}
                   </div>
                   {cancelled && a.statusDetail && <p className="detect__card-failed detect__card-muted">{a.statusDetail}</p>}
@@ -338,7 +376,7 @@ export function DetectView() {
                         <div className="detect__progress-bar" />
                       </div>
                       <div className="detect__busy-status">
-                        <span className="detect__busy-step">{latestStep ?? 'Starting…'}</span>
+                        <span className="detect__busy-step">{latestStep ?? 'Starting...'}</span>
                         <span className="detect__busy-elapsed" aria-label="Time elapsed">{formatElapsed(elapsed)}</span>
                       </div>
                       <span className="detect__busy-hint">You can leave this page; the result will land in your workflows.</span>

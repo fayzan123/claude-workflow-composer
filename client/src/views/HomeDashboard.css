@@ -1146,6 +1146,11 @@
   transition: background var(--transition-fast);
 }
 .hd-hero__ghost:hover { background: var(--color-primary-lighter); }
+.hd-hero__ghost:disabled {
+  opacity: 0.55;
+  cursor: default;
+  background: transparent;
+}
 
 .hd-hero__candidates {
   list-style: none;
