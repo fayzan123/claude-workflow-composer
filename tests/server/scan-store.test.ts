@@ -115,6 +115,34 @@ describe('createScanStore', () => {
     expect(createScanStore(file).getLatest()?.automations[0].statusDetail).toBe('user cancelled')
   })
 
+  it('persists and exposes generation state', async () => {
+    const store = createScanStore(file)
+    await store.runScan(async () => [auto({ id: 'id1' })])
+
+    const startedAt = new Date().toISOString()
+    await store.setGeneration({ id: 'id1', step: 'planning', startedAt })
+    expect(store.getGeneration()).toEqual({ id: 'id1', step: 'planning', startedAt })
+    expect(store.getLatest()?.generation?.step).toBe('planning')
+    expect(store.hasActivePromotion()).toBe(true)
+
+    await store.setGeneration({ id: 'id1', step: 'complete', startedAt, workflowId: 'wf1' })
+    expect(store.hasActivePromotion()).toBe(false)
+    expect(createScanStore(file).getGeneration()?.workflowId).toBe('wf1')
+  })
+
+  it('reconciles an in-flight generation state on restart', async () => {
+    const store = createScanStore(file)
+    await store.runScan(async () => [auto({ id: 'id1' })])
+    await store.setStatus('id1', 'promoting')
+    await store.setGeneration({ id: 'id1', step: 'planning', startedAt: new Date().toISOString() })
+
+    const reloaded = createScanStore(file)
+    expect(reloaded.getGeneration()).toBeNull()
+    expect(reloaded.hasActivePromotion()).toBe(false)
+    expect(reloaded.getLatest()?.automations[0].status).toBe('promotion_failed')
+    expect(reloaded.getLatest()?.automations[0].statusDetail).toContain('interrupted')
+  })
+
   it('serializes overlapping status persistence', async () => {
     const store = createScanStore(file)
     await store.runScan(async () => [auto({ id: 'id1' })])

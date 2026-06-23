@@ -13,7 +13,8 @@ import type { ScanStore } from '../scan-store.js'
 import { buildWorkflowGenPrompt, parseWorkflowJson } from '../../workflow-generator.js'
 import { buildCapabilityCards, listReusableAgents, listReusableSkills, selectRelevantAgents, selectRelevantSkills } from '../skill-catalog.js'
 import { slugify } from '../../slugify.js'
-import type { CwcTrigger } from '../../schema.js'
+import type { CwcFile, CwcTrigger } from '../../schema.js'
+import { generateWorkflow } from '../../generation/generate.js'
 
 export interface AutomationScanRouterOptions {
   homeDir: string
@@ -58,6 +59,58 @@ export function automationScanRouter(opts: AutomationScanRouterOptions): Router 
       opts.store.appendLog({ level: 'info', message: 'Workflow generation cancelled' })
       await opts.store.setStatus(id, 'promotion_cancelled', 'Workflow generation was cancelled.')
     }
+    const generation = opts.store.getGeneration()
+    await opts.store.setGeneration({
+      id,
+      step: 'cancelled',
+      startedAt: generation?.id === id ? generation.startedAt : new Date().toISOString(),
+      error: 'Workflow generation was cancelled.',
+    })
+  }
+
+  async function generateLegacyWorkflow(a: DetectedAutomation, controller: AbortController): Promise<CwcFile> {
+    opts.store.appendLog({ level: 'info', message: 'Selecting matching skills and agents' })
+    const skills = selectRelevantSkills(await listReusableSkills(opts.homeDir), a)
+    throwIfCancelled(controller.signal)
+    const agents = selectRelevantAgents(await listReusableAgents(opts.homeDir), a)
+    throwIfCancelled(controller.signal)
+    opts.store.appendLog({ level: 'info', message: `Reading ${Math.min(skills.length, 5)} skill and ${Math.min(agents.length, 5)} agent capability file(s)` })
+    const capabilityCards = await buildCapabilityCards({ skills, agents, maxSkills: 5, maxAgents: 5 })
+    throwIfCancelled(controller.signal)
+    opts.store.appendLog({ level: 'info', message: 'Asking Claude to compose the workflow' })
+    const out = await runner(buildWorkflowGenPrompt(a, { skills, agents, capabilityCards }), { model: opts.genModel ?? 'claude-sonnet-4-6', signal: controller.signal })
+    throwIfCancelled(controller.signal)
+    opts.store.appendLog({ level: 'info', message: 'Validating generated workflow JSON' })
+    const cwc = parseWorkflowJson(out.result)
+    throwIfCancelled(controller.signal)
+
+    const validSlugs = new Set(skills.map(s => s.slug))
+    const validAgentRefs = new Set(agents.map(agent => agent.slug))
+    for (const n of cwc.nodes) {
+      if (n.agentRef && validAgentRefs.has(n.agentRef)) {
+        n.agent.skills = []
+        n.agent.tools = []
+        n.agent.systemPrompt = ''
+        n.agent.completionCriteria = ''
+      } else {
+        delete n.agentRef
+        n.agent.skills = (n.agent.skills ?? []).filter(s => validSlugs.has(s)).slice(0, 1)
+      }
+    }
+    return cwc
+  }
+
+  async function generatePromotionWorkflow(a: DetectedAutomation, controller: AbortController): Promise<CwcFile> {
+    if (process.env['CWC_LEGACY_GEN'] === '1') return generateLegacyWorkflow(a, controller)
+    return generateWorkflow({
+      automation: a,
+      homeDir: opts.homeDir,
+      runner,
+      model: opts.genModel ?? 'claude-sonnet-4-6',
+      signal: controller.signal,
+      triggers: triggersForAutomation(a),
+      onLog: message => opts.store.appendLog({ level: 'info', message }),
+    })
   }
 
   router.get('/', (_req, res) => {
@@ -114,79 +167,65 @@ export function automationScanRouter(opts: AutomationScanRouterOptions): Router 
     if (!a) return void res.status(404).json({ error: 'not found' })
     const controller = new AbortController()
     activePromotion = { id: a.id, controller }
-    let tempWorkflowFile: string | null = null
-    let finalWorkflowFile: string | null = null
-    try {
-      const startedAt = Date.now()
-      await opts.store.setStatus(a.id, 'promoting')
-      opts.store.appendLog({ level: 'info', message: `Generating workflow for "${a.title}"` })
-      opts.store.appendLog({ level: 'info', message: 'Selecting matching skills and agents' })
-      const skills = selectRelevantSkills(await listReusableSkills(opts.homeDir), a)
-      throwIfCancelled(controller.signal)
-      const agents = selectRelevantAgents(await listReusableAgents(opts.homeDir), a)
-      throwIfCancelled(controller.signal)
-      opts.store.appendLog({ level: 'info', message: `Reading ${Math.min(skills.length, 5)} skill and ${Math.min(agents.length, 5)} agent capability file(s)` })
-      const capabilityCards = await buildCapabilityCards({ skills, agents, maxSkills: 5, maxAgents: 5 })
-      throwIfCancelled(controller.signal)
-      opts.store.appendLog({ level: 'info', message: 'Asking Claude to compose the workflow' })
-      const out = await runner(buildWorkflowGenPrompt(a, { skills, agents, capabilityCards }), { model: opts.genModel ?? 'claude-sonnet-4-6', signal: controller.signal })
-      throwIfCancelled(controller.signal)
-      opts.store.appendLog({ level: 'info', message: 'Validating generated workflow JSON' })
-      const cwc = parseWorkflowJson(out.result)
-      throwIfCancelled(controller.signal)
-      // Keep only real skills/agent refs. Skills are capped to one per bespoke agent;
-      // reference nodes must stay pure references because the existing agent owns its behavior.
-      const validSlugs = new Set(skills.map(s => s.slug))
-      const validAgentRefs = new Set(agents.map(a => a.slug))
-      for (const n of cwc.nodes) {
-        if (n.agentRef && validAgentRefs.has(n.agentRef)) {
-          n.agent.skills = []
-          n.agent.tools = []
-          n.agent.systemPrompt = ''
-          n.agent.completionCriteria = ''
-        } else {
-          delete n.agentRef
-          n.agent.skills = (n.agent.skills ?? []).filter(s => validSlugs.has(s)).slice(0, 1)
+    const startedAtMs = Date.now()
+    const startedAt = new Date(startedAtMs).toISOString()
+
+    await opts.store.setStatus(a.id, 'promoting')
+    await opts.store.setGeneration({ id: a.id, step: 'planning', startedAt })
+    res.status(202).json({ status: 'generating' })
+
+    const job = (async () => {
+      let tempWorkflowFile: string | null = null
+      let finalWorkflowFile: string | null = null
+      try {
+        await opts.store.setStatus(a.id, 'promoting')
+        opts.store.appendLog({ level: 'info', message: `Generating workflow for "${a.title}"` })
+        const cwc = await generatePromotionWorkflow(a, controller)
+        throwIfCancelled(controller.signal)
+
+        // Overwrite the LLM-generated id with a server-assigned UUID to guarantee
+        // uniqueness and safe post-promote navigation (/w/<id>/build).
+        const now = new Date().toISOString()
+        cwc.meta.id = randomUUID()
+        cwc.meta.created = now
+        cwc.meta.updated = now
+        cwc.meta.triggers = triggersForAutomation(a)
+        throwIfCancelled(controller.signal)
+
+        await opts.store.setGeneration({ id: a.id, step: 'writing', startedAt })
+        const workflowSlug = slugify(cwc.meta.name) || 'workflow'
+        const file = path.join(opts.workflowsDir, `${workflowSlug}-${Date.now()}.cwc`)
+        const tmpFile = `${file}.${process.pid}.tmp`
+        await fs.mkdir(opts.workflowsDir, { recursive: true })
+        throwIfCancelled(controller.signal)
+        tempWorkflowFile = tmpFile
+        await fs.writeFile(tmpFile, JSON.stringify(cwc, null, 2))
+        throwIfCancelled(controller.signal)
+        await fs.rename(tmpFile, file)
+        tempWorkflowFile = null
+        finalWorkflowFile = file
+        throwIfCancelled(controller.signal)
+        opts.store.appendLog({ level: 'info', message: `Generated workflow "${cwc.meta.name}" in ${Math.round((Date.now() - startedAtMs) / 1000)}s` })
+        await opts.store.setStatus(a.id, 'promoted')
+        await opts.store.setGeneration({ id: a.id, step: 'complete', startedAt, workflowId: cwc.meta.id })
+      } catch (err) {
+        if (tempWorkflowFile) await fs.rm(tempWorkflowFile, { force: true }).catch(() => undefined)
+        if (finalWorkflowFile) await fs.rm(finalWorkflowFile, { force: true }).catch(() => undefined)
+        if (controller.signal.aborted || (err instanceof Error && /cancelled/i.test(err.message))) {
+          await markPromotionCancelled(a.id)
+          return
         }
+        const message = err instanceof Error ? err.message : 'promote failed'
+        opts.store.appendLog({ level: 'error', message: `Workflow generation failed: ${message}` })
+        await opts.store.setStatus(a.id, 'promotion_failed', message)
+        await opts.store.setGeneration({ id: a.id, step: 'failed', startedAt, error: message })
+      } finally {
+        if (activePromotion?.id === a.id && activePromotion.controller === controller) activePromotion = null
       }
-      // Overwrite the LLM-generated id with a server-assigned UUID to guarantee
-      // uniqueness and safe post-promote navigation (/w/<id>/build).
-      const now = new Date().toISOString()
-      cwc.meta.id = randomUUID()
-      cwc.meta.created = now
-      cwc.meta.updated = now
-      cwc.meta.triggers = triggersForAutomation(a)
-      throwIfCancelled(controller.signal)
-      const workflowSlug = slugify(cwc.meta.name) || 'workflow'
-      const file = path.join(opts.workflowsDir, `${workflowSlug}-${Date.now()}.cwc`)
-      const tmpFile = `${file}.${process.pid}.tmp`
-      await fs.mkdir(opts.workflowsDir, { recursive: true })
-      throwIfCancelled(controller.signal)
-      tempWorkflowFile = tmpFile
-      await fs.writeFile(tmpFile, JSON.stringify(cwc, null, 2))
-      throwIfCancelled(controller.signal)
-      await fs.rename(tmpFile, file)
-      tempWorkflowFile = null
-      finalWorkflowFile = file
-      throwIfCancelled(controller.signal)
-      opts.store.appendLog({ level: 'info', message: `Generated workflow "${cwc.meta.name}" in ${Math.round((Date.now() - startedAt) / 1000)}s` })
-      await opts.store.setStatus(a.id, 'promoted')
-      res.json({ workflowId: cwc.meta.id })
-    } catch (err) {
-      if (tempWorkflowFile) await fs.rm(tempWorkflowFile, { force: true }).catch(() => undefined)
-      if (finalWorkflowFile) await fs.rm(finalWorkflowFile, { force: true }).catch(() => undefined)
-      if (controller.signal.aborted || (err instanceof Error && /cancelled/i.test(err.message))) {
-        await markPromotionCancelled(a.id)
-        res.status(499).json({ cancelled: true, error: 'Workflow generation cancelled.' })
-        return
-      }
-      const message = err instanceof Error ? err.message : 'promote failed'
-      opts.store.appendLog({ level: 'error', message: `Workflow generation failed: ${message}` })
-      await opts.store.setStatus(a.id, 'promotion_failed', message)
-      res.status(502).json({ error: message })
-    } finally {
-      if (activePromotion?.id === a.id && activePromotion.controller === controller) activePromotion = null
-    }
+    })().catch(err => {
+      opts.store.appendLog({ level: 'error', message: `Workflow generation failed after response ended: ${err instanceof Error ? err.message : String(err)}` })
+    })
+    opts.store.trackPromotion(job)
   })
 
   return router

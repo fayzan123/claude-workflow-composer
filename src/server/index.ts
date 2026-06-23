@@ -97,6 +97,7 @@ export function createApp(opts: AppOptions): express.Express {
 
   const scanPath = opts.automationScanPath ?? path.join(os.homedir(), '.cwc', 'automation-scan.json')
   const scanStore = createScanStore(scanPath)
+  app.locals['scanStore'] = scanStore   // exposed so graceful shutdown / tests can await in-flight promotion jobs
   app.use('/api/automation-scan', automationScanRouter({ homeDir, workflowsDir: wfDir, store: scanStore, runner: opts.claudeRunner, streamingRunner: opts.streamingRunner }))
 
   // Sweep orphan worktrees on real server start only (paused/running runs keep theirs).

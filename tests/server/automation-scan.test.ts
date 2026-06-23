@@ -8,6 +8,7 @@ import { createApp } from '../../src/server/index.js'
 import type { ClaudeRunner } from '../../src/server/claude-runner.js'
 import type { StreamingRunner } from '../../src/server/streaming-analyzer.js'
 import { triggersForAutomation } from '../../src/server/api/automation-scan.js'
+import type { ScanStore } from '../../src/server/scan-store.js'
 import type { DetectedAutomation } from '../../src/detection/types.js'
 
 let lastScanModel: string | undefined
@@ -26,6 +27,7 @@ const fakeStreaming: StreamingRunner = async (_prompt, { onLog, model }) => {
 }
 
 let home: string, scanPath: string, wfDir: string, server: http.Server, base: string
+let scanStore: ScanStore
 
 const cannedRunner = async () => ({
   result: JSON.stringify({ automations: [{
@@ -50,6 +52,21 @@ async function waitWithAbort(promise: Promise<void>, signal: AbortSignal | undef
 }
 
 const smartRunner: ClaudeRunner = async (prompt, opts) => {
+  if (prompt.includes('WorkflowPlan') || prompt.includes('stepIndexes')) {
+    if (workflowRunnerDelay) {
+      if (workflowRunnerIgnoresAbort) await workflowRunnerDelay
+      else await waitWithAbort(workflowRunnerDelay, opts?.signal)
+    }
+    lastWorkflowPrompt = prompt
+    return { result: JSON.stringify({
+      name: 'Tests And Push',
+      description: 'd',
+      phases: [
+        { id: 'p1', intent: 'run tests', stepIndexes: [0] },
+        { id: 'p2', intent: 'push changes', stepIndexes: [1], archetypeHint: 'publish', riskHint: ['push'] },
+      ],
+    }), sessionId: 's' }
+  }
   if (prompt.includes('.cwc') || prompt.includes('"nodes"')) {
     if (workflowRunnerDelay) {
       if (workflowRunnerIgnoresAbort) await workflowRunnerDelay
@@ -72,6 +89,7 @@ const smartRunner: ClaudeRunner = async (prompt, opts) => {
 }
 
 beforeEach(async () => {
+  delete process.env['CWC_LEGACY_GEN']
   lastScanModel = undefined
   lastWorkflowPrompt = undefined
   workflowRunnerDelay = null
@@ -93,10 +111,17 @@ beforeEach(async () => {
   await fs.mkdir(agentDir, { recursive: true })
   await fs.writeFile(path.join(agentDir, 'runner-agent.md'), '---\nname: Runner Agent\ndescription: run tests and push changes\n---\nExisting agent body for running tests and pushing changes safely.\n')
   const app = createApp({ staticDir: null, userHomeDir: home, automationScanPath: scanPath, workflowsDir: wfDir, claudeRunner: smartRunner, streamingRunner: fakeStreaming, enableNotifier: false })
+  scanStore = app.locals['scanStore'] as ScanStore
   server = app.listen(0)
   base = `http://localhost:${(server.address() as AddressInfo).port}`
 })
-afterEach(async () => { server.close(); await fs.rm(home, { recursive: true, force: true }) })
+afterEach(async () => {
+  // Wait for any detached background promotion job (and its queued persists) to flush before
+  // tearing down the temp home dir — otherwise teardown races the job's filesystem writes.
+  await scanStore.whenPromotionSettled().catch(() => {})
+  server.close()
+  await fs.rm(home, { recursive: true, force: true })
+})
 
 async function waitForDone(): Promise<{ automations: { id: string; title: string; status: string }[] }> {
   for (let i = 0; i < 40; i++) {
@@ -114,6 +139,16 @@ async function waitForAutomationStatus(id: string, status: string): Promise<{ au
     await new Promise(res => setTimeout(res, 25))
   }
   throw new Error(`automation ${id} did not reach ${status}`)
+}
+
+async function waitForGenerationWorkflowId(id: string): Promise<{ generation: { id: string; step: string; workflowId?: string; error?: string } }> {
+  for (let i = 0; i < 80; i++) {
+    const r = await (await fetch(`${base}/api/automation-scan`)).json() as { generation?: { id: string; step: string; workflowId?: string; error?: string } }
+    if (r.generation?.id === id && r.generation.workflowId) return r as never
+    if (r.generation?.id === id && r.generation.error) throw new Error(r.generation.error)
+    await new Promise(res => setTimeout(res, 25))
+  }
+  throw new Error(`generation ${id} did not finish`)
 }
 
 describe('automation-scan API', () => {
@@ -153,14 +188,16 @@ describe('automation-scan API', () => {
     expect(lastScanModel).toBe('claude-sonnet-4-6')
   })
 
-  it('promote generates a .cwc with a disabled cron trigger and marks the candidate promoted', async () => {
+  it('promote starts a background generation job, writes a .cwc, and marks the candidate promoted', async () => {
     await fetch(`${base}/api/automation-scan`, { method: 'POST' })
     const done = await waitForDone()
     const id = done.automations[0].id
 
     const res = await fetch(`${base}/api/automation-scan/${id}/promote`, { method: 'POST' })
-    expect(res.status).toBe(200)
-    const { workflowId } = await res.json() as { workflowId: string }
+    expect(res.status).toBe(202)
+    expect(await res.json()).toEqual({ status: 'generating' })
+    const generated = await waitForGenerationWorkflowId(id)
+    const workflowId = generated.generation.workflowId!
     // Server assigns a fresh UUID — it must be a non-empty string, must NOT be the
     // LLM-generated 'wf-1', and must look like a UUID (contains hyphens).
     expect(typeof workflowId).toBe('string')
@@ -178,10 +215,27 @@ describe('automation-scan API', () => {
     expect(cwc.meta.triggers[0].type).toBe('cron')
     expect(cwc.meta.triggers[0].enabled).toBe(false)
     expect(cwc.meta.triggers[0].cwd).toBe('')
+    expect(cwc.nodes.some((n: { nodeType?: string }) => n.nodeType === 'gate')).toBe(true)
     expect(lastWorkflowPrompt).toContain('Runs tests, pushes to remote')
     expect(lastWorkflowPrompt).toContain('Existing agent body for running tests')
-    // Reuse validation: valid agentRef is kept and stays a pure reference;
-    // hallucinated agentRef is dropped, while valid skill reuse is capped to one.
+
+    const after = await (await fetch(`${base}/api/automation-scan`)).json() as { automations: { status: string }[] }
+    expect(after.automations[0].status).toBe('promoted')
+  })
+
+  it('keeps the legacy full-JSON generation path behind CWC_LEGACY_GEN', async () => {
+    process.env['CWC_LEGACY_GEN'] = '1'
+    await fetch(`${base}/api/automation-scan`, { method: 'POST' })
+    const done = await waitForDone()
+    const id = done.automations[0].id
+
+    const res = await fetch(`${base}/api/automation-scan/${id}/promote`, { method: 'POST' })
+    expect(res.status).toBe(202)
+    await waitForGenerationWorkflowId(id)
+
+    const files = await fs.readdir(wfDir)
+    const cwc = JSON.parse(await fs.readFile(path.join(wfDir, files[0]), 'utf-8'))
+    expect(lastWorkflowPrompt).toContain('complete, valid Claude Workflow Composer (.cwc)')
     expect(cwc.nodes[0].agentRef).toBe('runner-agent')
     expect(cwc.nodes[0].agent.skills).toEqual([])
     expect(cwc.nodes[0].agent.tools).toEqual([])
@@ -189,9 +243,6 @@ describe('automation-scan API', () => {
     expect(cwc.nodes[0].agent.completionCriteria).toBe('')
     expect(cwc.nodes[1].agentRef).toBeUndefined()
     expect(cwc.nodes[1].agent.skills).toEqual(['real-skill'])
-
-    const after = await (await fetch(`${base}/api/automation-scan`)).json() as { automations: { status: string }[] }
-    expect(after.automations[0].status).toBe('promoted')
   })
 
   it('persists promoting status during workflow generation and blocks conflicting actions', async () => {
@@ -201,7 +252,8 @@ describe('automation-scan API', () => {
     let releaseDelay = () => {}
     workflowRunnerDelay = new Promise<void>(resolve => { releaseDelay = () => resolve() })
 
-    const promotePromise = fetch(`${base}/api/automation-scan/${id}/promote`, { method: 'POST' })
+    const promote = await fetch(`${base}/api/automation-scan/${id}/promote`, { method: 'POST' })
+    expect(promote.status).toBe(202)
     try {
       const during = await waitForAutomationStatus(id, 'promoting')
       expect(during.automations[0].status).toBe('promoting')
@@ -215,13 +267,34 @@ describe('automation-scan API', () => {
 
       releaseDelay()
       workflowRunnerDelay = null
-      const res = await promotePromise
-      expect(res.status).toBe(200)
       await waitForAutomationStatus(id, 'promoted')
     } finally {
       releaseDelay()
       workflowRunnerDelay = null
-      await promotePromise.catch(() => undefined)
+    }
+  })
+
+  it('keeps the background job running after the request connection closes', async () => {
+    await fetch(`${base}/api/automation-scan`, { method: 'POST' })
+    const done = await waitForDone()
+    const id = done.automations[0].id
+    let releaseDelay = () => {}
+    workflowRunnerDelay = new Promise<void>(resolve => { releaseDelay = () => resolve() })
+    try {
+      // The 202 returns (and the request connection closes) while the runner is still delayed.
+      const promote = await fetch(`${base}/api/automation-scan/${id}/promote`, { method: 'POST' })
+      expect(promote.status).toBe(202)
+      // The detached job is still in flight, NOT cancelled by the closed request.
+      await waitForAutomationStatus(id, 'promoting')
+      // Let it finish; the workflow lands despite the request having ended.
+      releaseDelay()
+      const after = await waitForGenerationWorkflowId(id)
+      expect(after.generation.workflowId).toBeTruthy()
+      const files = await fs.readdir(wfDir)
+      expect(files.some(f => f.endsWith('.cwc'))).toBe(true)
+    } finally {
+      releaseDelay()
+      workflowRunnerDelay = null
     }
   })
 
@@ -231,7 +304,8 @@ describe('automation-scan API', () => {
     const id = done.automations[0].id
     workflowRunnerDelay = new Promise<void>(() => {})
 
-    const promotePromise = fetch(`${base}/api/automation-scan/${id}/promote`, { method: 'POST' })
+    const promote = await fetch(`${base}/api/automation-scan/${id}/promote`, { method: 'POST' })
+    expect(promote.status).toBe(202)
     try {
       await waitForAutomationStatus(id, 'promoting')
 
@@ -239,16 +313,11 @@ describe('automation-scan API', () => {
       expect(cancel.status).toBe(200)
       expect(await cancel.json()).toEqual({ cancelled: true })
 
-      const promoted = await promotePromise
-      expect(promoted.status).toBe(499)
-      expect(await promoted.json()).toMatchObject({ cancelled: true })
-
       const after = await waitForAutomationStatus(id, 'promotion_cancelled')
       expect(after.automations[0].statusDetail).toContain('cancelled')
       await expect(fs.readdir(wfDir)).rejects.toThrow()
     } finally {
       workflowRunnerDelay = null
-      await promotePromise.catch(() => undefined)
     }
   })
 
@@ -260,7 +329,8 @@ describe('automation-scan API', () => {
     workflowRunnerIgnoresAbort = true
     workflowRunnerDelay = new Promise<void>(resolve => { releaseDelay = () => resolve() })
 
-    const promotePromise = fetch(`${base}/api/automation-scan/${id}/promote`, { method: 'POST' })
+    const promote = await fetch(`${base}/api/automation-scan/${id}/promote`, { method: 'POST' })
+    expect(promote.status).toBe(202)
     try {
       await waitForAutomationStatus(id, 'promoting')
 
@@ -268,10 +338,6 @@ describe('automation-scan API', () => {
       expect(cancel.status).toBe(200)
 
       releaseDelay()
-      const promoted = await promotePromise
-      expect(promoted.status).toBe(499)
-      expect(await promoted.json()).toMatchObject({ cancelled: true })
-
       const after = await waitForAutomationStatus(id, 'promotion_cancelled')
       expect(after.automations[0].statusDetail).toContain('cancelled')
       await expect(fs.readdir(wfDir)).rejects.toThrow()
@@ -279,7 +345,6 @@ describe('automation-scan API', () => {
       releaseDelay()
       workflowRunnerDelay = null
       workflowRunnerIgnoresAbort = false
-      await promotePromise.catch(() => undefined)
     }
   })
 })
