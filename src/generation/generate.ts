@@ -46,6 +46,8 @@ export async function generateWorkflow(args: GenerateWorkflowArgs): Promise<CwcF
     const out = await runner(prompt, { model, signal })
     plan = parsePlannerResult(out.result, onLog)
   } catch (err) {
+    // A deliberate cancel must propagate, not silently compile a fallback workflow.
+    if (signal?.aborted || (err instanceof Error && /cancelled/i.test(err.message))) throw err
     onLog?.(`Planner failed; compiling fallback workflow from observed steps: ${err instanceof Error ? err.message : String(err)}`)
   }
 

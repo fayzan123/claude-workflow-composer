@@ -79,12 +79,14 @@ export function DetectView() {
   const mountedRef = useRef(true)
   const [elapsed, setElapsed] = useState(0)
   const activeGeneration = generation && !generation.workflowId && !generation.error ? generation : null
-  const activePromotionId = activeGeneration?.id ?? autos.find(a => a.status === 'promoting')?.id ?? busyId
+  // Only treat busyId as "still generating" until its automation reaches a terminal status —
+  // otherwise a lingering busyId keeps the header lock-note up after a card already shows cancelled.
+  const busyAuto = busyId ? autos.find(a => a.id === busyId) : undefined
+  const busyIdActive = busyId && (!busyAuto || busyAuto.status === 'promoting') ? busyId : null
+  const activePromotionId = activeGeneration?.id ?? autos.find(a => a.status === 'promoting')?.id ?? busyIdActive
   const generationInProgress = activePromotionId !== null
   const running = status === 'running'
   const latestStep = activeGeneration?.step ?? (logs.length > 0 ? logs[logs.length - 1].message : null)
-  const generationAutomation = autos.find(a => a.id === (generation?.id ?? activePromotionId))
-  const generationTitle = generationAutomation?.title
   const completedWorkflowRef = useRef<string | null>(null)
   useEffect(() => () => { mountedRef.current = false }, [])
 
@@ -100,12 +102,13 @@ export function DetectView() {
     return () => clearInterval(id)
   }, [activeGeneration?.startedAt])
 
+  // Clear this view's busy state on completion. The completion *toast* is fired once,
+  // app-wide, by useGenerationWatcher in the shell — firing it here too would double it.
   useEffect(() => {
     if (!generation?.workflowId || completedWorkflowRef.current === generation.workflowId) return
     completedWorkflowRef.current = generation.workflowId
     setBusyId(null)
-    toast.success('Workflow generated', generationTitle ? `"${generationTitle}" is ready in Workflows` : 'Ready in Workflows')
-  }, [generation?.workflowId, generationTitle])
+  }, [generation?.workflowId])
 
   // Prominent toast when a history scan finishes (the small status pill is easy to miss).
   const prevStatusRef = useRef(status)
@@ -119,14 +122,6 @@ export function DetectView() {
       toast.error('History scan failed', 'See the scan log for details.')
     }
   }, [status]) // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Warn before a browser-level close/refresh while a workflow is generating.
-  useEffect(() => {
-    if (!generationInProgress) return
-    const h = (e: BeforeUnloadEvent) => { e.preventDefault(); e.returnValue = '' }
-    window.addEventListener('beforeunload', h)
-    return () => window.removeEventListener('beforeunload', h)
-  }, [generationInProgress])
 
   async function refresh() {
     const r = await api.automationScan.latest()
@@ -184,8 +179,13 @@ export function DetectView() {
     return () => { es.close(); clearInterval(poll) }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // autoscroll log to bottom
-  useEffect(() => { logEndRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [logs])
+  // Autoscroll the log to the bottom — scroll the log container itself, not via
+  // scrollIntoView, which walks up the ancestor chain and would yank the whole
+  // page/results column to the bottom when generation streams new log lines.
+  useEffect(() => {
+    const el = logEndRef.current?.parentElement
+    if (el) el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' })
+  }, [logs])
 
   // Promote spawns Claude to generate the workflow (seconds). Guard against double-fire and
   // give visible feedback; block dismiss on the same card while a promote is in flight.
@@ -292,6 +292,11 @@ export function DetectView() {
         </div>
         <span className="detect__model-note">{selectedModel.pro}. {selectedModel.con}.</span>
       </div>
+      {generationInProgress && (
+        <p className="detect__lock-note" role="status">
+          A workflow is generating in the background. Scanning, model changes, and dismiss stay paused until it finishes — you can leave this page.
+        </p>
+      )}
       <div className="detect__body">
         <main className="detect__results" aria-label="Detected automations">
           <div className="detect__results-head">
@@ -315,9 +320,14 @@ export function DetectView() {
           ) : (
             <div className="detect__cards">
               {autos.map(a => {
-                const busy = a.status === 'promoting' || busyId === a.id || activePromotionId === a.id
                 const failed = a.status === 'promotion_failed'
                 const cancelled = a.status === 'promotion_cancelled'
+                const promoted = a.status === 'promoted'
+                // A card that has reached a terminal state is never "busy", even if busyId /
+                // activePromotionId briefly linger after a cancel — otherwise the loading bar
+                // renders on top of the cancelled/failed message.
+                const busy = !failed && !cancelled && !promoted
+                  && (a.status === 'promoting' || busyId === a.id || activePromotionId === a.id)
                 return (
                 <article
                   key={a.id}

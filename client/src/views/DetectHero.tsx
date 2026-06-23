@@ -57,6 +57,7 @@ export function DetectHero() {
   const [autos, setAutos] = useState<Auto[]>([])
   const [generation, setGeneration] = useState<Generation | null>(null)
   const [elapsed, setElapsed] = useState(0)
+  const [cancelling, setCancelling] = useState(false)
 
   useEffect(() => {
     let alive = true
@@ -77,6 +78,20 @@ export function DetectHero() {
   function go(to: string) {
     // viewTransition wired in Task 5; harmless no-op flag in unsupported browsers.
     navigate(to, { viewTransition: true })
+  }
+
+  // Cancel a background generation straight from the hero, so the home screen isn't a
+  // dead end during a multi-minute job. The 1.5s poll reconciles; we also refresh now.
+  async function cancelGeneration(id: string) {
+    setCancelling(true)
+    try {
+      await api.automationScan.cancelPromote(id)
+      const r = await api.automationScan.latest()
+      setStatus(r.status)
+      setGeneration(r.generation ?? null)
+      setAutos(r.automations.filter(a => a.status !== 'dismissed'))
+    } catch { /* the poll will reconcile */ }
+    setCancelling(false)
   }
 
   const running = status === 'running'
@@ -136,16 +151,43 @@ export function DetectHero() {
           {count === 1 ? 'thing' : 'things'} you keep doing by hand
         </h1>
         <ul className="hd-hero__candidates" role="list">
-          {candidates.map((a, i) => (
-            <li key={a.id} className="hd-hero__candidate" style={{ ['--i' as string]: i }}>
-              <span className="hd-hero__candidate-title">{a.title}</span>
-              <span className="hd-hero__candidate-meta">
-                {a.id === activeGeneration?.id || a.status === 'promoting'
-                  ? `Generating workflow · ${formatElapsed(elapsed)}`
-                  : `seen ${a.evidence.count}× · ${a.suggestedTrigger.label || 'manual'}`}
-              </span>
-            </li>
-          ))}
+          {candidates.map((a, i) => {
+            const busy = a.id === activeGeneration?.id || a.status === 'promoting'
+            return (
+              <li
+                key={a.id}
+                className={`hd-hero__candidate${busy ? ' hd-hero__candidate--busy' : ''}`}
+                style={{ ['--i' as string]: i }}
+              >
+                <span className="hd-hero__candidate-title">{a.title}</span>
+                <span className="hd-hero__candidate-meta">
+                  {busy
+                    ? `Generating workflow · ${formatElapsed(elapsed)}`
+                    : `seen ${a.evidence.count}× · ${a.suggestedTrigger.label || 'manual'}`}
+                </span>
+                {busy && (
+                  <>
+                    <div className="hd-hero__candidate-bar" role="progressbar" aria-label="Generating workflow">
+                      <div className="hd-hero__candidate-bar-fill" />
+                    </div>
+                    <div className="hd-hero__candidate-actions">
+                      <button type="button" className="hd-hero__candidate-action" onClick={() => go('/detect')}>
+                        View
+                      </button>
+                      <button
+                        type="button"
+                        className="hd-hero__candidate-action hd-hero__candidate-action--cancel"
+                        onClick={() => cancelGeneration(a.id)}
+                        disabled={cancelling}
+                      >
+                        {cancelling ? 'Cancelling…' : 'Cancel'}
+                      </button>
+                    </div>
+                  </>
+                )}
+              </li>
+            )
+          })}
         </ul>
         <div className="hd-hero__actions">
           <button className="hd-hero__cta" type="button" onClick={() => go('/detect')}>

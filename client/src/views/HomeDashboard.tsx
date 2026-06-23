@@ -6,6 +6,7 @@ import type { RunSummary } from '../../../src/server/run-store.ts'
 import type { RunEvent } from '../../../src/run-events.ts'
 import { api } from '../lib/api.ts'
 import { shouldRefreshDashboard } from '../lib/dashboard-events.ts'
+import { WORKFLOW_GENERATED_EVENT } from '../hooks/useGenerationWatcher.ts'
 import { TEMPLATES } from '../templates/index.ts'
 import { HelpModal } from '../components/HelpModal.tsx'
 import { ThemeToggle } from '../components/common/ThemeToggle.tsx'
@@ -159,6 +160,18 @@ export function HomeDashboard() {
       api.automations.triggers().then(setTriggers).catch(() => {})
     }
     return () => es.close()
+  }, [])
+
+  // ── A background generation just finished: refresh the workflow list + badge
+  //    now, whatever tab is showing, so the new file is there when the user looks.
+  useEffect(() => {
+    function onGenerated() {
+      api.workflows.list().then((items) => {
+        setWorkflows(items.slice().sort((a, b) => b.updated.localeCompare(a.updated)))
+      }).catch(() => {})
+    }
+    window.addEventListener(WORKFLOW_GENERATED_EVENT, onGenerated)
+    return () => window.removeEventListener(WORKFLOW_GENERATED_EVENT, onGenerated)
   }, [])
 
   // ── Live reload workflows on that tab

@@ -237,6 +237,21 @@
   padding: var(--space-sm) var(--space-md);
 }
 
+/* Inline lock-note: the discoverable, touch-friendly counterpart to the hover-only
+   "already generating" tooltips on the disabled scan/model/dismiss controls. */
+.detect__lock-note {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  margin: var(--space-md) var(--space-xl) 0;
+  padding: var(--space-sm) var(--space-md);
+  font-size: var(--text-sm);
+  color: var(--color-text-secondary);
+  background: color-mix(in oklch, var(--color-primary) 8%, transparent);
+  border: 1px solid color-mix(in oklch, var(--color-primary) 30%, var(--color-border));
+  border-radius: var(--radius-md);
+}
+
 .detect__empty-state {
   max-width: 520px;
   margin: 0 auto;
