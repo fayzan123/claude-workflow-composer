@@ -10,7 +10,7 @@ import { killProcessTree } from './process-tree.js'
 // surfaced as "claude timed out after 120s" on the longer promotions. Matches the scan ceiling.
 const DEFAULT_TIMEOUT_MS = 300_000
 
-export interface RunClaudeOptions {
+interface RunClaudeOptions {
   resume?: string
   binPath?: string
   timeoutMs?: number
@@ -19,7 +19,7 @@ export interface RunClaudeOptions {
   signal?: AbortSignal
 }
 
-export interface RunClaudeResult {
+interface RunClaudeResult {
   result: string
   sessionId: string
 }

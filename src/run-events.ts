@@ -1,8 +1,8 @@
 // src/run-events.ts
-export const RUN_EVENT_TYPES = ['run_started', 'step_started', 'step_completed', 'artifact_produced', 'run_completed', 'awaiting_approval', 'run_paused'] as const
+const RUN_EVENT_TYPES = ['run_started', 'step_started', 'step_completed', 'artifact_produced', 'run_completed', 'awaiting_approval', 'run_paused'] as const
 export type RunEventType = (typeof RUN_EVENT_TYPES)[number]
 
-export const RUN_STATUSES = ['complete', 'escalated', 'aborted', 'error'] as const
+const RUN_STATUSES = ['complete', 'escalated', 'aborted', 'error'] as const
 export type RunStatus = (typeof RUN_STATUSES)[number]
 
 export interface RunEvent {

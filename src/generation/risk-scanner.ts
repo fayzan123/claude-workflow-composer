@@ -1,7 +1,7 @@
 import type { DetectedAutomation } from '../detection/types.js'
 import type { PlanPhase } from './plan-schema.js'
 
-export const RISK_RE = /\b(publish|deploy|release|push|delete|drop|rm\s+-rf|prod|production|email|slack|notify|webhook|charge|bill|payment|merge|force-push)\b/i
+const RISK_RE = /\b(publish|deploy|release|push|delete|drop|rm\s+-rf|prod|production|email|slack|notify|webhook|charge|bill|payment|merge|force-push)\b/i
 const HARD_RISK_RE = /\b(publish|deploy|release|push|delete|drop|rm\s+-rf|email|slack|notify|webhook|charge|bill|payment|merge|force-push)\b/i
 const SAFE_VERB_RE = /\b(build|test|tests|lint|typecheck|type-check|compile)\b/i
 const PROD_ONLY_RE = /\b(prod|production)\b/gi

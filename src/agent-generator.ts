@@ -27,11 +27,11 @@ export function assembleAgentFile(spec: AgentSpec, body: string): string {
   return `${lines.join('\n')}\n\n${body.trim()}\n`
 }
 
-export const VALID_TOOLS = [
+const VALID_TOOLS = [
   'Read', 'Write', 'Edit', 'Bash', 'Grep', 'Glob', 'WebSearch', 'WebFetch', 'Agent', 'TodoWrite',
 ] as const
 
-export const VALID_COLORS = [
+const VALID_COLORS = [
   'blue', 'cyan', 'green', 'orange', 'red', 'purple', 'yellow',
 ] as const
 
@@ -110,4 +110,3 @@ point of view, and stakes. Then these sections:
 
 Be specific to THIS agent's job. Do NOT write generic filler like "You are a helpful assistant that ...". Every section must be concrete and actionable for ${spec.name}.`
 }
-

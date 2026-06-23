@@ -26,7 +26,7 @@ export interface AutomationScanRouterOptions {
 }
 
 /** Models the scan analysis may run on (friendly key → CLI model id). Allowlisted so a request can't pass an arbitrary --model. */
-export const SCAN_MODELS: Record<string, string> = {
+const SCAN_MODELS: Record<string, string> = {
   haiku: 'claude-haiku-4-5',
   sonnet: 'claude-sonnet-4-6',
   opus: 'claude-opus-4-8',

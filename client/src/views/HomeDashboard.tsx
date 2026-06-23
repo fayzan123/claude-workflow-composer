@@ -31,7 +31,7 @@ export function relativeTime(isoString: string, now = Date.now()): string {
   return `${Math.floor(hr / 24)}d ago`
 }
 
-export function untilTime(isoString: string, now = Date.now()): string {
+function untilTime(isoString: string, now = Date.now()): string {
   const diff = new Date(isoString).getTime() - now
   if (diff <= 0) return 'now'
   const min = Math.floor(diff / 60_000)

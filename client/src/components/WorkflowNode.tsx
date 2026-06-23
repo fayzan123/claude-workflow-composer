@@ -5,7 +5,7 @@ import type { ValidationWarning, ValidationError } from '../lib/validation.ts'
 import { slugify } from '../../../src/slugify.ts'
 import { modelChipLabel } from '../lib/models.ts'
 
-export interface WorkflowNodeData {
+interface WorkflowNodeData {
   id: string
   position: { x: number; y: number }
   exportedSlug: string | null

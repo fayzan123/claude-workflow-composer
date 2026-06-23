@@ -5,7 +5,7 @@ export interface Archetype {
   risky: boolean
 }
 
-export const ARCHETYPES: Archetype[] = [
+const ARCHETYPES: Archetype[] = [
   { id: 'verify', signals: /\b(test|tests|lint|typecheck|type-check|build|compile|verify|validate|check)\b/i, tools: ['Bash', 'Read'], risky: false },
   { id: 'prepare', signals: /\b(scaffold|duplicate|clone|copy|setup|set up|bump|version|configure|prepare|init|generate)\b/i, tools: ['Read', 'Edit', 'Write', 'Bash'], risky: false },
   { id: 'implement', signals: /\b(implement|write|add|create|build feature|code|fix|refactor|edit)\b/i, tools: ['Read', 'Edit', 'Write', 'Bash'], risky: false },

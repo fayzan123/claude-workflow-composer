@@ -1,7 +1,7 @@
 import type { NextFunction, Request, Response } from 'express'
 import { randomUUID } from 'node:crypto'
 
-export function createServerToken(): string {
+function createServerToken(): string {
   return randomUUID()
 }
 

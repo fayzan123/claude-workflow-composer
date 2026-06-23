@@ -4,7 +4,7 @@ import { resolveClaudeBin } from './claude-runner.js'
 import { killProcessTree } from './process-tree.js'
 
 export interface StreamLogEvent { level: 'info' | 'claude' | 'error'; message: string }
-export interface StreamingRunResult { resultText: string; costUsd?: number }
+interface StreamingRunResult { resultText: string; costUsd?: number }
 export type StreamingRunner = (
   prompt: string,
   opts: { onLog: (e: StreamLogEvent) => void; binPath?: string; timeoutMs?: number; model?: string },

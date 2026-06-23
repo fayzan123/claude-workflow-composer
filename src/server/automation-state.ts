@@ -5,7 +5,7 @@ import * as path from 'node:path'
 import { createHash } from 'node:crypto'
 import type { CwcTrigger } from '../schema.js'
 
-export interface TriggerState {
+interface TriggerState {
   lastFiredAt?: string
   runsOnDate?: string          // yyyy-mm-dd the runsCount applies to
   runsCount: number

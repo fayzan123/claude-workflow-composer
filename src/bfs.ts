@@ -1,6 +1,6 @@
 import type { CwcNode, CwcEdge } from './schema.js'
 
-export interface AnnotatedEdge {
+interface AnnotatedEdge {
   edge: CwcEdge
   isBackEdge: boolean
 }

@@ -35,7 +35,7 @@ export interface CompileInput {
 const X_STEP = 350
 const Y_BASE = 300
 
-export function defaultDeps(plan: WorkflowPlan): CompilerDeps {
+function defaultDeps(plan: WorkflowPlan): CompilerDeps {
   return {
     resolveReuse: (phase, automation, catalog) => resolveReuseGate(phase, automation, catalog, plan),
     scanRisk: scanRiskDefault,

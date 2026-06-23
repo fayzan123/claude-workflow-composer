@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 export type ThemePreference = 'system' | 'light' | 'dark'
 export type ResolvedTheme = 'light' | 'dark'
 
-export const THEME_STORAGE_KEY = 'cwc.theme'
+const THEME_STORAGE_KEY = 'cwc.theme'
 const THEME_CHANGE_EVENT = 'cwc-theme-change'
 
 export function parseThemePreference(value: unknown): ThemePreference | null {
@@ -39,7 +39,7 @@ function activeTheme(): { preference: ThemePreference; resolvedTheme: ResolvedTh
   }
 }
 
-export function applyThemePreference(preference: ThemePreference): ResolvedTheme {
+function applyThemePreference(preference: ThemePreference): ResolvedTheme {
   const resolvedTheme = resolveThemePreference(preference, systemTheme())
   if (typeof document !== 'undefined') {
     document.documentElement.dataset.theme = resolvedTheme

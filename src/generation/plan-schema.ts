@@ -1,4 +1,4 @@
-export interface PlanReuse {
+interface PlanReuse {
   kind: 'skill' | 'agent'
   slug: string
   coversStepIndexes: number[]

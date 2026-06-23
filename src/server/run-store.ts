@@ -3,7 +3,7 @@ import * as fs from 'node:fs/promises'
 import * as path from 'node:path'
 import type { RunEvent, RunStatus } from '../run-events.js'
 
-export const STALE_AFTER_MS = 15 * 60_000
+const STALE_AFTER_MS = 15 * 60_000
 
 export interface RunSummary {
   runId: string

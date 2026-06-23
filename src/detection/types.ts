@@ -12,7 +12,7 @@ export interface TaskUnit {
   commands: string[]         // Bash input.command strings, in order
 }
 
-export interface InferredTrigger {
+interface InferredTrigger {
   kind: 'event' | 'schedule' | 'manual'
   label: string              // human text, e.g. "on every push" / "weekly, around Mon 09:00"
 }

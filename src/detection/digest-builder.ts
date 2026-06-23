@@ -2,7 +2,7 @@
 import type { TaskUnit } from './types.js'
 import { deriveSignature } from './signature.js'
 
-export interface DigestLine { ref: string; unit: TaskUnit; text: string }
+interface DigestLine { ref: string; unit: TaskUnit; text: string }
 export interface RepoDigest { repo: string; originalRepo: string; lines: DigestLine[] }
 
 /** A unit is worth analyzing only if it did real work (used at least one tool). */

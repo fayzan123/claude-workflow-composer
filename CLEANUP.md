@@ -279,3 +279,34 @@ Verification after package change:
 Notes:
 
 - `npm install --package-lock-only --ignore-scripts` and `npm prune --ignore-scripts` report 7 existing audit findings (5 moderate, 1 high, 1 critical). This cleanup batch did not run upgrades or audit fixes.
+
+### Batch 3: module-local unexports
+
+Status: applied and verified.
+
+Changed:
+
+- Converted module-local exported constants/functions/interfaces to local declarations across 20 files.
+- No runtime logic changed; the batch only removes `export` from symbols that had no external imports.
+
+Examples:
+
+- Client internals: theme storage/apply helper, `HomeDashboard.untilTime`, `WorkflowNodeData`.
+- Generation internals: `ARCHETYPES`, `defaultDeps`, `MIN_MATCHES`, `RISK_RE`, `PlanReuse`.
+- Server internals: scan model map, stale-run timeout, security token creator, scan-store state types, Claude runner result/options types.
+- Core internals: `AnnotatedEdge`, digest/trigger helper interfaces, run event/status arrays.
+
+Evidence:
+
+- `rg` found no imports of the touched symbols in `src`, `client/src`, `tests`, `scripts`, or `bin`.
+- Export declaration count under `src` and `client/src` changed from 278 before the batch to 253 after the batch.
+- Post-change `knip` reports only intentionally retained export findings:
+  - `TERMS` / `CONTROL_HINTS`: retained because `help-copy.ts` explicitly marks these maps as phase scaffolding and says not to prune.
+  - `startServer`: retained because `src/server/start.ts` is a protected entry point.
+  - `CwcMeta` / `CwcArtifact` type-barrel findings: retained to avoid narrowing canonical schema/client type surface.
+
+Verification after export-surface change:
+
+- `npm test`: 545/545 passing, 1 skipped replay fixture test.
+- `npm run typecheck`: clean.
+- `npm run build`: clean, with the existing Vite chunk-size warning.

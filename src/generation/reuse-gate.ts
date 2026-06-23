@@ -4,7 +4,7 @@ import type { PlanPhase, WorkflowPlan } from './plan-schema.js'
 import type { GenerationCatalog, ReuseDecision } from './compiler.js'
 
 export const CAPABILITY_THRESHOLD = 0.34
-export const MIN_MATCHES = 2
+const MIN_MATCHES = 2
 
 function tokenize(text: string): string[] {
   return (text.toLowerCase().match(/[a-z0-9]+/g) ?? []).filter(token => token.length > 2)

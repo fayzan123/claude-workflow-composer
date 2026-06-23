@@ -7,7 +7,7 @@ import type { DetectedAutomation } from '../detection/types.js'
 import type { StreamLogEvent } from './streaming-analyzer.js'
 
 export interface LogEntry extends StreamLogEvent { ts: string }
-export interface GenerationState {
+interface GenerationState {
   id: string
   step: string
   startedAt: string
@@ -15,7 +15,7 @@ export interface GenerationState {
   error?: string
 }
 
-export interface ScanResult {
+interface ScanResult {
   status: 'running' | 'done' | 'error'
   startedAt: string
   finishedAt?: string
