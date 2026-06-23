@@ -310,3 +310,25 @@ Verification after export-surface change:
 - `npm test`: 545/545 passing, 1 skipped replay fixture test.
 - `npm run typecheck`: clean.
 - `npm run build`: clean, with the existing Vite chunk-size warning.
+
+### Batch 4: stale WorkflowView selectors
+
+Status: applied and verified.
+
+Pruned:
+
+- `client/src/views/WorkflowView.css`
+  - Removed stale runs-mode and automate-mode wrapper selectors from the old interim mode layout.
+  - Kept active `workflow-view`, `workflow-view__body`, `workflow-view__loading`, `workflow-view__action-btn`, and view-transition styles.
+
+Evidence:
+
+- `rg` found no active `workflow-view--runs`, `workflow-view__runs-body`, `workflow-view__automate-*`, or `workflow-view__trigger-*` class names in `client/src` outside the CSS file.
+- A direct selector scan against `WorkflowView.tsx` confirmed those selectors had no matching class names.
+- Built client CSS changed from 161.20 kB gzip 21.59 kB to 160.09 kB gzip 21.44 kB.
+
+Verification after CSS change:
+
+- `npm test`: 545/545 passing, 1 skipped replay fixture test.
+- `npm run typecheck`: clean.
+- `npm run build`: clean, with the existing Vite chunk-size warning.
