@@ -34,7 +34,6 @@
     "@types/react": "^19.2.15",
     "@types/react-dom": "^19.2.3",
     "@types/uuid": "^10.0.0",
-    "@types/ws": "^8.18.1",
     "@vitejs/plugin-react": "^4.7.0",
     "typescript": "^5.4.0",
     "vitest": "^1.6.0"
@@ -48,7 +47,6 @@
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
     "react-router-dom": "^7.17.0",
-    "uuid": "^9.0.0",
-    "ws": "^8.21.0"
+    "uuid": "^9.0.0"
   }
 }

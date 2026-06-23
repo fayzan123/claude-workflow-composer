@@ -243,3 +243,39 @@ Verification after code change:
 - `npm test`: 545/545 passing, 1 skipped replay fixture test.
 - `npm run typecheck`: clean.
 - `npm run build`: clean, with the existing Vite chunk-size warning.
+
+### Batch 2: unused WebSocket dependencies
+
+Status: applied and verified.
+
+Removed:
+
+- `ws` from `dependencies`
+- `@types/ws` from `devDependencies`
+
+Pruned:
+
+- `package-lock.json`
+  - Removed the root dependency entries.
+  - Removed `node_modules/ws`.
+  - Removed `node_modules/@types/ws`.
+- Local `node_modules` was pruned with `npm prune --ignore-scripts` so the local install no longer reports the removed packages as extraneous.
+
+Evidence:
+
+- Pre-removal `knip` and `depcheck` both reported `ws` and `@types/ws` unused.
+- `rg` found no imports/requires of `ws`, `WebSocket`, or `WebSocketServer` in `src`, `client`, `tests`, `scripts`, or `bin`.
+- Post-removal `npm ls ws @types/ws` reports an empty tree.
+- Post-removal `rg` finds no `ws` / `@types/ws` package entries, only unrelated `node_modules/wsl-utils` in `package-lock.json`.
+- Post-removal `knip` no longer reports unused dependencies.
+- Post-removal `depcheck` reports only the pre-existing direct `vite` issue for `client/vite.config.ts`.
+
+Verification after package change:
+
+- `npm test`: 545/545 passing, 1 skipped replay fixture test.
+- `npm run typecheck`: clean.
+- `npm run build`: clean, with the existing Vite chunk-size warning.
+
+Notes:
+
+- `npm install --package-lock-only --ignore-scripts` and `npm prune --ignore-scripts` report 7 existing audit findings (5 moderate, 1 high, 1 critical). This cleanup batch did not run upgrades or audit fixes.
