@@ -5,6 +5,7 @@ import type { ExportTarget, ExportResult } from '../../../src/exporter.ts'
 import type { DeleteExportResult } from '../../../src/server/api/export-delete.ts'
 import { slugify } from '../../../src/slugify.ts'
 import { api } from '../lib/api.ts'
+import { toast } from '../lib/toast.ts'
 import { FieldHint } from './common/FieldHint.tsx'
 import './ExportFlow.css'
 
@@ -64,8 +65,10 @@ export function ExportFlow({ workflow, dispatch, onClose }: Props) {
       }
       setResult(res)
       setStep('result')
+      toast.success('Workflow exported', `/cwc-${slugify(res.updatedCwc.meta.name)} is ready in Claude Code`)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Export failed')
+      toast.error('Export failed', err instanceof Error ? err.message : 'Could not export workflow')
       setStep('confirming')
     }
   }
@@ -86,8 +89,10 @@ export function ExportFlow({ workflow, dispatch, onClose }: Props) {
       const res = await api.deleteExport(workflow, target)
       setDeleteResult(res)
       setStep('delete-result')
+      toast.success('Export deleted', `${res.deleted.length} file${res.deleted.length !== 1 ? 's' : ''} removed`)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Delete failed')
+      toast.error('Delete export failed', err instanceof Error ? err.message : 'Could not delete export')
       setStep('delete-target')
     }
   }

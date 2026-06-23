@@ -6,6 +6,7 @@ import type { RunSummary } from '../../../src/server/run-store.ts'
 import type { RunEvent } from '../../../src/run-events.ts'
 import { api } from '../lib/api.ts'
 import { shouldRefreshDashboard } from '../lib/dashboard-events.ts'
+import { toast } from '../lib/toast.ts'
 import { WORKFLOW_GENERATED_EVENT } from '../hooks/useGenerationWatcher.ts'
 import { TEMPLATES } from '../templates/index.ts'
 import { HelpModal } from '../components/HelpModal.tsx'
@@ -228,9 +229,11 @@ export function HomeDashboard() {
       const { path: resolvedPath } = await pathRes.json() as { path: string }
       await api.workflows.save(resolvedPath, cwc)
       await api.recents.add(resolvedPath)
+      toast.success('Workflow created', `"${cwc.meta.name}" is ready to edit`)
       handleSelect(cwc, resolvedPath)
     } catch {
       setError('Failed to create workflow. Is the server running?')
+      toast.error('Workflow creation failed', 'Check that the CWC server is running.')
       setCreating(false)
     }
   }
@@ -257,17 +260,21 @@ export function HomeDashboard() {
 
   // ── Delete workflow
   async function handleDelete(path: string) {
+    const fallbackName = workflows.find((w) => w.path === path)?.name ?? 'Workflow'
     try {
       let cwcFile: CwcFile | undefined
       try { cwcFile = await api.workflows.read(path) } catch { /* corrupted or missing */ }
+      const name = cwcFile?.meta.name ?? fallbackName
       if (cwcFile) {
         try { await api.deleteExport(cwcFile, { type: 'user' }) } catch { /* best-effort */ }
       }
       await api.workflows.delete(path)
       await api.recents.remove(path)
       setWorkflows((ws) => ws.filter((w) => w.path !== path))
+      toast.success('Workflow deleted', `"${name}" was removed`)
     } catch {
       setWorkflows((ws) => ws.filter((w) => w.path !== path))
+      toast.info('Workflow removed from list', `"${fallbackName}" may already have been deleted or moved`)
     } finally {
       setDeletingPath(null)
     }
@@ -275,9 +282,13 @@ export function HomeDashboard() {
 
   // ── Delete deployed
   async function handleDeleteDeployed(slug: string) {
+    const name = deployed.find((d) => d.slug === slug)?.name ?? slug
     try {
       await api.exportedWorkflows.delete(slug)
-    } catch { /* best-effort */ } finally {
+      toast.success('Export removed', `"${name}" was removed from Claude`)
+    } catch {
+      toast.info('Export removed from list', `"${name}" may already have been deleted`)
+    } finally {
       setDeployed((ds) => ds.filter((d) => d.slug !== slug))
       setDeletingSlug(null)
     }

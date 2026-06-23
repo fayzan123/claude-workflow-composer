@@ -6,6 +6,10 @@ import { toast } from '../lib/toast.ts'
  *  mounted view (e.g. the dashboard's workflow list) can refresh itself. */
 export const WORKFLOW_GENERATED_EVENT = 'cwc:workflow-generated'
 
+function generationNotificationKey(gen: { id: string; startedAt: string; workflowId?: string; error?: string }): string {
+  return `${gen.id}:${gen.startedAt}:${gen.workflowId ?? gen.error ?? ''}`
+}
+
 /**
  * Shell-level watcher: polls generation state on every route so a workflow that
  * finishes (or fails) in the background always surfaces a toast — even when neither
@@ -32,9 +36,10 @@ export function useGenerationWatcher(): void {
 
       // First successful poll: seed already-finished generations so a result that
       // completed before this tab opened doesn't fire a stale toast on load.
-      if (!initialized.current) { seen.current.add(gen.id); return }
-      if (seen.current.has(gen.id)) return
-      seen.current.add(gen.id)
+      const key = generationNotificationKey(gen)
+      if (!initialized.current) { seen.current.add(key); return }
+      if (seen.current.has(key)) return
+      seen.current.add(key)
 
       const title = r.automations.find(a => a.id === gen.id)?.title
       if (gen.workflowId) {
