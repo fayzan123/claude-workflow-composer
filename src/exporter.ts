@@ -161,7 +161,7 @@ export async function exportWorkflow(
       resolvedSkills.push(resolved)
     }
 
-    const content = buildAgentFileContent(node, resolvedSkills, workflowId)
+    const content = buildAgentFileContent(node, resolvedSkills, workflowId, newSlug)
     const existingAgent = await safeReadFile(agentPath)
     if (existingAgent !== null) {
       const status = detectConflict(existingAgent, AGENT_OWNERSHIP_REGEX, workflowId)

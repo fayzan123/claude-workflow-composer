@@ -1,5 +1,6 @@
 import type { CwcNode } from './schema.js'
 import type { SkillResolution } from './skill-resolver.js'
+import { agentSlug } from './slugify.js'
 
 /**
  * Render a string as a YAML scalar for frontmatter. Free-text fields like an
@@ -24,10 +25,13 @@ export function yamlScalar(value: string): string {
   return `"${escaped}"`
 }
 
-function buildFrontmatter(node: CwcNode): string {
-  const { name, description, color, model, tools } = node.agent
+function buildFrontmatter(node: CwcNode, slug: string): string {
+  const { description, color, model, tools } = node.agent
   const lines = ['---']
-  lines.push(`name: ${yamlScalar(name)}`)
+  // Claude Code resolves `subagent_type` (what the orchestrator dispatches) against this
+  // `name` field, NOT the filename — so it MUST be the slug, or dispatch fails with
+  // "agent type not found". The human-readable title lives in `description`.
+  lines.push(`name: ${yamlScalar(slug)}`)
   lines.push(`description: ${yamlScalar(description)}`)
   if (color) lines.push(`color: ${color}`)
   if (model) lines.push(`model: ${model}`)
@@ -49,9 +53,10 @@ export function buildAgentFileContent(
   node: CwcNode,
   resolvedSkills: SkillResolution[],
   workflowId: string,
+  slug: string = agentSlug(node.agent.name),
 ): string {
   const parts: string[] = []
-  parts.push(buildFrontmatter(node))
+  parts.push(buildFrontmatter(node, slug))
 
   const { systemPrompt, completionCriteria } = node.agent
   if (systemPrompt && systemPrompt.trim().length > 0) {

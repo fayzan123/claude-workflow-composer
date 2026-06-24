@@ -57,6 +57,36 @@ describe('exportWorkflow — linear.cwc', () => {
     }
   })
 
+  it('every orchestrator subagent_type matches an exported agent frontmatter name', async () => {
+    // Regression: Claude Code resolves subagent_type against the agent file's frontmatter
+    // `name`, not its filename. If the orchestrator dispatches by slug but agents are named
+    // with their human title, every dispatch fails with "agent type not found".
+    const cwc = await loadFixture('linear.cwc')
+    const target: ExportTarget = { type: 'project', projectDir: tmpDir }
+    const skillsDir = path.join(tmpDir, 'skills')
+    await exportWorkflow(cwc, target, { skillsDir })
+
+    const agentsDir = path.join(tmpDir, '.claude', 'agents')
+    const agentFiles = await fs.readdir(agentsDir)
+    const nameByStem = new Map<string, string>()
+    for (const file of agentFiles) {
+      const content = await fs.readFile(path.join(agentsDir, file), 'utf-8')
+      const stem = file.replace(/\.md$/, '')
+      const name = String(matter(content).data.name)
+      // The agent's name must equal its filename stem (both the slug)…
+      expect(name).toBe(stem)
+      nameByStem.set(name, stem)
+    }
+
+    const skillContent = await fs.readFile(path.join(skillsDir, 'cwc-linear-pipeline', 'SKILL.md'), 'utf-8')
+    const dispatched = [...skillContent.matchAll(/subagent_type: "([^"]+)"/g)].map(m => m[1])
+    expect(dispatched.length).toBeGreaterThan(0)
+    // …and every slug the orchestrator dispatches must be a registered agent name.
+    for (const slug of dispatched) {
+      expect(nameByStem.has(slug)).toBe(true)
+    }
+  })
+
   it('agent ownership comment matches node id and workflow id', async () => {
     const cwc = await loadFixture('linear.cwc')
     const target: ExportTarget = { type: 'project', projectDir: tmpDir }

@@ -23,7 +23,8 @@ const baseNode: CwcNode = {
 describe('buildAgentFileContent', () => {
   it('produces valid frontmatter with all known fields', () => {
     const content = buildAgentFileContent(baseNode, [], 'wf-uuid')
-    expect(content).toContain('name: Backend Architect')
+    // name is the slug (what Claude Code matches subagent_type against), not the title
+    expect(content).toContain('name: backend-architect')
     expect(content).toContain('description: Designs the API')
     expect(content).toContain('color: blue')
     expect(content).toContain('model: inherit')
@@ -91,7 +92,7 @@ describe('buildAgentFileContent', () => {
     )
   })
 
-  it('produces parseable frontmatter when name/description contain a colon', () => {
+  it('produces parseable frontmatter when description contains a colon (name is slugified)', () => {
     const node = {
       ...baseNode,
       agent: { ...baseNode.agent, name: 'Backend: Architect', description: 'Reviews code: finds bugs' },
@@ -99,11 +100,11 @@ describe('buildAgentFileContent', () => {
     const content = buildAgentFileContent(node, [], 'wf-uuid')
     expect(() => matter(content)).not.toThrow()
     const { data } = matter(content)
-    expect(data.name).toBe('Backend: Architect')
+    expect(data.name).toBe('backend-architect')
     expect(data.description).toBe('Reviews code: finds bugs')
   })
 
-  it('escapes quotes and special leading characters in frontmatter values', () => {
+  it('escapes quotes and special leading characters in the description', () => {
     const node = {
       ...baseNode,
       agent: { ...baseNode.agent, name: '# Lead "Dev"', description: '@mention {curly}' },
@@ -111,13 +112,18 @@ describe('buildAgentFileContent', () => {
     const content = buildAgentFileContent(node, [], 'wf-uuid')
     expect(() => matter(content)).not.toThrow()
     const { data } = matter(content)
-    expect(data.name).toBe('# Lead "Dev"')
+    expect(data.name).toBe('lead-dev')
     expect(data.description).toBe('@mention {curly}')
+  })
+
+  it('honors an explicit slug override for the name field', () => {
+    const content = buildAgentFileContent(baseNode, [], 'wf-uuid', 'custom-slug')
+    expect(content).toContain('name: custom-slug')
   })
 
   it('leaves simple values unquoted', () => {
     const content = buildAgentFileContent(baseNode, [], 'wf-uuid')
-    expect(content).toContain('name: Backend Architect')
+    expect(content).toContain('name: backend-architect')
     expect(content).toContain('description: Designs the API')
   })
 })

@@ -28,7 +28,7 @@ it('POST /api/export/preview returns file contents without writing to disk', asy
   expect(files.length).toBeGreaterThanOrEqual(1)
   const agentFile = files.find((f) => f.path.endsWith('developer.md'))
   expect(agentFile).toBeDefined()
-  expect(agentFile!.content).toContain('name: Developer')
+  expect(agentFile!.content).toContain('name: developer')
   expect(agentFile!.content).toContain('## Completion Criteria')
   expect(Array.isArray(warnings)).toBe(true)
 })

@@ -51,7 +51,7 @@ it('POST /api/export writes agent .md and skill .md, returns updatedCwc with exp
   // Agent .md file written
   const agentFile = path.join(tmpAgentsDir, '.claude', 'agents', 'developer.md')
   const agentContent = await fs.readFile(agentFile, 'utf-8')
-  expect(agentContent).toContain('name: Developer')
+  expect(agentContent).toContain('name: developer')
   expect(agentContent).toContain('## Completion Criteria')
 
   // Workflow skill written
