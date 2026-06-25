@@ -1,5 +1,8 @@
 import * as net from 'node:net'
 import * as http from 'node:http'
+import { execFile } from 'node:child_process'
+import * as fsp from 'node:fs/promises'
+import * as path from 'node:path'
 
 export type PortState = 'cwc' | 'foreign' | 'free'
 
@@ -19,7 +22,7 @@ export function serverResponding(port: number): Promise<boolean> {
 
 /** True iff something accepts a TCP connection on this port. Timeout is treated
  * as in-use (conservative — better to fail loud than spawn into ambiguity). */
-export function portInUse(port: number, host = '127.0.0.1', timeoutMs = 500): Promise<boolean> {
+export function portInUse(port: number, host = '127.0.0.1', timeoutMs = 1000): Promise<boolean> {
   return new Promise((resolve) => {
     const socket = net.connect({ port, host })
     let settled = false
@@ -46,8 +49,6 @@ export async function waitForServer(port: number, timeoutMs: number): Promise<bo
   return serverResponding(port)
 }
 
-import { execFile } from 'node:child_process'
-
 export interface Occupant { pid: number; command: string }
 export type LsofRunner = (cmd: string, args: string[]) => Promise<string>
 
@@ -61,7 +62,7 @@ function parseLsof(output: string): Occupant | null {
     if (!line.trim() || line.startsWith('COMMAND')) continue
     const cols = line.trim().split(/\s+/)
     const pid = Number(cols[1])
-    if (cols[0] && Number.isInteger(pid)) return { pid, command: cols[0] }
+    if (cols[0] && Number.isInteger(pid) && pid > 0) return { pid, command: cols[0] }
   }
   return null
 }
@@ -73,9 +74,6 @@ export function resolveOccupant(port: number, run: LsofRunner = defaultLsof): Pr
     .then(parseLsof)
     .catch(() => null)
 }
-
-import * as fsp from 'node:fs/promises'
-import * as path from 'node:path'
 
 export type StartResult = 'started' | 'already-running' | 'foreign-conflict' | 'failed'
 

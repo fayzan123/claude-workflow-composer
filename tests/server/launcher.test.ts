@@ -1,13 +1,19 @@
 import { describe, it, expect, afterEach, beforeEach } from 'vitest'
 import * as net from 'node:net'
 import * as http from 'node:http'
-import { portInUse, serverResponding, probePortState, waitForServer } from '../../src/server/launcher.js'
-import { resolveOccupant } from '../../src/server/launcher.js'
 import * as fs from 'node:fs/promises'
 import * as os from 'node:os'
 import * as path from 'node:path'
-import { startCwc, type StartCtx } from '../../src/server/launcher.js'
-import { describeIdleStop } from '../../src/server/launcher.js'
+import {
+  portInUse,
+  serverResponding,
+  probePortState,
+  waitForServer,
+  resolveOccupant,
+  startCwc,
+  describeIdleStop,
+  type StartCtx,
+} from '../../src/server/launcher.js'
 
 const openSockets: Array<net.Server | http.Server> = []
 afterEach(async () => {
