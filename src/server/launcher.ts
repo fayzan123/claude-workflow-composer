@@ -73,3 +73,86 @@ export function resolveOccupant(port: number, run: LsofRunner = defaultLsof): Pr
     .then(parseLsof)
     .catch(() => null)
 }
+
+import * as fsp from 'node:fs/promises'
+import * as path from 'node:path'
+
+export type StartResult = 'started' | 'already-running' | 'foreign-conflict' | 'failed'
+
+export interface StartCtx {
+  port: number
+  pidFile: string
+  stderrLog: string
+  /** Live PID if this command owns a running server, else null. */
+  isOwnedServerRunning: () => Promise<number | null>
+  /** SIGTERM the owned server, wait for exit, remove its PID file. */
+  restartOwnedServer: (pid: number) => Promise<void>
+  probePortState: (port: number) => Promise<PortState>
+  /** Spawn the detached server (output redirected to logs); return child.pid. */
+  spawnServer: () => number | undefined
+  waitForServer: (timeoutMs: number) => Promise<boolean>
+  resolveOccupant: (port: number) => Promise<Occupant | null>
+  openUrl: (url: string) => Promise<void>
+  io: { log: (m: string) => void; error: (m: string) => void }
+  verifyTimeoutMs?: number
+}
+
+function foreignConflictMessage(port: number, occ: Occupant | null): string {
+  const who = occ ? ` (PID ${occ.pid}, ${occ.command})` : ''
+  return `Port ${port} is already in use by another process that CWC didn't start${who}. ` +
+    `CWC requires port ${port} and cannot use a different one. Free it — find it with ` +
+    `\`lsof -i:${port}\`, then stop that process — and re-run \`npx claude-cwc\`. ` +
+    `If you started CWC another way, \`npx claude-cwc stop\` may help.`
+}
+
+async function readLogTail(logPath: string, lines = 10): Promise<string> {
+  try {
+    const content = await fsp.readFile(logPath, 'utf-8')
+    return content.trimEnd().split('\n').slice(-lines).join('\n')
+  } catch { return '' }
+}
+
+export async function startCwc(ctx: StartCtx): Promise<StartResult> {
+  const url = `http://localhost:${ctx.port}`
+
+  const ownedPid = await ctx.isOwnedServerRunning()
+  if (ownedPid !== null) {
+    await ctx.restartOwnedServer(ownedPid)
+  } else {
+    const state = await ctx.probePortState(ctx.port)
+    if (state === 'cwc') {
+      ctx.io.log(`CWC is already running at ${url}`)
+      await ctx.openUrl(url)
+      return 'already-running'
+    }
+    if (state === 'foreign') {
+      const occ = await ctx.resolveOccupant(ctx.port)
+      ctx.io.error(foreignConflictMessage(ctx.port, occ))
+      return 'foreign-conflict'
+    }
+    // 'free' → fall through to spawn
+  }
+
+  const pid = ctx.spawnServer()
+  if (pid === undefined) {
+    ctx.io.error('Failed to spawn CWC server process.')
+    return 'failed'
+  }
+  await fsp.mkdir(path.dirname(ctx.pidFile), { recursive: true })
+  await fsp.writeFile(ctx.pidFile, String(pid), 'utf-8')
+
+  if (await ctx.waitForServer(ctx.verifyTimeoutMs ?? 10_000)) {
+    ctx.io.log(`CWC server started (PID ${pid}) at ${url}`)
+    await ctx.openUrl(url)
+    return 'started'
+  }
+
+  const tail = await readLogTail(ctx.stderrLog)
+  ctx.io.error(
+    `CWC server did not come up on ${url}.` +
+    (tail ? `\n\nServer log:\n${tail}` : '') +
+    `\n\nIf the port is in use, free it (\`lsof -i:${ctx.port}\`) and re-run \`npx claude-cwc\`.`,
+  )
+  try { await fsp.unlink(ctx.pidFile) } catch { /* already gone */ }
+  return 'failed'
+}
