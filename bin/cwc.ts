@@ -3,8 +3,17 @@ import * as fs from 'node:fs/promises'
 import * as path from 'node:path'
 import * as os from 'node:os'
 import * as child_process from 'node:child_process'
-import * as http from 'node:http'
+import * as fsSync from 'node:fs'
 import * as readline from 'node:readline'
+import {
+  startCwc,
+  describeIdleStop,
+  probePortState,
+  portInUse,
+  serverResponding,
+  waitForServer,
+  resolveOccupant,
+} from '../src/server/launcher.js'
 import { fileURLToPath } from 'node:url'
 import open from 'open'
 import { SERVICE_LABEL, buildServerPlist } from '../src/server/service-plist.js'
@@ -155,30 +164,6 @@ function launchctlStrict(args: string[]): Promise<void> {
   })
 }
 
-function serverResponding(): Promise<boolean> {
-  return new Promise((resolve) => {
-    const req = http.get({ host: '127.0.0.1', port: PORT, path: '/api/health', timeout: 1000 }, (res) => {
-      let body = ''
-      res.setEncoding('utf-8')
-      res.on('data', chunk => { body += chunk })
-      res.on('end', () => {
-        resolve(res.statusCode === 200 && body.includes('"status":"ok"'))
-      })
-    })
-    req.on('error', () => resolve(false))
-    req.on('timeout', () => { req.destroy(); resolve(false) })
-  })
-}
-
-async function waitForServer(timeoutMs: number): Promise<boolean> {
-  const deadline = Date.now() + timeoutMs
-  while (Date.now() < deadline) {
-    if (await serverResponding()) return true
-    await new Promise((r) => setTimeout(r, 300))
-  }
-  return serverResponding()
-}
-
 async function stopPidBackedServer(): Promise<void> {
   const pid = await readPid()
   if (!pid || !(await isRunning(pid))) {
@@ -203,7 +188,7 @@ async function stopServer(): Promise<void> {
     process.kill(pid, 'SIGTERM')
     console.log(`CWC server (PID ${pid}) stopped.`)
   } else {
-    console.log('CWC server is not running.')
+    console.log(await describeIdleStop(PORT, { portInUse, resolveOccupant }))
   }
   try { await fs.unlink(PID_FILE) } catch { /* already gone */ }
 }
@@ -214,8 +199,8 @@ async function startServer(): Promise<void> {
   // had disabled it.
   if (await isServiceInstalled()) {
     await launchctl(['load', '-w', PLIST_PATH])
-    for (let i = 0; i < 12 && !(await serverResponding()); i++) await new Promise((r) => setTimeout(r, 300))
-    if (await serverResponding()) {
+    for (let i = 0; i < 12 && !(await serverResponding(PORT)); i++) await new Promise((r) => setTimeout(r, 300))
+    if (await serverResponding(PORT)) {
       console.log(`CWC is running as a service at http://localhost:${PORT}`)
       await open(`http://localhost:${PORT}`)
     } else {
@@ -224,33 +209,41 @@ async function startServer(): Promise<void> {
     return
   }
 
-  const existingPid = await readPid()
-  if (existingPid && await isRunning(existingPid)) {
-    process.kill(existingPid, 'SIGTERM')
-    try { await fs.unlink(PID_FILE) } catch { /* already gone */ }
-    await new Promise((r) => setTimeout(r, 300))
-  }
-
   // dist/src/server/start.js — relative to dist/bin/cwc.js
   const serverEntry = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'src', 'server', 'start.js')
 
-  const child = child_process.spawn(process.execPath, [serverEntry, String(PORT)], {
-    detached: true,
-    stdio: 'ignore',
+  const result = await startCwc({
+    port: PORT,
+    pidFile: PID_FILE,
+    stderrLog: SERVICE_STDERR,
+    isOwnedServerRunning: async () => {
+      const pid = await readPid()
+      return pid && (await isRunning(pid)) ? pid : null
+    },
+    restartOwnedServer: async (pid) => {
+      try { process.kill(pid, 'SIGTERM') } catch { /* exited already */ }
+      try { await fs.unlink(PID_FILE) } catch { /* already gone */ }
+      await new Promise((r) => setTimeout(r, 300))
+    },
+    probePortState,
+    spawnServer: () => {
+      fsSync.mkdirSync(SERVICE_LOG_DIR, { recursive: true })
+      const out = fsSync.openSync(SERVICE_STDOUT, 'a')
+      const err = fsSync.openSync(SERVICE_STDERR, 'a')
+      const child = child_process.spawn(process.execPath, [serverEntry, String(PORT)], {
+        detached: true,
+        stdio: ['ignore', out, err],
+      })
+      child.unref()
+      return child.pid
+    },
+    waitForServer: (ms) => waitForServer(PORT, ms),
+    resolveOccupant: (p) => resolveOccupant(p),
+    openUrl: async (u) => { await open(u) },
+    io: { log: (m) => console.log(m), error: (m) => console.error(m) },
   })
-  child.unref()
 
-  if (child.pid === undefined) {
-    console.error('Failed to spawn CWC server process.')
-    process.exit(1)
-  }
-  const pid = child.pid
-  await writePid(pid)
-  console.log(`CWC server started (PID ${pid}) at http://localhost:${PORT}`)
-
-  // Brief wait for server readiness, then open browser
-  await new Promise((r) => setTimeout(r, 800))
-  await open(`http://localhost:${PORT}`)
+  if (result === 'foreign-conflict' || result === 'failed') process.exit(1)
 }
 
 async function installService(): Promise<void> {
@@ -267,7 +260,7 @@ async function installService(): Promise<void> {
   await fs.mkdir(SERVICE_LOG_DIR, { recursive: true })
   await launchctl(['unload', '-w', PLIST_PATH])
   await stopPidBackedServer()
-  if (await serverResponding()) {
+  if (await serverResponding(PORT)) {
     throw new Error(`Port ${PORT} is already in use by another CWC server or process. Stop it first, then rerun \`npx claude-cwc install-service\`.`)
   }
   const plist = buildServerPlist({
@@ -282,7 +275,7 @@ async function installService(): Promise<void> {
   })
   await fs.writeFile(PLIST_PATH, plist, 'utf-8')
   await launchctlStrict(['load', '-w', PLIST_PATH])
-  if (!(await waitForServer(12000))) {
+  if (!(await waitForServer(PORT, 12000))) {
     await launchctl(['unload', '-w', PLIST_PATH])
     throw new Error(`CWC service did not respond on http://localhost:${PORT}; it has been unloaded so launchd will not keep retrying. Check ${SERVICE_STDERR} and ${SERVICE_STDOUT}.`)
   }
