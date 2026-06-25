@@ -7,6 +7,7 @@ import * as fs from 'node:fs/promises'
 import * as os from 'node:os'
 import * as path from 'node:path'
 import { startCwc, type StartCtx } from '../../src/server/launcher.js'
+import { describeIdleStop } from '../../src/server/launcher.js'
 
 const openSockets: Array<net.Server | http.Server> = []
 afterEach(async () => {
@@ -197,5 +198,24 @@ describe('startCwc', () => {
     expect(probed).toBe(0)
     expect(spawned).toBe(1)
     expect(result).toBe('started')
+  })
+})
+
+describe('describeIdleStop', () => {
+  it('foreign occupant: reports the occupant, not "not running"', async () => {
+    const msg = await describeIdleStop(3579, {
+      portInUse: async () => true,
+      resolveOccupant: async () => ({ pid: 50746, command: 'node' }),
+    })
+    expect(msg).toContain("Port 3579 is held by a process CWC didn't start")
+    expect(msg).toContain('PID 50746, node')
+  })
+
+  it('free port: reports not running', async () => {
+    const msg = await describeIdleStop(3579, {
+      portInUse: async () => false,
+      resolveOccupant: async () => null,
+    })
+    expect(msg).toBe('CWC server is not running.')
   })
 })

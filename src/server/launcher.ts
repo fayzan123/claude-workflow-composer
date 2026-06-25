@@ -156,3 +156,16 @@ export async function startCwc(ctx: StartCtx): Promise<StartResult> {
   try { await fsp.unlink(ctx.pidFile) } catch { /* already gone */ }
   return 'failed'
 }
+
+export async function describeIdleStop(
+  port: number,
+  deps: { portInUse: (p: number) => Promise<boolean>; resolveOccupant: (p: number) => Promise<Occupant | null> },
+): Promise<string> {
+  if (await deps.portInUse(port)) {
+    const occ = await deps.resolveOccupant(port)
+    const who = occ ? ` (PID ${occ.pid}, ${occ.command})` : ''
+    return `Port ${port} is held by a process CWC didn't start${who}. ` +
+      `CWC isn't managing it. Inspect it with: lsof -i:${port}`
+  }
+  return 'CWC server is not running.'
+}
