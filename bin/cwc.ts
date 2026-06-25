@@ -136,11 +136,6 @@ async function readPid(): Promise<number | null> {
   } catch { return null }
 }
 
-async function writePid(pid: number): Promise<void> {
-  await fs.mkdir(CWC_DIR, { recursive: true })
-  await fs.writeFile(PID_FILE, String(pid), 'utf-8')
-}
-
 /** A launchd service is installed iff its plist exists. When it does, the service —
  * not a detached PID — is the source of truth for the running server, so the CLI must
  * not spawn a competing process (port collision) or try to SIGTERM a stale PID. */
