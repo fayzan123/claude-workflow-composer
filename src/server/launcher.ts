@@ -45,3 +45,31 @@ export async function waitForServer(port: number, timeoutMs: number): Promise<bo
   }
   return serverResponding(port)
 }
+
+import { execFile } from 'node:child_process'
+
+export interface Occupant { pid: number; command: string }
+export type LsofRunner = (cmd: string, args: string[]) => Promise<string>
+
+const defaultLsof: LsofRunner = (cmd, args) =>
+  new Promise((resolve, reject) => {
+    execFile(cmd, args, (err, stdout) => (err ? reject(err) : resolve(stdout)))
+  })
+
+function parseLsof(output: string): Occupant | null {
+  for (const line of output.split('\n')) {
+    if (!line.trim() || line.startsWith('COMMAND')) continue
+    const cols = line.trim().split(/\s+/)
+    const pid = Number(cols[1])
+    if (cols[0] && Number.isInteger(pid)) return { pid, command: cols[0] }
+  }
+  return null
+}
+
+/** Best-effort: name the process holding `port`. Returns null if lsof is
+ * unavailable or yields nothing (e.g. Windows). Never throws. */
+export function resolveOccupant(port: number, run: LsofRunner = defaultLsof): Promise<Occupant | null> {
+  return run('lsof', ['-nP', `-iTCP:${port}`, '-sTCP:LISTEN'])
+    .then(parseLsof)
+    .catch(() => null)
+}

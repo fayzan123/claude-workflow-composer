@@ -2,6 +2,7 @@ import { describe, it, expect, afterEach, beforeEach } from 'vitest'
 import * as net from 'node:net'
 import * as http from 'node:http'
 import { portInUse, serverResponding, probePortState, waitForServer } from '../../src/server/launcher.js'
+import { resolveOccupant } from '../../src/server/launcher.js'
 
 const openSockets: Array<net.Server | http.Server> = []
 afterEach(async () => {
@@ -73,5 +74,27 @@ describe('port probes', () => {
     expect(await waitForServer(okPort, 2000)).toBe(true)
     const free = await freePort()
     expect(await waitForServer(free, 600)).toBe(false)
+  })
+})
+
+describe('resolveOccupant', () => {
+  const SAMPLE = [
+    'COMMAND   PID        USER   FD   TYPE             DEVICE SIZE/OFF NODE NAME',
+    'node    50746 fayzanmalik   18u  IPv4 0xeea29d7d1d8af814      0t0  TCP 127.0.0.1:3579 (LISTEN)',
+  ].join('\n')
+
+  it('parses pid and command from lsof output', async () => {
+    const occ = await resolveOccupant(3579, async () => SAMPLE)
+    expect(occ).toEqual({ pid: 50746, command: 'node' })
+  })
+
+  it('returns null when the runner errors (lsof missing)', async () => {
+    const occ = await resolveOccupant(3579, async () => { throw new Error('lsof: not found') })
+    expect(occ).toBeNull()
+  })
+
+  it('returns null when there is no listener line', async () => {
+    const occ = await resolveOccupant(3579, async () => 'COMMAND PID USER FD TYPE DEVICE SIZE/OFF NODE NAME\n')
+    expect(occ).toBeNull()
   })
 })
