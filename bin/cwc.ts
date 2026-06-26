@@ -63,6 +63,8 @@ async function readInstalledVersion(): Promise<string | null> {
 async function installSkill(source: string, version: string): Promise<void> {
   await fs.mkdir(path.dirname(SKILL_DEST), { recursive: true })
   await fs.copyFile(source, SKILL_DEST)
+  // SKILL_VERSION_FILE lives under ~/.cwc, which may not exist yet on a first-ever run.
+  await fs.mkdir(CWC_DIR, { recursive: true })
   await fs.writeFile(SKILL_VERSION_FILE, version, 'utf-8')
 }
 
