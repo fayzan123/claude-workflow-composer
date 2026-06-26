@@ -183,6 +183,24 @@ export function ExportFlow({ workflow, dispatch, onClose }: Props) {
             </label>
             <FieldHint id="export.observability" />
 
+            <label className="export-flow__obs-toggle export-flow__invoke-toggle">
+              <input
+                type="checkbox"
+                checked={workflow.meta.modelInvocation === 'auto'}
+                onChange={(e) =>
+                  dispatch({ type: 'SET_META', payload: { modelInvocation: e.target.checked ? 'auto' : 'off' } })
+                }
+              />
+              Allow Claude to run this workflow automatically
+            </label>
+            <FieldHint id="export.modelInvocation" />
+            {workflow.meta.modelInvocation === 'auto' && (
+              <p className="export-flow__invoke-warning" role="status">
+                Autonomous invocation bypasses CWC's test-run launcher: no worktree
+                isolation, no stop button, and no guaranteed run history.
+              </p>
+            )}
+
             {hasBeenExported && (
               <div className="export-flow-danger-zone">
                 <p className="export-flow-danger-zone__label">Danger Zone</p>

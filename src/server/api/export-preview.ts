@@ -68,7 +68,8 @@ export function exportPreviewRouter() {
         cwcFile.nodes, cwcFile.edges, cwcFile.meta.name, nodeOverrides,
         observabilityEnabled ? { observability: { workflowId: cwcFile.meta.id, workflowSlug } } : {},
       )
-      const skillContent = buildWorkflowSkillContent(cwcFile.meta.name, cwcFile.meta.description, orchestratorBody, workflowId)
+      const allowModelInvocation = cwcFile.meta.modelInvocation === 'auto'
+      const skillContent = buildWorkflowSkillContent(cwcFile.meta.name, cwcFile.meta.description, orchestratorBody, workflowId, allowModelInvocation)
       files.push({ path: path.join(skillsDir, workflowSlug, 'SKILL.md'), content: skillContent })
 
       res.json({ files, warnings })

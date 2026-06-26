@@ -89,7 +89,7 @@ The exporter:
 
 - **Bespoke nodes** → writes an agent `.md` file with frontmatter (name, description, color, model, tools), system prompt, completion criteria, skill references, and an ownership comment.
 - **Reference nodes** → writes nothing — the `exportedSlug` is set to the existing agent's slug so the orchestrator routes to it directly.
-- **Workflow skill** → generates an orchestrator skill at `.claude/skills/<workflow-slug>/SKILL.md` with `disable-model-invocation: true`. The orchestrator body is produced by BFS-traversing the node/edge graph into natural-language steps.
+- **Workflow skill** → generates an orchestrator skill at `.claude/skills/<workflow-slug>/SKILL.md`. By default it includes `disable-model-invocation: true`; the export modal can opt a single workflow into autonomous Claude invocation. The orchestrator body is produced by BFS-traversing the node/edge graph into natural-language steps.
 - **Rename handling** → if a node was renamed, the old owned file is deleted and the new one is written.
 - **Conflict detection** → every file carries an ownership HTML comment. Before overwriting or deleting, the exporter verifies ownership — it never touches files created by other workflows or by hand.
 

@@ -50,6 +50,7 @@ export const CONTROL_HINTS: Record<string, string> = {
   'run.isolation': 'Run in a safe isolated copy (a worktree, so your current checkout is untouched) or directly in this folder.',
   'export.target': 'Where to write the files — just for you, or into a project folder.',
   'export.observability': 'Adds logging so CWC can show this workflow\'s runs live.',
+  'export.modelInvocation': 'Lets Claude discover and run this workflow on its own. Off keeps invocation explicit unless you start a CWC test run.',
   'trigger.schedule': 'When this runs automatically. Use the builder unless you need custom cron.',
   'trigger.cwd': 'The folder this scheduled or webhook run starts in.',
   'trigger.precondition': 'A shell command that must succeed before CWC starts a run.',

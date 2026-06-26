@@ -87,12 +87,13 @@ export function buildWorkflowSkillContent(
   description: string,
   orchestratorBody: string,
   workflowId: string,
+  allowModelInvocation = false,
 ): string {
   const frontmatter = [
     '---',
     `name: ${yamlScalar(name)}`,
     `description: ${yamlScalar(description)}`,
-    'disable-model-invocation: true',
+    ...(allowModelInvocation ? [] : ['disable-model-invocation: true']),
     '---',
   ].join('\n')
 

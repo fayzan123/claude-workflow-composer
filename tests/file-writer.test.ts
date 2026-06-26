@@ -131,7 +131,19 @@ describe('buildAgentFileContent', () => {
 describe('buildWorkflowSkillContent', () => {
   it('produces skill with disable-model-invocation: true', () => {
     const content = buildWorkflowSkillContent('tdd-pipeline', 'TDD description', 'orchestrator body', 'wf-uuid')
-    expect(content).toContain('disable-model-invocation: true')
+    expect(matter(content).data['disable-model-invocation']).toBe(true)
+  })
+
+  it('keeps disable-model-invocation: true when model invocation is explicitly disallowed', () => {
+    const content = buildWorkflowSkillContent('tdd-pipeline', 'TDD description', 'body', 'wf-uuid', false)
+    expect(matter(content).data['disable-model-invocation']).toBe(true)
+  })
+
+  it('omits disable-model-invocation when model invocation is allowed', () => {
+    const content = buildWorkflowSkillContent('tdd-pipeline', 'TDD description', 'body', 'wf-uuid', true)
+    const { data } = matter(content)
+    expect(data).not.toHaveProperty('disable-model-invocation')
+    expect(content).not.toContain('disable-model-invocation')
   })
 
   it('name field equals derived workflow slug', () => {

@@ -493,3 +493,18 @@
   cursor: pointer;
   user-select: none;
 }
+
+.export-flow__invoke-toggle {
+  margin-top: 16px;
+}
+
+.export-flow__invoke-warning {
+  margin: 8px 0 0;
+  padding: 10px 12px;
+  border: 1px solid var(--color-warning-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-warning-light);
+  color: var(--color-warning-dark);
+  font-size: var(--text-sm);
+  line-height: 1.5;
+}

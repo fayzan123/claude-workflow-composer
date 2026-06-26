@@ -114,6 +114,36 @@ describe('exportWorkflow — linear.cwc', () => {
     expect(data.name).toBe('Linear Pipeline')
   })
 
+  it("keeps disable-model-invocation: true when meta.modelInvocation is 'off'", async () => {
+    const cwc = await loadFixture('linear.cwc')
+    cwc.meta.modelInvocation = 'off'
+    const target: ExportTarget = { type: 'project', projectDir: tmpDir }
+    const skillsDir = path.join(tmpDir, 'skills')
+    await exportWorkflow(cwc, target, { skillsDir })
+
+    const skillContent = await fs.readFile(
+      path.join(skillsDir, 'cwc-linear-pipeline', 'SKILL.md'),
+      'utf-8',
+    )
+    expect(matter(skillContent).data['disable-model-invocation']).toBe(true)
+  })
+
+  it('omits disable-model-invocation when meta.modelInvocation is auto', async () => {
+    const cwc = await loadFixture('linear.cwc')
+    cwc.meta.modelInvocation = 'auto'
+    const target: ExportTarget = { type: 'project', projectDir: tmpDir }
+    const skillsDir = path.join(tmpDir, 'skills')
+    await exportWorkflow(cwc, target, { skillsDir })
+
+    const skillContent = await fs.readFile(
+      path.join(skillsDir, 'cwc-linear-pipeline', 'SKILL.md'),
+      'utf-8',
+    )
+    const { data } = matter(skillContent)
+    expect(data).not.toHaveProperty('disable-model-invocation')
+    expect(skillContent).not.toContain('disable-model-invocation')
+  })
+
   it('workflow skill ownership comment is last non-blank line', async () => {
     const cwc = await loadFixture('linear.cwc')
     const target: ExportTarget = { type: 'project', projectDir: tmpDir }

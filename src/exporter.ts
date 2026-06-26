@@ -179,7 +179,8 @@ export async function exportWorkflow(
     updatedNodes, cwc.edges, cwc.meta.name, nodeOverrides,
     observabilityEnabled ? { observability: { workflowId: cwc.meta.id, workflowSlug } } : {},
   )
-  const skillContent = buildWorkflowSkillContent(cwc.meta.name, cwc.meta.description, orchestratorBody, workflowId)
+  const allowModelInvocation = cwc.meta.modelInvocation === 'auto'
+  const skillContent = buildWorkflowSkillContent(cwc.meta.name, cwc.meta.description, orchestratorBody, workflowId, allowModelInvocation)
 
   // Workflow rename reconciliation: if the name changed since the last export, the old
   // skills/<oldSlug>/ dir would linger as an orphaned, runnable skill (and show up as a
