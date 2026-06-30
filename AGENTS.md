@@ -33,7 +33,7 @@ npm run typecheck           # server + client TypeScript
 npm run build               # production build
 
 # Focused tests
-npx vitest run tests/bfs.test.ts
+npx vitest run tests/workflow/bfs.test.ts
 npx vitest run tests/server/runs.test.ts
 ```
 
@@ -75,13 +75,13 @@ Do not relax auth, loopback binding, token checks, or CORS behavior without an e
 Core modules in `src/` should remain independent of Express:
 
 - `schema.ts` is the canonical `.cwc` type model.
-- `exporter.ts` orchestrates export, conflict checks, slug resolution, file writes, and rename reconciliation.
-- `file-writer.ts` renders agent Markdown and workflow `SKILL.md` frontmatter/content.
-- `conflict-detector.ts` reads ownership comments to decide whether a file is safe to overwrite.
-- `bfs.ts` and `prose-generator.ts` turn the graph into orchestrator prose.
-- `skill-resolver.ts` resolves skill slugs from user and plugin skill directories.
 - `slugify.ts` is shared slug normalization.
 - `run-events.ts` defines and validates run event payloads.
+- `export/exporter.ts` orchestrates export, conflict checks, slug resolution, file writes, and rename reconciliation.
+- `export/file-writer.ts` renders agent Markdown and workflow `SKILL.md` frontmatter/content.
+- `export/conflict-detector.ts` reads ownership comments to decide whether a file is safe to overwrite.
+- `export/skill-resolver.ts` resolves skill slugs from user and plugin skill directories.
+- `workflow/bfs.ts` and `workflow/prose-generator.ts` turn the graph into orchestrator prose.
 
 Generation and detection are also core behavior:
 
@@ -131,7 +131,7 @@ Export behavior is safety-critical.
 - Project-scoped export writes to `<project>/.claude/agents` and `<project>/.claude/skills`.
 - Bespoke agent files include `<!-- cwc:node:<nodeId>:workflow:<workflowId> -->`.
 - Workflow skill files include `<!-- cwc:workflow:<workflowId> -->`.
-- Never overwrite or delete a file unless `conflict-detector.ts` verifies this workflow owns it.
+- Never overwrite or delete a file unless `export/conflict-detector.ts` verifies this workflow owns it.
 - Rename cleanup may delete old owned files, but must not touch foreign or hand-authored files.
 - `export-preview` must match real export frontmatter and content decisions. When export behavior changes, update preview and real export together.
 - Agent frontmatter `name` must be the slug used for `subagent_type`; Claude Code resolves dispatch against this field, not the filename.

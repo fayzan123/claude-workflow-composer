@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import * as fs from 'node:fs/promises'
 import * as os from 'node:os'
 import * as path from 'node:path'
-import { resolveSkill } from '../src/skill-resolver.js'
+import { resolveSkill } from '../../src/export/skill-resolver.js'
 
 vi.mock('node:fs/promises')
 const mockReadFile = vi.mocked(fs.readFile)

@@ -1,10 +1,10 @@
 import { Router as createRouter } from 'express'
 import type { CwcFile } from '../../schema.js'
-import { resolveExportPaths, type ExportTarget } from '../../exporter.js'
+import { resolveExportPaths, type ExportTarget } from '../../export/exporter.js'
 import { agentSlug, slugify } from '../../slugify.js'
-import { buildAgentFileContent, buildWorkflowSkillContent } from '../../file-writer.js'
-import { generateOrchestratorBody, OverrideInfo } from '../../prose-generator.js'
-import { resolveSkill } from '../../skill-resolver.js'
+import { buildAgentFileContent, buildWorkflowSkillContent } from '../../export/file-writer.js'
+import { generateOrchestratorBody, OverrideInfo } from '../../workflow/prose-generator.js'
+import { resolveSkill } from '../../export/skill-resolver.js'
 import * as path from 'node:path'
 
 export function exportPreviewRouter() {

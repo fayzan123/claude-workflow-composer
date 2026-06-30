@@ -1,6 +1,6 @@
 import { Router as createRouter } from 'express'
-import { ExportConflictError, exportWorkflow } from '../../exporter.js'
-import type { ExportTarget, ExportOptions } from '../../exporter.js'
+import { ExportConflictError, exportWorkflow } from '../../export/exporter.js'
+import type { ExportTarget, ExportOptions } from '../../export/exporter.js'
 import type { CwcFile } from '../../schema.js'
 import * as os from 'node:os'
 import * as path from 'node:path'

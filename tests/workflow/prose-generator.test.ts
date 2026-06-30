@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { generateOrchestratorBody, OverrideInfo } from '../src/prose-generator.js'
-import type { CwcNode, CwcEdge, CwcArtifact } from '../src/schema.js'
+import { generateOrchestratorBody, OverrideInfo } from '../../src/workflow/prose-generator.js'
+import type { CwcNode, CwcEdge, CwcArtifact } from '../../src/schema.js'
 
 const node = (id: string, name: string, startTrigger?: string): CwcNode => ({
   id,

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { bfsTraversal } from '../src/bfs.js'
-import type { CwcNode, CwcEdge } from '../src/schema.js'
+import { bfsTraversal } from '../../src/workflow/bfs.js'
+import type { CwcNode, CwcEdge } from '../../src/schema.js'
 
 const node = (id: string): CwcNode => ({
   id,

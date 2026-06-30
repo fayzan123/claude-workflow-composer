@@ -1,6 +1,6 @@
 import React, { useMemo } from 'react'
 import type { CwcFile } from '../types.ts'
-import { generateOrchestratorBody, collectNodeOverrides } from '../../../src/prose-generator.ts'
+import { generateOrchestratorBody, collectNodeOverrides } from '../../../src/workflow/prose-generator.ts'
 import './OrchestratorPreview.css'
 
 interface Props {

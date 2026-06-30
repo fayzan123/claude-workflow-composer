@@ -1,6 +1,6 @@
-import type { CwcNode, CwcEdge, CwcArtifact } from './schema.js'
+import type { CwcNode, CwcEdge, CwcArtifact } from '../schema.js'
 import { bfsTraversal } from './bfs.js'
-import { agentSlug } from './slugify.js'
+import { agentSlug } from '../slugify.js'
 
 function oxfordJoin(items: string[]): string {
   if (items.length === 0) return ''

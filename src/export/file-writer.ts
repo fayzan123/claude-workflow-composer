@@ -1,6 +1,6 @@
-import type { CwcNode } from './schema.js'
+import type { CwcNode } from '../schema.js'
 import type { SkillResolution } from './skill-resolver.js'
-import { agentSlug } from './slugify.js'
+import { agentSlug } from '../slugify.js'
 
 /**
  * Render a string as a YAML scalar for frontmatter. Free-text fields like an

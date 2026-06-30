@@ -3,8 +3,8 @@ import * as fs from 'node:fs/promises'
 import * as os from 'node:os'
 import * as path from 'node:path'
 import { randomUUID } from 'node:crypto'
-import { ExportConflictError, exportWorkflow, ExportTarget } from '../src/exporter.js'
-import type { CwcFile } from '../src/schema.js'
+import { ExportConflictError, exportWorkflow, ExportTarget } from '../../src/export/exporter.js'
+import type { CwcFile } from '../../src/schema.js'
 import matter from 'gray-matter'
 
 // We'll write to a real temp dir, cleaned up after each test
@@ -21,7 +21,7 @@ afterEach(async () => {
 
 async function loadFixture(name: string) {
   const raw = await fs.readFile(
-    path.join(import.meta.dirname, 'fixtures', name),
+    path.join(import.meta.dirname, '..', 'fixtures', name),
     'utf-8',
   )
   return JSON.parse(raw)

@@ -195,14 +195,16 @@ Client (React + React Flow)             Server (Express :3579)
 
 Core library:
   schema.ts                 Canonical .cwc types
-  bfs.ts                    Graph traversal
-  prose-generator.ts        Orchestrator prose generation
-  exporter.ts               Export orchestration, slug reconciliation, conflict checks
-  file-writer.ts            Agent and workflow skill Markdown output
-  conflict-detector.ts      Ownership-comment detection
-  skill-resolver.ts         User/plugin skill lookup
   slugify.ts                Shared slug normalization
   run-events.ts             Run event schema and validation
+  workflow/bfs.ts           Graph traversal
+  workflow/prose-generator.ts
+                            Orchestrator prose generation
+  export/exporter.ts        Export orchestration, slug reconciliation, conflict checks
+  export/file-writer.ts     Agent and workflow skill Markdown output
+  export/conflict-detector.ts
+                            Ownership-comment detection
+  export/skill-resolver.ts  User/plugin skill lookup
   detection/*               Claude Code transcript parsing, digesting, analysis
   generation/*              Native automation-to-workflow planning and compilation
 

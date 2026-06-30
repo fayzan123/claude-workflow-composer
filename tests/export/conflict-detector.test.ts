@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { detectConflict, ConflictStatus } from '../src/conflict-detector.js'
+import { detectConflict, ConflictStatus } from '../../src/export/conflict-detector.js'
 
 const agentRegex = /^<!-- cwc:node:[^:\s]+:workflow:[^:\s>]+ -->$/
 const workflowRegex = /^<!-- cwc:workflow:[^:\s>]+ -->$/

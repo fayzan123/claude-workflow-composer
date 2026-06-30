@@ -5,7 +5,7 @@ import * as path from 'node:path'
 import { createApp } from '../../src/server/index.js'
 import http from 'node:http'
 import type { CwcFile } from '../../src/schema.js'
-import type { ExportResult } from '../../src/exporter.js'
+import type { ExportResult } from '../../src/export/exporter.js'
 
 let server: http.Server
 let tmpAgentsDir: string

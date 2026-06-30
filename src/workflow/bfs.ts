@@ -1,4 +1,4 @@
-import type { CwcNode, CwcEdge } from './schema.js'
+import type { CwcNode, CwcEdge } from '../schema.js'
 
 interface AnnotatedEdge {
   edge: CwcEdge

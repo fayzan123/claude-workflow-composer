@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest'
-import { buildAgentFileContent, buildWorkflowSkillContent } from '../src/file-writer.js'
-import type { CwcNode, CwcFile } from '../src/schema.js'
-import type { SkillResolution } from '../src/skill-resolver.js'
+import { buildAgentFileContent, buildWorkflowSkillContent } from '../../src/export/file-writer.js'
+import type { CwcNode, CwcFile } from '../../src/schema.js'
+import type { SkillResolution } from '../../src/export/skill-resolver.js'
 import matter from 'gray-matter'
 
 const baseNode: CwcNode = {

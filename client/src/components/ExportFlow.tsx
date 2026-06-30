@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react'
 import type { CwcFile } from '../types.ts'
 import type { WorkflowAction } from '../hooks/useWorkflow.ts'
-import type { ExportTarget, ExportResult } from '../../../src/exporter.ts'
+import type { ExportTarget, ExportResult } from '../../../src/export/exporter.ts'
 import type { DeleteExportResult } from '../../../src/server/api/export-delete.ts'
 import { slugify } from '../../../src/slugify.ts'
 import { api } from '../lib/api.ts'
