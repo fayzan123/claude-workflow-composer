@@ -1,4 +1,4 @@
-// src/workflow-generator.ts
+// src/generation/workflow-generator.ts
 import type { CwcFile } from '../schema.js'
 import type { DetectedAutomation } from '../detection/types.js'
 import { extractJsonObject } from '../json-extract.js'
