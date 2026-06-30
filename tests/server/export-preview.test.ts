@@ -29,7 +29,7 @@ async function preview(cwcFile: CwcFile) {
 }
 
 function workflowSkill(files: { path: string; content: string }[]) {
-  const skillFile = files.find((f) => f.path.endsWith('cwc-preview-test/SKILL.md'))
+  const skillFile = files.find((f) => f.path.replaceAll('\\', '/').endsWith('cwc-preview-test/SKILL.md'))
   expect(skillFile).toBeDefined()
   return skillFile!.content
 }
