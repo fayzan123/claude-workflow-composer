@@ -2,7 +2,7 @@ import { Router as createRouter } from 'express'
 import { runClaude as defaultRunner, type ClaudeRunner } from '../claude-runner.js'
 import {
   buildSkillSpecPrompt, buildSkillBuildPrompt, parseSkillSpec, assembleSkillFile, type SkillSpec,
-} from '../../skill-generator.js'
+} from '../../generation/skill-generator.js'
 import { skillSlug } from '../../slugify.js'
 
 export function skillsGenerateRouter(runner: ClaudeRunner = defaultRunner) {

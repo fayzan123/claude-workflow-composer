@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import matter from 'gray-matter'
-import { assembleAgentFile, type AgentSpec, parseSpec, buildSpecPrompt, buildBuildPrompt } from '../src/agent-generator.js'
+import { assembleAgentFile, type AgentSpec, parseSpec, buildSpecPrompt, buildBuildPrompt } from '../../src/generation/agent-generator.js'
 
 const SPEC: AgentSpec = {
   name: 'Migration Reviewer',

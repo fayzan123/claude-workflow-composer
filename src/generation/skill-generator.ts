@@ -1,6 +1,6 @@
-import { yamlScalar } from './file-writer.js'
-import { skillSlug } from './slugify.js'
-import { extractJsonObject } from './json-extract.js'
+import { yamlScalar } from '../file-writer.js'
+import { skillSlug } from '../slugify.js'
+import { extractJsonObject } from '../json-extract.js'
 
 export interface SkillSpec {
   name: string        // lowercase-kebab slug; == directory == frontmatter name

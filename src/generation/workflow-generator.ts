@@ -1,7 +1,7 @@
 // src/workflow-generator.ts
-import type { CwcFile } from './schema.js'
-import type { DetectedAutomation } from './detection/types.js'
-import { extractJsonObject } from './json-extract.js'
+import type { CwcFile } from '../schema.js'
+import type { DetectedAutomation } from '../detection/types.js'
+import { extractJsonObject } from '../json-extract.js'
 
 /** A reusable skill the user already has, offered to the generator for reuse. */
 export interface CatalogSkill {

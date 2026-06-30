@@ -1,5 +1,5 @@
 import { api } from '../lib/api.ts'
-import type { SkillSpec } from '../../../src/skill-generator.ts'
+import type { SkillSpec } from '../../../src/generation/skill-generator.ts'
 import { skillSlug } from '../../../src/slugify.ts'
 import { GenerateModal, type GenerateAdapter } from './GenerateModal.tsx'
 

@@ -89,7 +89,7 @@ Generation and detection are also core behavior:
 - `detection/digest-builder.ts`, `analysis-prompt.ts`, and `analyzer.ts` build compact analysis prompts and parse detected automations.
 - `generation/generate.ts` selects reusable agents/skills, asks Claude for a plan, and compiles a workflow.
 - `generation/compiler.ts` and related files validate/compile planner output, with fallback behavior when planning fails.
-- `workflow-generator.ts` is the legacy generation path and is still reachable with `CWC_LEGACY_GEN=1`.
+- `generation/agent-generator.ts`, `generation/skill-generator.ts`, and `generation/workflow-generator.ts` are the standalone single-artifact generators (Claude-CLI driven). `generation/workflow-generator.ts` is also the legacy workflow-generation path, still reachable with `CWC_LEGACY_GEN=1`.
 
 ### Client
 

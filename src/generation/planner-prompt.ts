@@ -1,5 +1,5 @@
 import type { DetectedAutomation } from '../detection/types.js'
-import type { CapabilityCard, CatalogAgent, CatalogSkill } from '../workflow-generator.js'
+import type { CapabilityCard, CatalogAgent, CatalogSkill } from './workflow-generator.js'
 
 export interface PlannerContext {
   skills: CatalogSkill[]

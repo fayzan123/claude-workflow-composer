@@ -2,7 +2,7 @@ import { Router as createRouter } from 'express'
 import { runClaude as defaultRunner, type ClaudeRunner } from '../claude-runner.js'
 import {
   buildSpecPrompt, buildBuildPrompt, parseSpec, assembleAgentFile, type AgentSpec,
-} from '../../agent-generator.js'
+} from '../../generation/agent-generator.js'
 import { agentSlug } from '../../slugify.js'
 
 export function agentsGenerateRouter(runner: ClaudeRunner = defaultRunner) {

@@ -3,7 +3,7 @@ import matter from 'gray-matter'
 import {
   assembleSkillFile, parseSkillSpec, buildSkillSpecPrompt, buildSkillBuildPrompt,
   type SkillSpec,
-} from '../src/skill-generator.js'
+} from '../../src/generation/skill-generator.js'
 
 const SPEC: SkillSpec = {
   name: 'migration-reviewer',

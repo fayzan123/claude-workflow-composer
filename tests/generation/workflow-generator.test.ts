@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { buildWorkflowGenPrompt, parseWorkflowJson } from '../src/workflow-generator.js'
-import type { DetectedAutomation } from '../src/detection/types.js'
+import { buildWorkflowGenPrompt, parseWorkflowJson } from '../../src/generation/workflow-generator.js'
+import type { DetectedAutomation } from '../../src/detection/types.js'
 
 const auto: DetectedAutomation = {
   id: 'id1', title: 'Triage flaky tests', description: 'rerun and commit fixes', steps: ['run tests', 'commit'],

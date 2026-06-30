@@ -10,7 +10,7 @@ import { buildAnalysisContext, parseAutomations } from '../../detection/analyzer
 import { runClaudeStreaming, type StreamingRunner } from '../streaming-analyzer.js'
 import type { TaskUnit, DetectedAutomation } from '../../detection/types.js'
 import type { ScanStore } from '../scan-store.js'
-import { buildWorkflowGenPrompt, parseWorkflowJson } from '../../workflow-generator.js'
+import { buildWorkflowGenPrompt, parseWorkflowJson } from '../../generation/workflow-generator.js'
 import { buildCapabilityCards, listReusableAgents, listReusableSkills, selectRelevantAgents, selectRelevantSkills } from '../skill-catalog.js'
 import { slugify } from '../../slugify.js'
 import type { CwcFile, CwcTrigger } from '../../schema.js'

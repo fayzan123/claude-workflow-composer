@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import type { DetectedAutomation } from '../detection/types.js'
 import type { CwcEdge, CwcFile, CwcNode, CwcTrigger } from '../schema.js'
-import type { CapabilityCard, CatalogAgent, CatalogSkill } from '../workflow-generator.js'
+import type { CapabilityCard, CatalogAgent, CatalogSkill } from './workflow-generator.js'
 import { buildCompletionCriteria, buildSystemPrompt, GENERIC, matchArchetype } from './archetypes.js'
 import { fallbackPlan } from './fallback-plan.js'
 import type { PlanPhase, WorkflowPlan } from './plan-schema.js'

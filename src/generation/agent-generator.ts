@@ -1,5 +1,5 @@
-import { yamlScalar } from './file-writer.js'
-import { extractJsonObject } from './json-extract.js'
+import { yamlScalar } from '../file-writer.js'
+import { extractJsonObject } from '../json-extract.js'
 
 export interface AgentSpec {
   name: string

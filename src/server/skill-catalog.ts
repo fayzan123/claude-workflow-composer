@@ -2,7 +2,7 @@
 import * as fs from 'node:fs/promises'
 import * as path from 'node:path'
 import matter from 'gray-matter'
-import type { CapabilityCard, CatalogAgent, CatalogSkill } from '../workflow-generator.js'
+import type { CapabilityCard, CatalogAgent, CatalogSkill } from '../generation/workflow-generator.js'
 import type { DetectedAutomation } from '../detection/types.js'
 
 export type { CapabilityCard, CatalogAgent, CatalogSkill }

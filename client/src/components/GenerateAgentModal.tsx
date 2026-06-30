@@ -1,5 +1,5 @@
 import { api } from '../lib/api.ts'
-import type { AgentSpec } from '../../../src/agent-generator.ts'
+import type { AgentSpec } from '../../../src/generation/agent-generator.ts'
 import { agentSlug } from '../../../src/slugify.ts'
 import { GenerateModal, type GenerateAdapter } from './GenerateModal.tsx'
 
