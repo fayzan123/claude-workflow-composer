@@ -36,6 +36,12 @@ Opens a browser at `http://localhost:3579`. The local server binds to loopback a
 
 Use **Detect automations** from the Home dashboard to scan your local Claude Code history, find repeated work, and generate a ready-to-edit workflow from the strongest candidates.
 
+On first run, CWC may offer to install an optional Claude Code skill at `~/.claude/skills/cwc-generate-workflow/SKILL.md`. That skill lets you ask Claude Code to generate a `.cwc` workflow from plain English. Remove it with:
+
+```bash
+npx claude-cwc uninstall-skill
+```
+
 ```bash
 npx claude-cwc stop    # Stop the server
 ```
@@ -63,33 +69,33 @@ Drag agents onto a canvas
   → Edit each agent's system prompt, tools, skills, and completion criteria
   → Add schedules/webhooks in Automate mode when the workflow should run itself
   → Preview every file that will be written before exporting
-  → Export → writes agent .md files + orchestrator SKILL.md to ~/.claude/
-  → Invoke the workflow by name in Claude Code
+  → Export → writes agent .md files + orchestrator SKILL.md to ~/.claude/ or project .claude/
+  → Invoke the workflow as /cwc-<workflow-slug> in Claude Code
 ```
 
 The exporter writes directly to `~/.claude/` (user-scoped) or `.claude/` inside any project directory (project-scoped, version-controllable). Conflict detection ensures it never touches files it doesn't own.
 
 ### Build
 
-Drag an **existing agent** from the sidebar (`~/.claude/agents/`) onto the canvas to create a **reference node** — it points to that agent file by slug rather than duplicating it. Drag from **"New / Blank Agent"** to create a **bespoke node** — the exporter generates a new agent file for it.
+Drag an **existing agent** from the sidebar (`~/.claude/agents/` or project `.claude/agents/`) onto the canvas to create a **reference node** — it points to that agent file by slug rather than duplicating it. Drag **New Agent** to create a **bespoke node** — the exporter generates a new agent file for it. Drag **Approval Gate** to add a human checkpoint.
 
 Connect nodes by dragging between handles. Each connection becomes a **handoff** with a trigger description and optional context artifacts (files, text, JSON) passed between agents. Mark any node as a **terminal** (`Complete`, `Escalated`, or `Aborted`) to define workflow end states.
 
 Edit any node's completion criteria, tool access, skills, and system prompt in the **Node Panel**. The first node can also have a **start trigger** describing what initiates the workflow.
 
-Real-time validation surfaces duplicate slugs, empty names, disconnected nodes, and missing completion criteria immediately in the top bar — before you export.
+Real-time validation surfaces duplicate slugs, empty names, disconnected nodes, and missing completion criteria in the workflow header before you export.
 
-Use **Generate agent** or **Generate skill** in the sidebar to draft reusable Claude Code assets from a plain-English description. CWC gives you an editable spec first, then writes the file into `~/.claude/agents/` or `~/.claude/skills/`.
+Use **Generate agent** or **Generate skill** in the sidebar to draft reusable Claude Code assets from a plain-English description. CWC gives you an editable spec first, then writes the file into `~/.claude/agents/` or `~/.claude/skills/`. The **Discover** sidebar tab links to community agent and skill repositories.
 
 ### Export
 
-Click **Export** in the top bar. Choose a target directory (`~/.claude/` or any project's `.claude/`). Review a **preview** of every file that will be written. Confirm to write.
+Click **Export** in the workflow header. Choose a target directory (`~/.claude/` or any project's `.claude/`). Review a **preview** of every file that will be written. Confirm to write.
 
 The exporter:
 
 - **Bespoke nodes** → writes an agent `.md` file with frontmatter (name, description, color, model, tools), system prompt, completion criteria, skill references, and an ownership comment.
 - **Reference nodes** → writes nothing — the `exportedSlug` is set to the existing agent's slug so the orchestrator routes to it directly.
-- **Workflow skill** → generates an orchestrator skill at `.claude/skills/<workflow-slug>/SKILL.md`. By default it includes `disable-model-invocation: true`; the export modal can opt a single workflow into autonomous Claude invocation. The orchestrator body is produced by BFS-traversing the node/edge graph into natural-language steps.
+- **Workflow skill** → generates an orchestrator skill at `.claude/skills/cwc-<workflow-slug>/SKILL.md`. By default it includes `disable-model-invocation: true`; the export modal can opt a single workflow into autonomous Claude invocation outside CWC's isolated-run harness. The orchestrator body is produced by BFS-traversing the node/edge graph into natural-language steps.
 - **Rename handling** → if a node was renamed, the old owned file is deleted and the new one is written.
 - **Conflict detection** → every file carries an ownership HTML comment. Before overwriting or deleting, the exporter verifies ownership — it never touches files created by other workflows or by hand.
 
@@ -98,17 +104,19 @@ The exporter:
 From any Claude Code session, invoke the workflow by its skill name:
 
 ```
-/workflow-name
+/cwc-workflow-name
 ```
 
 The orchestrator skill delegates every implementation step to sub-agents via the Agent tool. Each step references an agent by name; Claude Code resolves it to the agent's `.md` file and loads its system prompt, tools, and completion criteria.
+
+You can also use **Test run** from CWC after exporting. Test runs spawn Claude Code headlessly with `--permission-mode bypassPermissions`, use a chosen working directory, and can run in a git worktree or in-place.
 
 ### Automate
 
 Open a workflow's **Automate** mode to add schedules and webhooks:
 
 - **Cron** — use the schedule builder or enter a custom cron expression (e.g. `0 9 * * 1-5` for weekdays at 9 am).
-- **Webhook** — CWC generates an inbound local URL; send an HTTP `POST` to fire the workflow.
+- **Webhook** — CWC generates an inbound local URL (`POST http://localhost:3579/api/triggers/<token>`) to fire the workflow.
 - **Working directory / targets** — choose where the automation runs, including optional additional repos for fan-out.
 - **Isolation** — use a git worktree for an isolated branch, or run in-place when you explicitly want the current checkout.
 - **Precondition** — a shell command that must succeed before CWC starts the run.
@@ -116,11 +124,11 @@ Open a workflow's **Automate** mode to add schedules and webhooks:
 
 Add a **gate node** (drag from the "Gate" section of the sidebar) at any point in the workflow. When the run reaches a gate it:
 1. Commits all changes to a `cwc/<runId>` branch and pauses.
-2. Posts a diff of the working branch to the inbox in the Run panel.
+2. Posts a diff of the working branch to the approval inbox in Runs mode and on the Home dashboard.
 3. Waits — the reviewer reads the diff, writes an optional note, and clicks **Approve** or **Reject**.
 4. On approval, the run resumes in the same Claude Code session from the gate point.
 
-The **Run panel** header has an **Automations** toggle that globally suspends all scheduled runs without disarming triggers, and a **⚙** gear that opens notification settings (macOS banners and/or a webhook URL).
+The Home dashboard has an **Automations** widget that globally pauses or resumes scheduled/webhook runs without deleting or disarming triggers. Runs mode shows live/history timelines, approval inbox items, diffs, a stop button for active CWC-managed runs, and notification settings (macOS banners and/or a webhook URL).
 
 ### Detect
 
@@ -138,23 +146,23 @@ Click **Generate workflow** on a candidate to promote it into a real `.cwc` work
 
 - **Visual canvas** — React Flow with background grid, minimap, zoom controls, and drag-to-connect
 - **Theme toggle** — switch between light and dark mode from the Home dashboard or workflow header
-- **Left sidebar** — My Agents (searchable, draggable from `~/.claude/agents/`) and Skills (searchable, draggable onto selected nodes)
+- **Left sidebar** — My Agents (searchable, draggable from user/project `.claude/agents/`), Skills (searchable, draggable onto selected nodes), and Discover links for community assets
 - **Generate agent / skill** — draft new reusable Claude Code assets from plain English, refine the spec, then save to `~/.claude/`
 - **Right panels** — Node Editor (name, description, criteria, tools, skills, system prompt, terminal type) and Edge Editor (trigger, label, context artifacts)
 - **Export modal** — target selection, full file preview, warning display before writing anything
 - **Auto-save** — 500ms debounced save to `~/.cwc/workflows/`, no manual saving needed
-- **Recent files** — home screen shows last 10 workflows, persisted to `~/.cwc/recents.json`
+- **Saved workflows** — home screen lists `.cwc` files from `~/.cwc/workflows/`; opened paths are also tracked in `~/.cwc/recents.json`
 - **Markdown preview** — click any agent or skill card to view its source file
 - **Open in editor** — view any agent or skill file in your system editor
 - **Claude Code detection** — warns on startup if `~/.claude/` is missing
-- **▶ Test Run** — launch an exported workflow headlessly from the UI (`--permission-mode bypassPermissions`, user-chosen working directory, worktree or in-place isolation) and stop it mid-run
+- **Test run** — launch an exported workflow headlessly from the UI (`--permission-mode bypassPermissions`, user-chosen working directory, worktree or in-place isolation) and stop it mid-run
 - **Live run view** — the active node pulses on the canvas, completed nodes get a check, and events stream into a timeline panel
-- **Run history** — every run of every exported workflow (started from CWC *or* any terminal) persists to `~/.cwc/runs/` with status, duration, source, and cost
+- **Run history** — runs of exported workflows with run logging enabled persist to `~/.cwc/runs/` with status, duration, source, and cost
 - **Automate mode** — attach cron schedules or webhook URLs to a workflow, choose targets/isolation, add preconditions/setup commands, and arm trusted triggers
 - **Approval gates** — insert a gate node into any workflow; when reached the run pauses and posts a diff of its working branch, a reviewer approves or rejects from the inbox (or terminal), the run resumes on the same session
 - **Isolated runs** — Test Run (and scheduler-fired runs) create a git worktree on a `cwc/<runId>` branch so the main checkout is always untouched; the worktree is removed after the run completes
-- **Notifications** — macOS banner + optional webhook on run complete, gate pause, and approval request; configured from the settings gear in the Run panel
-- **Global pause** — one toggle in the Run panel suspends all scheduled automation runs without disarming triggers
+- **Notifications** — macOS banner + optional webhook on run complete, gate pause, and approval request; configured from Runs mode
+- **Global pause** — one Home dashboard toggle suspends all scheduled and webhook automation runs without disarming triggers
 - **Detect automations** — scans local Claude Code transcripts, clusters repeated work, streams progress, suggests automations, and promotes a candidate into a `.cwc` workflow with matching skills/agents reused when possible
 
 ---
@@ -162,43 +170,56 @@ Click **Generate workflow** on a candidate to promote it into a real `.cwc` work
 ## Architecture
 
 ```
-Client (React + React Flow)       Server (Express :3579)
-┌─────────────────────────┐       ┌─────────────────────┐
-│ TemplatePicker           │ ──►  │ /api/workflows      │
-│ TopBar                   │ ◄──  │ /api/recents        │
-│ Sidebar (Agents/Skills)  │ ──►  │ /api/agents         │
-│ Canvas (React Flow)      │ ──►  │ /api/skills         │
-│ NodePanel / EdgePanel    │ ──►  │ /api/export         │
-│ ExportFlow (modal)       │ ──►  │ /api/export/preview │
-│ RunModal / RunPanel      │ ──►  │ /api/export/delete  │
-│ useWorkflow (reducer)    │      │ /api/runs (+SSE)    │
-│ useAutoSave (debounced)  │      │ /api/automations    │
-│ useRunEvents (SSE)       │ ◄──  │ /api/triggers       │
-│ Detect automations       │ ◄──  │ /api/automation-scan│
-└─────────────────────────┘       └─────────────────────┘
-                                          │
-                                          ▼
-Core Library                     ┌─────────────────────────┐
-                                  │ bfs.ts                   │
-                                  │ conflict-detector.ts     │
-                                  │ exporter.ts              │
-                                  │ file-writer.ts           │
-                                  │ prose-generator.ts       │
-                                  │ skill-resolver.ts        │
-                                  │ slugify.ts               │
-                                  │ run-events.ts            │
-                                  └─────────────────────────┘
+Client (React + React Flow)             Server (Express :3579)
+┌──────────────────────────────┐        ┌─────────────────────────────┐
+│ HomeDashboard                 │ ────► │ /api/workflows              │
+│ DetectView + DetectHero       │ ◄───► │ /api/automation-scan (+SSE) │
+│ WorkflowView + WorkflowHeader │ ────► │ /api/recents                │
+│ BuildMode                     │ ────► │ /api/agents                 │
+│   Sidebar                     │ ────► │ /api/skills                 │
+│   Canvas (React Flow)         │ ────► │ /api/agents/generate        │
+│   StepDrawer                  │ ────► │ /api/skills/generate        │
+│   OrchestratorPreview         │ ────► │ /api/export/preview         │
+│ RunsMode                      │ ◄───► │ /api/runs (+SSE)            │
+│ AutomateMode                  │ ────► │ /api/automations            │
+│ RunModal                      │ ────► │ /api/triggers               │
+│ ExportFlow                    │ ────► │ /api/export                 │
+│ useWorkflow/useAutoSave       │ ────► │ /api/export/delete          │
+└──────────────────────────────┘        │ /api/exported-workflows     │
+                                        │ /api/file-content           │
+                                        │ /api/open-file              │
+                                        │ /api/service-status         │
+                                        │ /api/claude-check           │
+                                        │ /api/health                 │
+                                        └─────────────────────────────┘
 
-Server modules                   ┌─────────────────────────┐
-                                  │ run-store.ts             │
-                                  │ workflow-runner.ts       │
-                                  │ run-isolation.ts         │
-                                  │ run-launcher.ts          │
-                                  │ automation-state.ts      │
-                                  │ automation-scheduler.ts  │
-                                  │ notifier.ts              │
-                                  │ config.ts                │
-                                  └─────────────────────────┘
+Core library:
+  schema.ts                 Canonical .cwc types
+  bfs.ts                    Graph traversal
+  prose-generator.ts        Orchestrator prose generation
+  exporter.ts               Export orchestration, slug reconciliation, conflict checks
+  file-writer.ts            Agent and workflow skill Markdown output
+  conflict-detector.ts      Ownership-comment detection
+  skill-resolver.ts         User/plugin skill lookup
+  slugify.ts                Shared slug normalization
+  run-events.ts             Run event schema and validation
+  detection/*               Claude Code transcript parsing, digesting, analysis
+  generation/*              Native automation-to-workflow planning and compilation
+
+Server modules:
+  security.ts               API token cookie, auth middleware, CORS rules
+  launcher.ts               CLI/server launch and port-collision handling
+  run-store.ts              JSONL run persistence and SSE fan-out
+  workflow-runner.ts        Headless Claude Code process spawning
+  run-isolation.ts          Git worktree creation, cleanup, and diff helpers
+  run-launcher.ts           Test/scheduled/webhook run lifecycle
+  automation-state.ts       Trigger arm/pause/fire bookkeeping
+  automation-scheduler.ts   Cron trigger evaluation
+  trigger-targets.ts        Target repo fan-out resolution
+  scan-store.ts             Detection scan/promotion state
+  streaming-analyzer.ts     Streaming Claude analysis runner
+  notifier.ts               macOS and webhook notifications
+  config.ts                 Notification config persistence
 
 Storage:
   ~/.cwc/
@@ -228,33 +249,43 @@ Storage:
 | **Handoff**            | A directed edge with a trigger description and optional context artifacts                                    |
 | **Terminal edge**      | An edge with no target node — marks a workflow end state (complete/escalated/aborted)                        |
 | **Ownership comment**  | HTML comment appended to every exported file: `<!-- cwc:node:<id>:workflow:<id> -->`                         |
-| **Orchestrator skill** | The workflow skill generated on export — a Claude Code skill that delegates via Agent tool                   |
+| **Orchestrator skill** | The workflow skill generated at `.claude/skills/cwc-<workflow-slug>/SKILL.md` — a Claude Code skill that delegates via Agent tool |
 | **Conflict detection** | Reads the ownership comment from a file on disk to determine if this workflow can safely overwrite/delete it |
 | **Gate node**          | A `nodeType: 'gate'` node that pauses a run at a checkpoint, diffs the branch, and waits for approval       |
-| **Trigger**            | A cron / webhook / manual definition attached to a workflow node; scheduler evaluates it on each tick        |
+| **Trigger**            | A cron or webhook definition stored in workflow metadata; the scheduler/webhook router fires armed, enabled triggers |
 | **Isolation**          | Worktree mode creates a `cwc/<runId>` branch so the main checkout is never modified by an automated run     |
+| **Model invocation**   | Per-workflow export option. Off keeps `disable-model-invocation: true`; auto omits it so Claude may invoke the workflow outside CWC's run harness |
+| **Detection scan**     | Local Claude Code history analysis that clusters repeated tasks and can promote a candidate into a `.cwc` workflow |
 
 ---
 
 ## Why Open Source
 
-This tool has filesystem access to `~/.claude/`. Open source is the trust model — no cloud dependency, and the local Node.js server is the entire backend. The server binds to `127.0.0.1`, restricts cross-origin API access, and protects packaged-app API requests with a per-run local token.
+This tool has filesystem access to `~/.claude/`. Open source is the trust model: there is no CWC-hosted backend, and the local Node.js server is the entire app backend. The server binds to `127.0.0.1`, restricts cross-origin API access, and protects packaged-app API requests with a per-run local token.
 
 ---
 
 ## Development
 
+This project uses npm and `package-lock.json`. `package.json` declares Node `>=18`; CI runs Node 20 and 22 on Ubuntu and Windows.
+
 ```bash
-npm run dev:server          # Watch-mode server compilation
+npm run dev:server          # Watch-mode TypeScript compilation to dist/
+npm run dev:api             # Local API at :3579 with CWC_DISABLE_AUTH=1
 npm run dev:client          # Vite dev server with HMR (port 5173, proxies /api to :3579)
 npm test                    # Run all tests (Vitest)
 npm run typecheck           # Type-check server + client
-npm run build               # Production build (server + client)
+npm run build               # Production build (server + client + bundled skill)
+npm start                   # Run the built CLI/server from dist/
 ```
+
+For local development, run `dev:server`, `dev:api`, and `dev:client` in separate terminals. `dev:api` intentionally disables packaged-app API auth so Vite can talk to the server; do not carry that behavior into packaged mode.
+
+Durable coding-agent guidance lives in `AGENTS.md`; Claude Code-specific guidance lives in `CLAUDE.md`. Keep them in sync when changing repo conventions.
 
 ### Tests
 
-479 tests across 61 files (run `npm test` for the current count) covering:
+The Vitest suite covers:
 
 - **BFS traversal**: linear chains, back-edges, fan-out, multi-root, terminal edges
 - **Prose generation**: start triggers, bold wrapping, context artifacts, Oxford comma, back-edge ordering
