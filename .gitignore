@@ -143,5 +143,8 @@ vite.config.ts.timestamp-*
 .vite/
 .worktrees/
 .claude/worktrees/
+
+# Agent tooling scratch (ephemeral; curated specs/plans live in docs/)
 .gstack/
-docs/superpowers
+.superpowers/
+.impeccable.md
