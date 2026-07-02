@@ -50,12 +50,18 @@ export interface ScanDiagnostics {
   failure?: { stage: ScanStage; message: string }
 }
 
-/** Replace every occurrence of the home dir (in either separator spelling) with `~`. */
+/**
+ * Replace every occurrence of the home dir with `~` — in either separator
+ * spelling, and in the dash-encoded form Claude Code uses for project dir
+ * names under ~/.claude/projects (which would otherwise leak the username).
+ */
 export function redact(text: string, homeDir: string): string {
   if (!homeDir) return text
   let out = text.split(homeDir).join('~')
   const flipped = homeDir.includes('\\') ? homeDir.replaceAll('\\', '/') : homeDir.replaceAll('/', '\\')
   if (flipped !== homeDir) out = out.split(flipped).join('~')
+  const dashed = homeDir.replaceAll('\\', '-').replaceAll('/', '-').replace(/^-+/, '-')
+  if (dashed.length > 1) out = out.split(dashed).join('~')
   return out
 }
 

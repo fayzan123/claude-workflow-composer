@@ -17,6 +17,14 @@ describe('redact', () => {
   it('leaves text without the home dir untouched', () => {
     expect(redact('plain message', '/Users/tester')).toBe('plain message')
   })
+
+  it('redacts the dash-encoded home dir used in Claude Code project dir names', () => {
+    // ~/.claude/projects encodes cwd paths with separators as dashes, so a transcript
+    // path like .../projects/-Users-tester-repo/x.jsonl leaks the username otherwise.
+    const home = '/Users/tester'
+    expect(redact('~/.claude/projects/-Users-tester-Documents-repo/x.jsonl', home))
+      .toBe('~/.claude/projects/~-Documents-repo/x.jsonl')
+  })
 })
 
 describe('totalsOf', () => {

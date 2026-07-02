@@ -17,6 +17,7 @@ import {
 import { fileURLToPath } from 'node:url'
 import open from 'open'
 import { SERVICE_LABEL, buildServerPlist } from '../src/server/service-plist.js'
+import { runDoctor } from '../src/detection/doctor.js'
 
 const PORT = 3579
 const CWC_DIR = path.join(os.homedir(), '.cwc')
@@ -290,11 +291,34 @@ async function uninstallService(): Promise<void> {
   catch { console.log('CWC service was not installed.') }
 }
 
+async function readPackageVersion(): Promise<string> {
+  const { version } = JSON.parse(
+    await fs.readFile(path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..', 'package.json'), 'utf-8')
+  ) as { version: string }
+  return version
+}
+
+/** `cwc doctor [--bundle [path]]`: offline Detect health check; exit 1 on problems. */
+async function doctor(args: string[]): Promise<void> {
+  let bundlePath: string | undefined
+  const i = args.indexOf('--bundle')
+  if (i !== -1) bundlePath = args[i + 1] && !args[i + 1].startsWith('-') ? args[i + 1] : path.resolve('cwc-doctor-bundle.json')
+  const { ok } = await runDoctor({
+    homeDir: os.homedir(),
+    cwcVersion: await readPackageVersion().catch(() => 'unknown'),
+    out: line => console.log(line),
+    bundlePath,
+  })
+  if (!ok) process.exitCode = 1
+}
+
 async function main(): Promise<void> {
-  const [,, command] = process.argv
+  const [,, command, ...rest] = process.argv
 
   if (command === 'stop') {
     await stopServer()
+  } else if (command === 'doctor') {
+    await doctor(rest)
   } else if (command === 'uninstall-skill') {
     await uninstallSkill()
   } else if (command === 'install-service') {
@@ -302,9 +326,7 @@ async function main(): Promise<void> {
   } else if (command === 'uninstall-service') {
     await uninstallService()
   } else {
-    const { version } = JSON.parse(
-      await fs.readFile(path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..', 'package.json'), 'utf-8')
-    ) as { version: string }
+    const version = await readPackageVersion()
     await maybeManageSkill(version)
     await startServer()
   }
