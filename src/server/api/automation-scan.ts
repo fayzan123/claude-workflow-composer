@@ -5,7 +5,8 @@ import * as path from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { Cron } from 'croner'
 import { runClaude as defaultRunner, type ClaudeRunner } from '../claude-runner.js'
-import { findTranscripts, parseSession } from '../../detection/transcript-parser.js'
+import { discoverTranscripts, parseSessionDetailed } from '../../detection/transcript-parser.js'
+import { envSnapshot, redact, totalsOf, type ClaudeProbe, type ScanDiagnostics, type ScanStage } from '../../detection/scan-diagnostics.js'
 import { buildAnalysisContext, parseAutomations } from '../../detection/analyzer.js'
 import { runClaudeStreaming, type StreamingRunner } from '../streaming-analyzer.js'
 import type { TaskUnit, DetectedAutomation } from '../../detection/types.js'
@@ -23,6 +24,8 @@ export interface AutomationScanRouterOptions {
   runner?: ClaudeRunner
   streamingRunner?: StreamingRunner
   genModel?: string         // model for Promote's workflow generation; default Sonnet
+  claudeProbe?: ClaudeProbe // injectable `claude --version` probe for diagnostics
+  cwcVersion?: string       // reported in the diagnostics bundle
 }
 
 /** Models the scan analysis may run on (friendly key → CLI model id). Allowlisted so a request can't pass an arbitrary --model. */
@@ -129,19 +132,58 @@ export function automationScanRouter(opts: AutomationScanRouterOptions): Router 
     const model = resolveScanModel((req.body ?? {}).model)
     res.status(202).json({ status: 'running' })
     void opts.store.runScan(async () => {
-      const files = await findTranscripts(opts.homeDir)
-      opts.store.appendLog({ level: 'info', message: `Found ${files.length} transcript file(s)` })
-      const units: TaskUnit[] = []
-      for (const f of files) units.push(...await parseSession(f))
-      opts.store.appendLog({ level: 'info', message: `Parsed ${units.length} task unit(s)` })
-      const ctx = buildAnalysisContext(units)
-      if (!ctx) { opts.store.appendLog({ level: 'info', message: 'No meaningful history to analyze yet.' }); return [] }
-      opts.store.appendLog({ level: 'info', message: `Analyzing ${ctx.refIndex.size} digest line(s) with Claude (${model.label})…` })
-      const { resultText } = await streamingRunner(ctx.prompt, { onLog: e => opts.store.appendLog(e), model: model.id })
-      const found = parseAutomations(resultText, ctx.refIndex)
-      opts.store.appendLog({ level: 'info', message: `${found.length} automation(s) detected` })
-      return found
+      const diag: ScanDiagnostics = {
+        generatedAt: new Date().toISOString(),
+        env: await envSnapshot(opts.cwcVersion ?? 'unknown', opts.claudeProbe),
+        discovery: { root: '', rootExists: false, projectDirs: 0, unreadableDirs: 0, transcriptFiles: 0 },
+        files: [],
+        totals: totalsOf([]),
+      }
+      let stage: ScanStage = 'discovery'
+      try {
+        const { files, stats } = await discoverTranscripts(opts.homeDir)
+        diag.discovery = stats
+        const unreadable = stats.unreadableDirs ? `, ${stats.unreadableDirs} unreadable entr${stats.unreadableDirs === 1 ? 'y' : 'ies'}` : ''
+        opts.store.appendLog({ level: 'info', message: `Found ${files.length} transcript file(s) across ${stats.projectDirs} project dir(s)${unreadable}` })
+        stage = 'parse'
+        const units: TaskUnit[] = []
+        for (const f of files) {
+          const parsed = await parseSessionDetailed(f, opts.homeDir)
+          units.push(...parsed.units)
+          diag.files.push(parsed.stats)
+        }
+        diag.totals = totalsOf(diag.files)
+        const skipped = diag.totals.jsonErrors ? `; ${diag.totals.jsonErrors} unparseable line(s) skipped` : ''
+        const failedReads = diag.totals.filesWithReadErrors ? `; ${diag.totals.filesWithReadErrors} file(s) unreadable` : ''
+        opts.store.appendLog({ level: 'info', message: `Parsed ${units.length} task unit(s)${skipped}${failedReads}` })
+        stage = 'digest'
+        const ctx = buildAnalysisContext(units)
+        if (!ctx) {
+          await opts.store.setDiagnostics(diag)
+          opts.store.appendLog({ level: 'info', message: 'No meaningful history to analyze yet.' })
+          return []
+        }
+        stage = 'analysis'
+        opts.store.appendLog({ level: 'info', message: `Analyzing ${ctx.refIndex.size} digest line(s) with Claude (${model.label})…` })
+        const { resultText } = await streamingRunner(ctx.prompt, { onLog: e => opts.store.appendLog(e), model: model.id })
+        stage = 'parse-response'
+        const found = parseAutomations(resultText, ctx.refIndex)
+        opts.store.appendLog({ level: 'info', message: `${found.length} automation(s) detected` })
+        await opts.store.setDiagnostics(diag)
+        return found
+      } catch (err) {
+        diag.failure = { stage, message: redact(err instanceof Error ? err.message : String(err), opts.homeDir) }
+        await opts.store.setDiagnostics(diag)
+        opts.store.appendLog({ level: 'error', message: `Scan failed during ${stage}: ${diag.failure.message}` })
+        throw err
+      }
     }).catch(() => { /* store records the error */ })
+  })
+
+  router.get('/diagnostics', (_req, res) => {
+    const d = opts.store.getLatest()?.diagnostics
+    if (!d) return void res.status(404).json({ error: 'No scan diagnostics recorded yet. Run a scan first.' })
+    res.json(d)
   })
 
   router.post('/:id/dismiss', async (req, res) => {

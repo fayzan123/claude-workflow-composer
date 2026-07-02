@@ -2,6 +2,7 @@ import express from 'express'
 import * as path from 'node:path'
 import * as fs from 'node:fs'
 import * as os from 'node:os'
+import { fileURLToPath } from 'node:url'
 import { healthRouter } from './api/health.js'
 import { claudeCheckRouter } from './api/claude-check.js'
 import { workflowsRouter } from './api/workflows.js'
@@ -33,6 +34,7 @@ import type { CwcTrigger } from '../schema.js'
 import { serviceRouter } from './api/service.js'
 import { automationScanRouter } from './api/automation-scan.js'
 import { createScanStore } from './scan-store.js'
+import type { ClaudeProbe } from '../detection/scan-diagnostics.js'
 import { installUiTokenCookie, requireApiToken, resolveAuthToken, restrictCors } from './security.js'
 
 export interface AppOptions {
@@ -52,6 +54,19 @@ export interface AppOptions {
   enableNotifier?: boolean        // default true; tests pass false
   authToken?: string              // set by the packaged server; tests/dev injections may omit
   allowedOrigins?: string[]       // CORS allowlist for explicit cross-origin dev clients
+  claudeProbe?: ClaudeProbe       // injectable `claude --version` probe for scan diagnostics
+  cwcVersion?: string             // reported in scan diagnostics; default read from package.json
+}
+
+/** Best-effort package version for diagnostics; works from both src/ (tsx) and dist/ layouts. */
+function resolveCwcVersion(): string {
+  try {
+    const pkgPath = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..', 'package.json')
+    const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf-8')) as { version?: string }
+    return pkg.version ?? 'unknown'
+  } catch {
+    return 'unknown'
+  }
 }
 
 export function createApp(opts: AppOptions): express.Express {
@@ -98,7 +113,7 @@ export function createApp(opts: AppOptions): express.Express {
   const scanPath = opts.automationScanPath ?? path.join(os.homedir(), '.cwc', 'automation-scan.json')
   const scanStore = createScanStore(scanPath)
   app.locals['scanStore'] = scanStore   // exposed so graceful shutdown / tests can await in-flight promotion jobs
-  app.use('/api/automation-scan', automationScanRouter({ homeDir, workflowsDir: wfDir, store: scanStore, runner: opts.claudeRunner, streamingRunner: opts.streamingRunner }))
+  app.use('/api/automation-scan', automationScanRouter({ homeDir, workflowsDir: wfDir, store: scanStore, runner: opts.claudeRunner, streamingRunner: opts.streamingRunner, claudeProbe: opts.claudeProbe, cwcVersion: opts.cwcVersion ?? resolveCwcVersion() }))
 
   // Sweep orphan worktrees on real server start only (paused/running runs keep theirs).
   // Gated on enableScheduler so test apps with default paths never touch ~/.cwc/worktrees.
