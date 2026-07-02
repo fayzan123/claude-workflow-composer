@@ -87,9 +87,9 @@ export type ClaudeProbe = () => Promise<{ version: string }>           // defaul
 export function totalsOf(files: FileParseStats[]): ScanDiagnostics['totals']
 ```
 
-- [ ] **Step 1: Write the failing test.** Cover: `redact` replaces every occurrence of the home dir (test with a homeDir containing regex-special chars, and on the win32 branch assert both `\` and `/` spellings are replaced — construct both variants explicitly rather than relying on the host OS); `totalsOf` sums units/jsonErrors and merges `typeCounts`; `envSnapshot` with an injected probe that resolves → `found: true, version`; with a probe that rejects (`ENOENT`) → `found: false, error` containing no absolute home path.
-- [ ] **Step 2: Implement.** `redact` via split/join (no regex escaping pitfalls). Default probe uses `node:child_process` `execFile('claude', ['--version'], { timeout: 5000 })`; treat any failure as `found: false` — never throw.
-- [ ] **Step 3: Verify** `npx vitest run tests/detection/scan-diagnostics.test.ts` green; `npm run typecheck`.
+- [x] **Step 1: Write the failing test.** Cover: `redact` replaces every occurrence of the home dir (test with a homeDir containing regex-special chars, and on the win32 branch assert both `\` and `/` spellings are replaced — construct both variants explicitly rather than relying on the host OS); `totalsOf` sums units/jsonErrors and merges `typeCounts`; `envSnapshot` with an injected probe that resolves → `found: true, version`; with a probe that rejects (`ENOENT`) → `found: false, error` containing no absolute home path.
+- [x] **Step 2: Implement.** `redact` via split/join (no regex escaping pitfalls). Default probe uses `node:child_process` `execFile('claude', ['--version'], { timeout: 5000 })`; treat any failure as `found: false` — never throw.
+- [x] **Step 3: Verify** `npx vitest run tests/detection/scan-diagnostics.test.ts` green; `npm run typecheck`.
 
 ## Task 2: Detailed, streaming session parsing
 
@@ -104,15 +104,15 @@ export async function parseSessionDetailed(filePath: string, homeDir?: string): 
 // parseSession(filePath) becomes: (await parseSessionDetailed(filePath)).units  — identical output
 ```
 
-- [ ] **Step 1: Write the failing tests** (temp-dir fixtures, house style):
+- [x] **Step 1: Write the failing tests** (temp-dir fixtures, house style):
   - Well-formed 2-prompt session → 2 units (existing behavior), stats: `units: 2`, `jsonErrors: 0`, `typeCounts` includes `{ user: …, assistant: … }`.
   - File containing malformed JSON lines interleaved with valid ones → valid units still produced; `jsonErrors` equals the malformed count (today they vanish silently).
   - Lines with unrecognized `type` values (e.g. `summary`, `file-history-snapshot`, a hypothetical `x-future-type`) → skipped as today, but each counted in `typeCounts`.
   - Nonexistent file → `units: []`, `stats.readError` set, no throw; `stats.file` is `~`-relative when `homeDir` is passed and the path is under it.
   - Large-file sanity: generate a temp `.jsonl` of ~50k lines and assert it parses without error (guards the streaming rewrite; loose assertion, no timing).
   - Existing `parseSession` tests: **unchanged and green** — the regression guard.
-- [ ] **Step 2: Implement.** Rewrite the read loop over `node:readline` + `fs.createReadStream` (`crlfDelay: Infinity`) instead of whole-file `readFile` — removes the large-transcript OOM/latency vector. Count `bytes` from `fs.stat`. Keep the unit-building logic byte-for-byte equivalent; only the iteration source and counting change. `parseSession` and `findTranscripts` remain exported with identical signatures/behavior.
-- [ ] **Step 3: Verify** the full detection suite: `npx vitest run tests/detection/`.
+- [x] **Step 2: Implement.** Rewrite the read loop over `node:readline` + `fs.createReadStream` (`crlfDelay: Infinity`) instead of whole-file `readFile` — removes the large-transcript OOM/latency vector. Count `bytes` from `fs.stat`. Keep the unit-building logic byte-for-byte equivalent; only the iteration source and counting change. `parseSession` and `findTranscripts` remain exported with identical signatures/behavior.
+- [x] **Step 3: Verify** the full detection suite: `npx vitest run tests/detection/`.
 
 ## Task 3: Discovery with statistics
 
@@ -127,12 +127,12 @@ export async function discoverTranscripts(homeDir?: string): Promise<{ files: st
 // findTranscripts(homeDir) becomes: (await discoverTranscripts(homeDir)).files
 ```
 
-- [ ] **Step 1: Write the failing tests:**
+- [x] **Step 1: Write the failing tests:**
   - Temp home with `.claude/projects/<a>/x.jsonl`, `<a>/y.txt`, `<b>/z.jsonl` → `files` has the two `.jsonl` paths; stats `{ rootExists: true, projectDirs: 2, unreadableDirs: 0, transcriptFiles: 2 }`.
   - Temp home with no `.claude/projects` → `files: []`, `rootExists: false` (today this is indistinguishable from "no history").
   - A **regular file** placed directly in `projects/` alongside real project dirs → its `readdir` fails; counted in `unreadableDirs`, real dirs still scanned (portable across OSes — no chmod).
-- [ ] **Step 2: Implement** with the same silent-catch structure as today, except every catch increments a counter instead of discarding the information. `stats.root` is redacted with the provided `homeDir`.
-- [ ] **Step 3: Verify** `npx vitest run tests/detection/transcript-parser.test.ts`.
+- [x] **Step 2: Implement** with the same silent-catch structure as today, except every catch increments a counter instead of discarding the information. `stats.root` is redacted with the provided `homeDir`.
+- [x] **Step 3: Verify** `npx vitest run tests/detection/transcript-parser.test.ts`.
 
 ## Task 4: Persist diagnostics in the scan store
 
@@ -142,9 +142,9 @@ export async function discoverTranscripts(homeDir?: string): Promise<{ files: st
 
 **Interfaces produced:** `ScanResult.diagnostics?: ScanDiagnostics`; `ScanStore.setDiagnostics(d: ScanDiagnostics): Promise<void>`.
 
-- [ ] **Step 1: Write the failing test:** create a store on a temp file, run a scan whose job calls `setDiagnostics(...)` then returns `[]` → `getLatest()!.diagnostics` matches; re-create the store from the same file → diagnostics survived persistence. Also: job that calls `setDiagnostics` then **throws** → status `error` AND diagnostics still present on the persisted record (the failure case is the whole point).
-- [ ] **Step 2: Implement.** `setDiagnostics` assigns onto `latest` (no-op if `latest` is null) and `await persist()`. One subtlety: `runScan`'s catch block rebuilds `latest` — carry `diagnostics: latest?.diagnostics` through both the success and error reconstruction literals (lines ~130–132), mirroring how `log` is carried.
-- [ ] **Step 3: Verify** the store test file plus `npx vitest run tests/server/`.
+- [x] **Step 1: Write the failing test:** create a store on a temp file, run a scan whose job calls `setDiagnostics(...)` then returns `[]` → `getLatest()!.diagnostics` matches; re-create the store from the same file → diagnostics survived persistence. Also: job that calls `setDiagnostics` then **throws** → status `error` AND diagnostics still present on the persisted record (the failure case is the whole point).
+- [x] **Step 2: Implement.** `setDiagnostics` assigns onto `latest` (no-op if `latest` is null) and `await persist()`. One subtlety: `runScan`'s catch block rebuilds `latest` — carry `diagnostics: latest?.diagnostics` through both the success and error reconstruction literals (lines ~130–132), mirroring how `log` is carried.
+- [x] **Step 3: Verify** the store test file plus `npx vitest run tests/server/`.
 
 ## Task 5: Stage-tagged scan route + `GET /diagnostics`
 
@@ -152,11 +152,11 @@ export async function discoverTranscripts(homeDir?: string): Promise<{ files: st
 - Modify: `src/server/api/automation-scan.ts`
 - Test: extend the automation-scan router tests (via `createApp()` with temp paths and injected `streamingRunner`, per house convention)
 
-- [ ] **Step 1: Write the failing tests:**
+- [x] **Step 1: Write the failing tests:**
   - **Success path:** temp home seeded with one small valid transcript; injected `streamingRunner` returns a fixed automations payload. POST `/api/automation-scan`, await completion, GET `/api/automation-scan/diagnostics` → 200 with `env`, `discovery.transcriptFiles: 1`, `totals.units > 0`, no `failure`.
   - **Failure path:** injected `streamingRunner` that throws `new Error('boom /Users/tester/.claude secret')` with the temp home as homeDir → scan status `error`; diagnostics has `failure.stage: 'analysis'` and a `failure.message` containing `boom` but **not** the raw home path (redaction applied).
   - GET `/diagnostics` with no scan yet → 404.
-- [ ] **Step 2: Implement.** Restructure the POST `/` job into explicit stages, building one `ScanDiagnostics` as it goes:
+- [x] **Step 2: Implement.** Restructure the POST `/` job into explicit stages, building one `ScanDiagnostics` as it goes:
 
 ```ts
 void opts.store.runScan(async () => {
@@ -190,7 +190,7 @@ void opts.store.runScan(async () => {
 ```
 
   Add `router.get('/diagnostics', …)` returning `opts.store.getLatest()?.diagnostics` or 404, and optional `claudeProbe?: ClaudeProbe` + `version?: string` to `AutomationScanRouterOptions` (default version from package metadata the way `bin/cwc.ts` already resolves it — check and reuse that mechanism; pass through `createApp` `AppOptions`).
-- [ ] **Step 3: Verify** `npx vitest run tests/server/` and `npm run typecheck`.
+- [x] **Step 3: Verify** `npx vitest run tests/server/` and `npm run typecheck`.
 
 ## Task 6: `cwc doctor`
 
@@ -214,19 +214,19 @@ export async function runDoctor(opts: DoctorOptions): Promise<{ ok: boolean; bun
 
 `runDoctor` = env probe + discovery + parse of every transcript (**no Claude analysis, no tokens**). `ok` is false when: root missing, zero transcripts, zero units, every file has a `readError`, or the claude binary is absent. Summary output is a handful of human lines (env, discovery counts, parse totals, per-file lines only for files with `readError`/`jsonErrors > 0`, verdict + "attach <bundle> to a bug report").
 
-- [ ] **Step 1: Write the failing tests:**
+- [x] **Step 1: Write the failing tests:**
   - Healthy temp home (one valid transcript, probe resolves) → `ok: true`; summary mentions transcript and unit counts; bundle written to `bundlePath` and parses as `ScanDiagnostics`.
   - Empty temp home (no `.claude`) → `ok: false`; summary says the projects root was not found; bundle still written.
   - Probe rejects → `ok: false`, `bundle.env.claude.found === false`.
   - **Privacy test (the load-bearing one):** fixture transcript contains a distinctive prompt string (`SECRET-PROMPT-TEXT-XYZ`) and a Bash command (`rm -rf /tmp/SECRET-CMD`); serialize the entire bundle with `JSON.stringify` and assert it contains **neither string, nor the raw temp homeDir path**.
-- [ ] **Step 2: Implement** `runDoctor`, then wire `bin/cwc.ts`: `else if (command === 'doctor')` → thin caller resolving `--bundle [path]` (default `./cwc-doctor-bundle.json`), `out: console.log`, exit code `ok ? 0 : 1`. The bin caller stays untested, matching the launcher pattern — logic lives in the testable module.
-- [ ] **Step 3: Verify** `npx vitest run tests/detection/doctor.test.ts`; run it for real once: `node dist/bin/cwc.js doctor --bundle /tmp/bundle.json` after `npm run build`, and read the bundle to confirm redaction on a real home directory.
+- [x] **Step 2: Implement** `runDoctor`, then wire `bin/cwc.ts`: `else if (command === 'doctor')` → thin caller resolving `--bundle [path]` (default `./cwc-doctor-bundle.json`), `out: console.log`, exit code `ok ? 0 : 1`. The bin caller stays untested, matching the launcher pattern — logic lives in the testable module.
+- [x] **Step 3: Verify** `npx vitest run tests/detection/doctor.test.ts`; run it for real once: `node dist/bin/cwc.js doctor --bundle /tmp/bundle.json` after `npm run build`, and read the bundle to confirm redaction on a real home directory.
 
 ## Task 7: README + full verification
 
-- [ ] **Step 1:** Add a Troubleshooting subsection to `README.md`: if Detect errors or finds nothing, run `npx claude-cwc doctor --bundle`, state that the bundle is redacted (counts and versions only — no prompt or command content), and attach it to a GitHub issue.
-- [ ] **Step 2:** Full gate per AGENTS.md: `npm test`, `npm run typecheck`, `npm run build` — all green on the branch.
-- [ ] **Step 3:** Real-world smoke: run `doctor` against the developer's actual home dir; confirm the summary matches expectations (hundreds of transcripts, zero read errors) and skim the bundle one final time for anything that should not leave a machine.
+- [x] **Step 1:** Add a Troubleshooting subsection to `README.md`: if Detect errors or finds nothing, run `npx claude-cwc doctor --bundle`, state that the bundle is redacted (counts and versions only — no prompt or command content), and attach it to a GitHub issue.
+- [x] **Step 2:** Full gate per AGENTS.md: `npm test`, `npm run typecheck`, `npm run build` — all green on the branch.
+- [x] **Step 3:** Real-world smoke: run `doctor` against the developer's actual home dir; confirm the summary matches expectations (hundreds of transcripts, zero read errors) and skim the bundle one final time for anything that should not leave a machine.
 
 ## Out of Scope (Phase 0)
 
