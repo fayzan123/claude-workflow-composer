@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs'
 import * as path from 'node:path'
 import { EventEmitter } from 'node:events'
 import type { DetectedAutomation } from '../detection/types.js'
+import type { ScanDiagnostics } from '../detection/scan-diagnostics.js'
 import type { StreamLogEvent } from './streaming-analyzer.js'
 
 export interface LogEntry extends StreamLogEvent { ts: string }
@@ -23,6 +24,7 @@ interface ScanResult {
   automations: DetectedAutomation[]
   log: LogEntry[]
   generation?: GenerationState | null
+  diagnostics?: ScanDiagnostics
 }
 
 export interface ScanStore {
@@ -37,6 +39,8 @@ export interface ScanStore {
   hasActivePromotion(): boolean
   onLog(cb: (e: LogEntry) => void): () => void
   appendLog(e: StreamLogEvent): void
+  /** Attach a diagnostics record to the current scan result and persist it. */
+  setDiagnostics(d: ScanDiagnostics): Promise<void>
   runScan(job: () => Promise<DetectedAutomation[]>): Promise<void>
   setStatus(id: string, status: DetectedAutomation['status'], statusDetail?: string): Promise<DetectedAutomation | null>
 }
@@ -119,6 +123,11 @@ export function createScanStore(filePath: string): ScanStore {
       if (latest) { latest.log.push(entry); if (latest.log.length > 2000) latest.log.shift() }
       emitter.emit('log', entry)
     },
+    async setDiagnostics(d) {
+      if (!latest) return
+      latest.diagnostics = d
+      await persist()
+    },
     async runScan(job) {
       if (running) throw new Error('A scan is already running.')
       running = true
@@ -127,9 +136,9 @@ export function createScanStore(filePath: string): ScanStore {
       await persist()
       try {
         const automations = reconcile(await job(), priorAutomations)
-        latest = { status: 'done', startedAt: latest.startedAt, finishedAt: new Date().toISOString(), automations, log: latest.log, generation: latest.generation ?? null }
+        latest = { status: 'done', startedAt: latest.startedAt, finishedAt: new Date().toISOString(), automations, log: latest.log, generation: latest.generation ?? null, diagnostics: latest.diagnostics }
       } catch (err) {
-        latest = { status: 'error', startedAt: latest.startedAt, finishedAt: new Date().toISOString(), error: err instanceof Error ? err.message : 'scan failed', automations: [], log: latest?.log ?? [], generation: latest?.generation ?? null }
+        latest = { status: 'error', startedAt: latest.startedAt, finishedAt: new Date().toISOString(), error: err instanceof Error ? err.message : 'scan failed', automations: [], log: latest?.log ?? [], generation: latest?.generation ?? null, diagnostics: latest?.diagnostics }
       } finally {
         running = false
         await persist()

@@ -5,6 +5,7 @@ import * as path from 'node:path'
 import { createScanStore } from '../../src/server/scan-store.js'
 import type { DetectedAutomation } from '../../src/detection/types.js'
 import type { LogEntry } from '../../src/server/scan-store.js'
+import type { ScanDiagnostics } from '../../src/detection/scan-diagnostics.js'
 
 let dir: string, file: string
 beforeEach(async () => { dir = await fs.mkdtemp(path.join(os.tmpdir(), 'cwc-scan-')); file = path.join(dir, 'scan.json') })
@@ -166,5 +167,38 @@ describe('createScanStore', () => {
     expect(reloaded.hasActivePromotion()).toBe(false)
     expect(reloaded.getLatest()?.automations[0].status).toBe('promotion_failed')
     expect(reloaded.getLatest()?.automations[0].statusDetail).toContain('interrupted')
+  })
+
+  function diag(failure?: ScanDiagnostics['failure']): ScanDiagnostics {
+    return {
+      generatedAt: new Date().toISOString(),
+      env: { platform: process.platform, arch: process.arch, nodeVersion: process.version, cwcVersion: '0.0.0-test', claude: { found: true, version: 'x' } },
+      discovery: { root: '~/.claude/projects', rootExists: true, projectDirs: 1, unreadableDirs: 0, transcriptFiles: 1 },
+      files: [{ file: '~/s.jsonl', bytes: 1, lines: 1, units: 1, jsonErrors: 0, typeCounts: { user: 1 } }],
+      totals: { files: 1, filesWithReadErrors: 0, units: 1, jsonErrors: 0, typeCounts: { user: 1 } },
+      ...(failure ? { failure } : {}),
+    }
+  }
+
+  it('persists diagnostics set during a successful scan across reloads', async () => {
+    const store = createScanStore(file)
+    await store.runScan(async () => {
+      await store.setDiagnostics(diag())
+      return [auto({})]
+    })
+    expect(store.getLatest()?.diagnostics?.discovery.transcriptFiles).toBe(1)
+    expect(createScanStore(file).getLatest()?.diagnostics?.totals.units).toBe(1)
+  })
+
+  it('keeps diagnostics on the error result when the scan job throws after setting them', async () => {
+    const store = createScanStore(file)
+    await store.runScan(async () => {
+      await store.setDiagnostics(diag({ stage: 'analysis', message: 'claude blew up' }))
+      throw new Error('claude blew up')
+    })
+    const latest = store.getLatest()!
+    expect(latest.status).toBe('error')
+    expect(latest.diagnostics?.failure).toEqual({ stage: 'analysis', message: 'claude blew up' })
+    expect(createScanStore(file).getLatest()?.diagnostics?.failure?.stage).toBe('analysis')
   })
 })

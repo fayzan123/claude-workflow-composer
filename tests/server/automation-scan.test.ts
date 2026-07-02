@@ -110,7 +110,7 @@ beforeEach(async () => {
   const agentDir = path.join(home, '.claude', 'agents')
   await fs.mkdir(agentDir, { recursive: true })
   await fs.writeFile(path.join(agentDir, 'runner-agent.md'), '---\nname: Runner Agent\ndescription: run tests and push changes\n---\nExisting agent body for running tests and pushing changes safely.\n')
-  const app = createApp({ staticDir: null, userHomeDir: home, automationScanPath: scanPath, workflowsDir: wfDir, claudeRunner: smartRunner, streamingRunner: fakeStreaming, enableNotifier: false })
+  const app = createApp({ staticDir: null, userHomeDir: home, automationScanPath: scanPath, workflowsDir: wfDir, claudeRunner: smartRunner, streamingRunner: fakeStreaming, claudeProbe: async () => ({ version: 'test-claude 9.9.9' }), enableNotifier: false })
   scanStore = app.locals['scanStore'] as ScanStore
   server = app.listen(0)
   base = `http://localhost:${(server.address() as AddressInfo).port}`
@@ -150,6 +150,61 @@ async function waitForGenerationWorkflowId(id: string): Promise<{ generation: { 
   }
   throw new Error(`generation ${id} did not finish`)
 }
+
+describe('scan diagnostics endpoint', () => {
+  interface DiagBody {
+    env: { nodeVersion: string; cwcVersion: string; claude: { found: boolean; version?: string } }
+    discovery: { rootExists: boolean; projectDirs: number; transcriptFiles: number }
+    totals: { files: number; units: number; jsonErrors: number }
+    failure?: { stage: string; message: string }
+  }
+
+  it('returns 404 before any scan has run', async () => {
+    const res = await fetch(`${base}/api/automation-scan/diagnostics`)
+    expect(res.status).toBe(404)
+  })
+
+  it('exposes environment, discovery, and parse diagnostics after a successful scan', async () => {
+    await fetch(`${base}/api/automation-scan`, { method: 'POST' })
+    await waitForDone()
+    const res = await fetch(`${base}/api/automation-scan/diagnostics`)
+    expect(res.status).toBe(200)
+    const d = await res.json() as DiagBody
+    expect(d.env.nodeVersion).toBe(process.version)
+    expect(d.env.claude).toEqual({ found: true, version: 'test-claude 9.9.9' })
+    expect(d.discovery).toMatchObject({ rootExists: true, projectDirs: 1, transcriptFiles: 1 })
+    expect(d.totals.files).toBe(1)
+    expect(d.totals.units).toBeGreaterThan(0)
+    expect(d.failure).toBeUndefined()
+  })
+
+  it('tags the failing stage and redacts the home dir when the scan errors', async () => {
+    const boom: StreamingRunner = async () => { throw new Error(`analysis exploded reading ${home}/.claude/projects`) }
+    const app2 = createApp({ staticDir: null, userHomeDir: home, automationScanPath: path.join(home, 'scan2.json'), workflowsDir: wfDir, claudeRunner: smartRunner, streamingRunner: boom, claudeProbe: async () => { throw new Error('spawn claude ENOENT') }, enableNotifier: false })
+    const server2 = app2.listen(0)
+    const base2 = `http://localhost:${(server2.address() as AddressInfo).port}`
+    try {
+      await fetch(`${base2}/api/automation-scan`, { method: 'POST' })
+      let status = ''
+      for (let i = 0; i < 40 && status !== 'error'; i++) {
+        status = ((await (await fetch(`${base2}/api/automation-scan`)).json()) as { status: string }).status
+        if (status !== 'error') await new Promise(res => setTimeout(res, 25))
+      }
+      expect(status).toBe('error')
+      const d = await (await fetch(`${base2}/api/automation-scan/diagnostics`)).json() as DiagBody
+      expect(d.failure?.stage).toBe('analysis')
+      expect(d.failure?.message).toContain('analysis exploded')
+      expect(d.failure?.message).not.toContain(home)
+      expect(d.failure?.message).toContain('~')
+      expect(d.env.claude.found).toBe(false)
+      // discovery/parse stats from the stages before the failure are still present
+      expect(d.discovery.transcriptFiles).toBe(1)
+      expect(d.totals.units).toBeGreaterThan(0)
+    } finally {
+      server2.close()
+    }
+  })
+})
 
 describe('automation-scan API', () => {
   it('runs a scan and returns detected automations, then dismiss persists', async () => {

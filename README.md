@@ -53,6 +53,16 @@ npx claude-cwc install-service
 npx claude-cwc uninstall-service
 ```
 
+### Troubleshooting: Detect fails or finds nothing
+
+If a history scan errors out or reports no automations when you expect some, run the offline health check:
+
+```bash
+npx claude-cwc doctor --bundle
+```
+
+It checks your environment (Claude binary, transcript discovery, per-file parsing) without invoking Claude, prints a verdict, and writes `cwc-doctor-bundle.json`. The bundle is redacted — it contains counts, versions, entry-type tallies, and project folder names, never your prompts, commands, or conversation content — so it's safe to attach to a [GitHub issue](https://github.com/fayzan123/claude-workflow-composer/issues). After a failed in-app scan, the same diagnostics are available at `http://localhost:3579/api/automation-scan/diagnostics`.
+
 Or from source:
 
 ```bash
