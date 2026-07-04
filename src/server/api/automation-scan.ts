@@ -126,15 +126,24 @@ export function automationScanRouter(opts: AutomationScanRouterOptions): Router 
     req.on('close', () => { off(); res.end() })
   })
 
-  router.post('/', (req, res) => {
+  router.post('/', async (req, res) => {
     if (opts.store.isRunning()) return void res.status(409).json({ error: 'A scan is already running.' })
     if (hasPromotionWork()) return void res.status(409).json({ error: 'A workflow generation is already running.' })
     const model = resolveScanModel((req.body ?? {}).model)
+    // Gate: Detect's analysis stage spawns `claude -p`; without the binary every scan
+    // dies mid-flight with an opaque ENOENT. Probe once up front (result is reused as
+    // the diagnostics env snapshot) and refuse with an actionable message instead.
+    const env = await envSnapshot(opts.cwcVersion ?? 'unknown', opts.claudeProbe)
+    if (!env.claude.found) {
+      return void res.status(422).json({
+        error: 'Claude Code CLI not found — the `claude` command is not on this server\'s PATH, and Detect needs it to analyze your history. Install Claude Code, verify `claude --version` works in a terminal, then restart CWC and retry. (Run `npx claude-cwc doctor` for a full environment check.)',
+      })
+    }
     res.status(202).json({ status: 'running' })
     void opts.store.runScan(async () => {
       const diag: ScanDiagnostics = {
         generatedAt: new Date().toISOString(),
-        env: await envSnapshot(opts.cwcVersion ?? 'unknown', opts.claudeProbe),
+        env,
         discovery: { root: '', rootExists: false, projectDirs: 0, unreadableDirs: 0, transcriptFiles: 0 },
         files: [],
         totals: totalsOf([]),

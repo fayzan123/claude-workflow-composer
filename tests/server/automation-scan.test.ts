@@ -178,9 +178,27 @@ describe('scan diagnostics endpoint', () => {
     expect(d.failure).toBeUndefined()
   })
 
+  it('refuses to start a scan when the claude binary is missing, with an actionable error', async () => {
+    const app2 = createApp({ staticDir: null, userHomeDir: home, automationScanPath: path.join(home, 'scan-gate.json'), workflowsDir: wfDir, claudeRunner: smartRunner, streamingRunner: fakeStreaming, claudeProbe: async () => { throw new Error('spawn claude ENOENT') }, enableNotifier: false })
+    const server2 = app2.listen(0)
+    const base2 = `http://localhost:${(server2.address() as AddressInfo).port}`
+    try {
+      const res = await fetch(`${base2}/api/automation-scan`, { method: 'POST' })
+      expect(res.status).toBe(422)
+      const body = await res.json() as { error?: string }
+      expect(body.error).toMatch(/claude/i)
+      expect(body.error).toMatch(/install/i)
+      // no scan was started or recorded
+      const latest = await (await fetch(`${base2}/api/automation-scan`)).json() as { status?: string }
+      expect(latest.status).toBe('idle')
+    } finally {
+      server2.close()
+    }
+  })
+
   it('tags the failing stage and redacts the home dir when the scan errors', async () => {
     const boom: StreamingRunner = async () => { throw new Error(`analysis exploded reading ${home}/.claude/projects`) }
-    const app2 = createApp({ staticDir: null, userHomeDir: home, automationScanPath: path.join(home, 'scan2.json'), workflowsDir: wfDir, claudeRunner: smartRunner, streamingRunner: boom, claudeProbe: async () => { throw new Error('spawn claude ENOENT') }, enableNotifier: false })
+    const app2 = createApp({ staticDir: null, userHomeDir: home, automationScanPath: path.join(home, 'scan2.json'), workflowsDir: wfDir, claudeRunner: smartRunner, streamingRunner: boom, claudeProbe: async () => ({ version: 'test-claude 9.9.9' }), enableNotifier: false })
     const server2 = app2.listen(0)
     const base2 = `http://localhost:${(server2.address() as AddressInfo).port}`
     try {
@@ -196,7 +214,7 @@ describe('scan diagnostics endpoint', () => {
       expect(d.failure?.message).toContain('analysis exploded')
       expect(d.failure?.message).not.toContain(home)
       expect(d.failure?.message).toContain('~')
-      expect(d.env.claude.found).toBe(false)
+      expect(d.env.claude.found).toBe(true)
       // discovery/parse stats from the stages before the failure are still present
       expect(d.discovery.transcriptFiles).toBe(1)
       expect(d.totals.units).toBeGreaterThan(0)
