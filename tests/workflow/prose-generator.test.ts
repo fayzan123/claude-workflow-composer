@@ -48,6 +48,14 @@ describe('generateOrchestratorBody', () => {
     expect(body).toContain('**Reviewer**')
   })
 
+  it('bold-wraps substring agent names without corrupting markdown', () => {
+    const nodes = [node('A', 'Code Review', 'to inspect'), node('B', 'Review')]
+    const edges = [edge('A', 'B', 'When Code Review is done, activate Review.')]
+    const body = generateOrchestratorBody(nodes, edges, 'My Workflow')
+    expect(body).toContain('When **Code Review** is done, activate **Review**.')
+    expect(body).not.toContain('**Code **Review****')
+  })
+
   it('appends Pass the ... forward for text artifacts', () => {
     const nodes = [node('A', 'Dev', 'to build'), node('B', 'QA')]
     const edges = [edge('A', 'B', 'When done, activate QA.', [artifact('schema'), artifact('api-spec')])]

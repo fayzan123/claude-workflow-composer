@@ -108,6 +108,20 @@ export async function exportWorkflow(
 
   await ensureDir(agentsDir)
 
+  const currentBespokeSlugs = new Map<string, CwcNode>()
+  for (const node of cwc.nodes) {
+    const slug = nodeExportedSlug(node)
+    if (slug === null || node.agentRef) continue
+    const existing = currentBespokeSlugs.get(slug)
+    if (existing) {
+      throw new ExportConflictError(
+        `Agents "${existing.agent.name}" and "${node.agent.name}" both export to ${slug}. Rename one agent before exporting.`,
+        path.join(agentsDir, `${slug}.md`),
+      )
+    }
+    currentBespokeSlugs.set(slug, node)
+  }
+
   const updatedNodes: CwcNode[] = []
   const nodeOverrides = collectNodeOverrides(cwc.nodes)
 
@@ -118,7 +132,7 @@ export async function exportWorkflow(
       if (node.exportedSlug && node.exportedSlug !== refSlug) {
         const oldPath = path.join(agentsDir, `${node.exportedSlug}.md`)
         const oldContent = await safeReadFile(oldPath)
-        if (oldContent !== null) {
+        if (oldContent !== null && !currentBespokeSlugs.has(node.exportedSlug)) {
           const status = detectConflict(oldContent, AGENT_OWNERSHIP_REGEX, workflowId)
           if (status === 'owned') {
             await fs.unlink(oldPath)
@@ -157,7 +171,7 @@ export async function exportWorkflow(
     if (node.exportedSlug && node.exportedSlug !== newSlug) {
       const oldPath = path.join(agentsDir, `${node.exportedSlug}.md`)
       const oldContent = await safeReadFile(oldPath)
-      if (oldContent !== null) {
+      if (oldContent !== null && !currentBespokeSlugs.has(node.exportedSlug)) {
         const status = detectConflict(oldContent, AGENT_OWNERSHIP_REGEX, workflowId)
         if (status === 'owned') {
           await fs.unlink(oldPath)

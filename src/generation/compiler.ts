@@ -8,6 +8,7 @@ import type { PlanPhase, WorkflowPlan } from './plan-schema.js'
 import { validatePlan } from './plan-schema.js'
 import { resolveReuse as resolveReuseGate } from './reuse-gate.js'
 import { scanRisk as scanRiskDefault } from './risk-scanner.js'
+import { agentSlug } from '../slugify.js'
 
 export type ReuseDecision =
   | { attach: false; reason?: string }
@@ -239,9 +240,10 @@ function selfHeal(cwc: CwcFile): CwcFile {
     const base = node.agent.name || 'Phase'
     let name = base
     let suffix = 2
-    while (seen.has(name)) name = `${base} (${suffix++})`
+    const keyFor = (candidate: string) => node.agentRef || node.nodeType === 'gate' ? candidate : agentSlug(candidate)
+    while (seen.has(keyFor(name))) name = `${base} (${suffix++})`
     node.agent.name = name
-    seen.add(name)
+    seen.add(keyFor(name))
   }
 
   return cwc

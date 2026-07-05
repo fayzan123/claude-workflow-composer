@@ -109,6 +109,7 @@ function coalesceKey(action: WorkflowAction): string | null {
   switch (action.type) {
     case 'SET_META': return 'meta'
     case 'UPDATE_NODE': return `update:${action.payload.nodeId}`
+    case 'MOVE_NODE': return `move:${action.payload.nodeId}`
     default: return null
   }
 }

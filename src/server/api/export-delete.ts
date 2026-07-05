@@ -30,8 +30,8 @@ export async function deleteExport(cwc: CwcFile, target: ExportTarget): Promise<
   const notFound: string[] = []
 
   for (const node of cwc.nodes) {
-    if (node.agentRef) {
-      // Ref nodes point to pre-existing agent files — never delete them
+    if (node.agentRef || node.nodeType === 'gate') {
+      // Ref nodes point to pre-existing agent files; gates never write agent files.
       continue
     }
     const slug = node.exportedSlug ?? agentSlug(node.agent.name)

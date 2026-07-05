@@ -354,6 +354,58 @@ describe('exportWorkflow — renamed node', () => {
   })
 })
 
+describe('exportWorkflow — duplicate agent slugs', () => {
+  it('refuses to export two bespoke agents whose names slugify to the same file', async () => {
+    const now = new Date().toISOString()
+    const cwc: CwcFile = {
+      meta: { id: 'wf-dupe', name: 'Dupe Flow', description: '', version: 1, created: now, updated: now },
+      nodes: [
+        { id: 'n1', position: { x: 0, y: 0 }, exportedSlug: null, agent: { name: 'Run Tests', description: '', completionCriteria: 'done' } },
+        { id: 'n2', position: { x: 1, y: 0 }, exportedSlug: null, agent: { name: 'Run Tests.', description: '', completionCriteria: 'done' } },
+      ],
+      edges: [
+        { id: 'e1', from: 'n1', to: 'n2', trigger: 'next' },
+        { id: 'e2', from: 'n2', to: null, trigger: 'done', terminalType: 'complete' },
+      ],
+    }
+
+    await expect(exportWorkflow(cwc, { type: 'project', projectDir: tmpDir }, { skillsDir: path.join(tmpDir, 'skills') }))
+      .rejects.toThrow(/both export to run-tests/)
+  })
+
+  it('does not delete a sibling agent file during stale old-slug cleanup', async () => {
+    const now = new Date().toISOString()
+    const cwc: CwcFile = {
+      meta: { id: 'wf-sibling', name: 'Sibling Flow', description: '', version: 1, created: now, updated: now },
+      nodes: [
+        { id: 'n1', position: { x: 0, y: 0 }, exportedSlug: null, agent: { name: 'Alpha', description: '', completionCriteria: 'done' } },
+        { id: 'n2', position: { x: 1, y: 0 }, exportedSlug: null, agent: { name: 'Beta', description: '', completionCriteria: 'done' } },
+      ],
+      edges: [
+        { id: 'e1', from: 'n1', to: 'n2', trigger: 'next' },
+        { id: 'e2', from: 'n2', to: null, trigger: 'done', terminalType: 'complete' },
+      ],
+    }
+    const target: ExportTarget = { type: 'project', projectDir: tmpDir }
+    const opts = { skillsDir: path.join(tmpDir, 'skills') }
+    const first = await exportWorkflow(cwc, target, opts)
+    const stale = {
+      ...first.updatedCwc,
+      nodes: first.updatedCwc.nodes.map(node =>
+        node.id === 'n1'
+          ? { ...node, exportedSlug: 'beta', agent: { ...node.agent, name: 'Gamma' } }
+          : node
+      ),
+    }
+
+    await exportWorkflow(stale, target, opts)
+
+    const beta = await fs.readFile(path.join(tmpDir, '.claude', 'agents', 'beta.md'), 'utf-8')
+    expect(beta).toContain(agentOwnershipComment('n2', 'wf-sibling'))
+    await fs.access(path.join(tmpDir, '.claude', 'agents', 'gamma.md'))
+  })
+})
+
 describe('observability instrumentation', () => {
   function obsCwc(observability?: { enabled: boolean }): CwcFile {
     const now = new Date().toISOString()

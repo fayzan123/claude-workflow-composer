@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { DetectedAutomation } from '../../src/detection/types.js'
 import { compile } from '../../src/generation/compiler.js'
 import type { WorkflowPlan } from '../../src/generation/plan-schema.js'
+import { agentSlug } from '../../src/slugify.js'
 
 const auto = (steps: string[], over: Partial<DetectedAutomation> = {}): DetectedAutomation => ({
   id: 'a1',
@@ -68,6 +69,26 @@ describe('compile', () => {
     expect(cwc.meta.id).toMatch(/[0-9a-f-]{36}/)
     const names = cwc.nodes.map(node => node.agent.name)
     expect(new Set(names).size).toBe(names.length)
+  })
+
+  it('self-heals bespoke phase names whose export slugs collide', () => {
+    const healed = compile({
+      automation: auto(['run tests', 'run tests again']),
+      plan: {
+        name: 'x',
+        description: '',
+        phases: [
+          { id: 'p1', intent: 'Run Tests', stepIndexes: [0] },
+          { id: 'p2', intent: 'Run Tests.', stepIndexes: [1] },
+        ],
+      },
+      catalog,
+      triggers: [],
+    }, noRiskDeps)
+    const slugs = healed.nodes
+      .filter(node => !node.agentRef && node.nodeType !== 'gate')
+      .map(node => agentSlug(node.agent.name))
+    expect(new Set(slugs).size).toBe(slugs.length)
   })
 
   it('falls back to a valid workflow when the plan is garbage', () => {

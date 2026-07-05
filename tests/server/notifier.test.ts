@@ -54,6 +54,41 @@ describe('startNotifier', () => {
     }
   })
 
+  it('awaiting_approval from an external run triggers a pause notification', async () => {
+    const captured: Array<[string, string]> = []
+    const unsub = startNotifier({
+      store,
+      getConfig: () => makeConfig({ macos: true }),
+      execNotify: (title, body) => { captured.push([title, body]) },
+    })
+    try {
+      // @ts-expect-error minimal event shape for test
+      await store.append(baseEvent('awaiting_approval', { source: 'external' }))
+      expect(captured).toHaveLength(1)
+      expect(captured[0][0]).toContain('approval needed')
+    } finally {
+      unsub()
+    }
+  })
+
+  it('awaiting_approval followed by run_paused only notifies once for the same pause', async () => {
+    const captured: Array<[string, string]> = []
+    const unsub = startNotifier({
+      store,
+      getConfig: () => makeConfig({ macos: true }),
+      execNotify: (title, body) => { captured.push([title, body]) },
+    })
+    try {
+      // @ts-expect-error minimal event shape for test
+      await store.append(baseEvent('awaiting_approval', { source: 'test' }))
+      // @ts-expect-error minimal event shape for test
+      await store.append(baseEvent('run_paused', { source: 'test', sessionId: 's-1' }))
+      expect(captured).toHaveLength(1)
+    } finally {
+      unsub()
+    }
+  })
+
   it('run_completed from automation (non-manual trigger) notifies', async () => {
     const captured: Array<[string, string]> = []
     const unsub = startNotifier({

@@ -73,7 +73,7 @@ export function WorkflowView() {
   }, [warningsOpen])
 
   const { workflow, dispatch, canUndo, canRedo } = useWorkflow()
-  const { isSaving, isDirty, flush } = useAutoSave(workflow, filePath, {
+  const { isSaving, isDirty, flush, suspend: suspendAutoSave, resume: resumeAutoSave } = useAutoSave(workflow, filePath, {
     onError: (err) => setSaveError(err),
     onSuccess: () => setSaveError(null),
   })
@@ -109,14 +109,21 @@ export function WorkflowView() {
   const handleRename = useCallback(async (newName: string) => {
     if (!filePath) return
     setRenameError(null)
+    suspendAutoSave()
+    let resumePath: string | null | undefined
     try {
       await flush()
       const result = await api.workflows.rename(filePath, newName)
-      if (result.renamed) setFilePath(result.path)
+      if (result.renamed) {
+        resumePath = result.path
+        setFilePath(result.path)
+      }
     } catch (err) {
       setRenameError(err instanceof Error ? err.message : 'Rename failed')
+    } finally {
+      resumeAutoSave(resumePath)
     }
-  }, [filePath, flush])
+  }, [filePath, flush, resumeAutoSave, suspendAutoSave])
 
   // ── Derived values ────────────────────────────────────────────────────────
   const validation = validateWorkflow(workflow)

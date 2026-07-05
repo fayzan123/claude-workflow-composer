@@ -7,6 +7,7 @@ import type { RunStore } from './run-store.js'
 import type { RunEvent } from '../run-events.js'
 import { runWorkflowSkill, type WorkflowRunResult } from './workflow-runner.js'
 import { isGitRepo, resolveBaseSha, createWorktree, removeWorktree, type WorktreeInfo } from './run-isolation.js'
+import { killProcessTree } from './process-tree.js'
 
 export interface FireOptions {
   workflowId: string
@@ -30,16 +31,22 @@ export type FireOutcome =
   | { fired: false; reason: string }
   | { fired: true; runId: string; settled: Promise<void> }
 
-function sh(command: string, cwd: string, timeoutMs: number): Promise<{ ok: boolean; output: string }> {
+export function runShellCommand(command: string, cwd: string, timeoutMs: number): Promise<{ ok: boolean; output: string }> {
   return new Promise(resolve => {
-    if (process.platform === 'win32') {
-      execFile('cmd', ['/d', '/s', '/c', command], { cwd, timeout: timeoutMs, maxBuffer: 1024 * 1024 }, (err, stdout, stderr) => {
-        resolve({ ok: !err, output: (stderr?.toString() || stdout?.toString() || '').trim() })
-      })
-    } else {
-      execFile('sh', ['-c', command], { cwd, timeout: timeoutMs, maxBuffer: 1024 * 1024 }, (err, stdout, stderr) => {
-        resolve({ ok: !err, output: (stderr?.toString() || stdout?.toString() || '').trim() })
-      })
+    const timedOutMessage = `command timed out after ${Math.round(timeoutMs / 1000)}s`
+    let timedOut = false
+    const child = process.platform === 'win32'
+      ? execFile('cmd', ['/d', '/s', '/c', command], { cwd, maxBuffer: 1024 * 1024 }, onExit)
+      : execFile('sh', ['-c', command], { cwd, maxBuffer: 1024 * 1024 }, onExit)
+    const timer = setTimeout(() => {
+      timedOut = true
+      killProcessTree(child)
+    }, timeoutMs)
+
+    function onExit(err: Error | null, stdout: string | Buffer, stderr: string | Buffer): void {
+      clearTimeout(timer)
+      const output = (stderr?.toString() || stdout?.toString() || '').trim()
+      resolve({ ok: !err && !timedOut, output: timedOut ? (output ? `${timedOutMessage}: ${output}` : timedOutMessage) : output })
     }
   })
 }
@@ -60,7 +67,7 @@ export async function fireWorkflow(opts: FireOptions): Promise<FireOutcome> {
   }
 
   if (opts.precondition) {
-    const pre = await sh(opts.precondition, opts.cwd, 60_000)
+    const pre = await runShellCommand(opts.precondition, opts.cwd, 60_000)
     if (!pre.ok) return { fired: false, reason: 'precondition' }
   }
 
@@ -92,7 +99,7 @@ export async function fireWorkflow(opts: FireOptions): Promise<FireOutcome> {
   const emit = (e: RunEvent) => opts.store.append(e).catch(() => { /* teardown race */ })
 
   if (opts.setupCommand) {
-    const setup = await sh(opts.setupCommand, runCwd, 600_000)
+    const setup = await runShellCommand(opts.setupCommand, runCwd, 600_000)
     if (!setup.ok) {
       await emit(started)
       await emit({ runId, workflowId: opts.workflowId, workflowSlug: opts.workflowSlug, type: 'run_completed', ts: now(), status: 'error', source: 'test', message: `setupCommand failed: ${setup.output.slice(0, 2000)}` })

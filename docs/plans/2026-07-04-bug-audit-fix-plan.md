@@ -5,9 +5,10 @@ All line numbers reference that commit; verify with the quoted code before editi
 
 ## Progress (updated 2026-07-05)
 
-**Batches 1–5 are IMPLEMENTED, REVIEWED, and COMMITTED.** Fixed: F1, F2, F3, F4, F5, F6, F7,
-F9, F10, F12, F13, F18, F19. Each fixed finding below carries a `Status: FIXED` line describing
-what shipped. Validation: 620 tests green, typecheck green, production build green.
+**Batches 1–8 are IMPLEMENTED and REVIEWED.** Fixed: F1 through F24. Each fixed finding below
+carries a `Status: FIXED` line describing what shipped. Validation after batches 6–8:
+focused tests green, `npm run typecheck` green, `npm test` green (629 passed, 1 skipped), and
+`npm run build` green.
 
 The review pass found two defects in the initial batch-1–5 implementation, both corrected before
 commit:
@@ -25,9 +26,21 @@ commit:
    to ≥ 1 and shows a hint. Do not re-flip this without reading the comment in
    `automation-state.ts` `canFire`.
 
-**Remaining work: batches 6–8** (F8, F21 — autosave data loss + rename race; F11, F14, F16 —
-export edge cases; F15, F17, F20, F22, F23, F24 — low-severity cleanup). Nothing in the
-remaining findings has been touched.
+The batch-6–8 review pass applied two hardening corrections before commit:
+
+1. The F22 tree-kill test originally built nested `node -e` scripts with JSON-escaped quoting —
+   unparseable through cmd.exe + msvcrt argv rules on the Windows CI leg — with a 500ms spawn
+   budget too tight for slow runners. Rewritten to use script files, a 3s timeout, and a
+   settle-then-sample quiescence assertion.
+2. `killProcessTree`'s POSIX SIGKILL escalation now skips once the direct child has exited
+   (its orphans reparent to init, so re-walking the dead PID finds nothing and risks PID reuse).
+
+Note on test coverage: `useAutoSave` (F8/F21) has no direct hook test — the repo's client tests
+are pure-logic only (no hook-render harness), consistent with how the hook was untested before.
+If a hook harness is ever added, cover: failed save keeps `isDirty` true and retries, suspend/
+resume queues edits made during a rename, and the saved-snapshot ref only advances on success.
+
+**Remaining work:** none in this plan.
 
 One flake observed during validation (single failure in one of five full-suite runs, gone on
 rerun) — consistent with the known process-timing sensitivity of the gate/worktree tests, not
@@ -68,9 +81,9 @@ Fixes are grouped so shared root causes are handled once. Suggested batches:
 | 3 | F4 | Project-scoped exports can't Test Run | ✅ DONE |
 | 4 | F5, F6, F18, F19 | Run lifecycle correctness | ✅ DONE |
 | 5 | F7, F10, F12 | Automation/scheduler papercuts | ✅ DONE |
-| 6 | F8, F21 | Autosave data loss + rename race | ⬜ TODO (client only) |
-| 7 | F11, F14, F16 | Export edge cases | ⬜ TODO (core export) |
-| 8 | F15, F17, F20, F22, F23, F24 | Low-severity cleanup | ⬜ TODO (opportunistic) |
+| 6 | F8, F21 | Autosave data loss + rename race | ✅ DONE |
+| 7 | F11, F14, F16 | Export edge cases | ✅ DONE |
+| 8 | F15, F17, F20, F22, F23, F24 | Low-severity cleanup | ✅ DONE |
 
 Batch 2 is the big one: F1, F3, F9, F13 all stem from "the workflow skill slug is derived live
 from `meta.name` and the export result is never persisted." Fix F1 first within the batch; F3 and
@@ -260,6 +273,10 @@ F9 become simpler once a durable `exportedWorkflowSlug` exists.
 
 ### F8 — Failed autosave silently loses the edit
 
+- **Status: FIXED.** `useAutoSave` advances its saved snapshot only after
+  `api.workflows.save` succeeds; failed saves keep `isDirty` true and can retry against the latest
+  workflow/path.
+
 - **Where:** `client/src/hooks/useAutoSave.ts:62-73`. `prevRef.current = serialized` is set when
   the timer is *scheduled*, not when the save *succeeds*. A failed save (server down, disk error)
   never retries — identical state compares equal forever — and `isDirty` returns false (timer
@@ -323,6 +340,10 @@ F9 become simpler once a durable `exportedWorkflowSlug` exists.
 
 ### F11 — Same-slug agents overwrite each other within one workflow
 
+- **Status: FIXED.** `exportWorkflow` rejects duplicate bespoke-agent slugs, rename cleanup skips
+  sibling live slugs, and compiler self-healing dedupes bespoke generated agents by slug. Tests in
+  exporter/compiler coverage.
+
 - **Where:** `src/export/exporter.ts:138-173`. Ownership check is per *workflow*
   (`detectConflict(..., workflowId)`), so two nodes whose names slugify identically both "own"
   the file — last write wins, first agent's file is silently replaced. Rename cleanup
@@ -380,6 +401,9 @@ F9 become simpler once a durable `exportedWorkflowSlug` exists.
 
 ### F14 — `deleteExport` treats gates as agents
 
+- **Status: FIXED.** `deleteExport` skips `nodeType === 'gate'` nodes alongside reference nodes;
+  export-delete coverage asserts gate paths do not appear in deleted/skipped/notFound buckets.
+
 - **Where:** `src/server/api/export-delete.ts:32-51`. Only `agentRef` nodes are skipped; gate
   nodes (`nodeType === 'gate'`, which never write files — see AGENTS.md) fall through, producing
   bogus `notFound` entries ("approval-gate.md") and potentially `skipped` noise if an unrelated
@@ -388,6 +412,10 @@ F9 become simpler once a durable `exportedWorkflowSlug` exists.
 - **Test:** extend the existing export-delete test with a gate node → no gate path in any bucket.
 
 ### F15 — External runs that pause never notify
+
+- **Status: FIXED.** Notifier sends pause notifications for `awaiting_approval` and suppresses
+  the immediate harness-side `run_paused` duplicate. Tests cover external pause notification and
+  harness dedupe.
 
 - **Where:** `src/server/notifier.ts:33-39`. Only `run_paused` notifies; terminal-launched
   ("external") runs emit only `awaiting_approval` (the harness-side `run_paused` comes from
@@ -402,6 +430,9 @@ F9 become simpler once a durable `exportedWorkflowSlug` exists.
 
 ### F16 — `boldWrapAgentNames` produces broken markdown on substring agent names
 
+- **Status: FIXED.** Agent-name bolding now uses one escaped alternation replacement so names are
+  not re-matched inside already-bolded text. Test covers substring names.
+
 - **Where:** `src/workflow/prose-generator.ts:16-22`. "Code Review" + "Review" →
   `**Code **Review****` (longest-first sorting doesn't prevent re-matching inside already-wrapped
   text).
@@ -412,6 +443,9 @@ F9 become simpler once a durable `exportedWorkflowSlug` exists.
 - **Tests:** unit test in `tests/workflow/` with substring names; snapshot of orchestrator body.
 
 ### F17 — Two rapid `POST /automation-scan` both get 202
+
+- **Status: FIXED.** Scan start now has a synchronous `scanStarting` claim across the diagnostics
+  probe window; a concurrent start gets 409. Test uses a slow injected `claudeProbe`.
 
 - **Where:** `src/server/api/automation-scan.ts:129-143`. `await envSnapshot(...)` sits between
   the `isRunning()` check and `runScan()`; the loser's `runScan` throws "already running", which
@@ -448,6 +482,10 @@ F9 become simpler once a durable `exportedWorkflowSlug` exists.
 
 ### F20 — InboxItem shows the "started from a terminal" message on a transient fetch failure
 
+- **Status: FIXED.** Inbox event loading distinguishes failed loads from "loaded empty"; fetch
+  failures leave events unknown, surface an error, and do not show the terminal-run resumability
+  message.
+
 - **Where:** `client/src/components/runs/InboxItem.tsx:32` — events fetch failure resolves to
   `[]`, and line 73 `approveDisabled = !hasPausedEvent && events !== null` treats `[]` as
   "loaded, no pause event" → disables Approve with a misleading explanation for a perfectly
@@ -457,6 +495,9 @@ F9 become simpler once a durable `exportedWorkflowSlug` exists.
   of catching to `[]`.
 
 ### F21 — Rename/autosave race can resurrect the old workflow file
+
+- **Status: FIXED.** `useAutoSave` exposes suspend/resume; `WorkflowView` suspends saves across
+  flush + server rename + path swap, then resumes against the new path.
 
 - **Where:** `client/src/views/WorkflowView.tsx:109-119` (`handleRename` flushes, then renames,
   then swaps `filePath`) + `client/src/hooks/useAutoSave.ts`. A keystroke between `flush()` and
@@ -471,6 +512,10 @@ F9 become simpler once a durable `exportedWorkflowSlug` exists.
 
 ### F22 — Precondition/setup shell commands aren't tree-killed on timeout
 
+- **Status: FIXED.** Launcher shell commands now manage timeouts manually and call
+  `killProcessTree`; POSIX descendant cleanup was hardened to avoid PID 0 and to follow with
+  best-effort SIGKILL. Test covers a timed-out shell command with a live descendant.
+
 - **Where:** `src/server/run-launcher.ts:32-44` (`sh()` uses execFile's `timeout`, which signals
   only `sh`/`cmd` itself; children of a hung precondition survive). The repo already solved this
   class of problem in `src/server/process-tree.ts` (`killProcessTree`).
@@ -481,6 +526,9 @@ F9 become simpler once a durable `exportedWorkflowSlug` exists.
 
 ### F23 — `readPackageVersion` breaks when the CLI runs from a source checkout
 
+- **Status: FIXED.** CLI version lookup walks upward to the nearest `claude-cwc` `package.json`
+  and falls back to `unknown`.
+
 - **Where:** `bin/cwc.ts:294-299` resolves `../../package.json` relative to the compiled
   location (`dist/bin/` → package root: correct). From source (`bin/` → parent of the repo:
   wrong), the default command throws ENOENT before starting anything. Dev-only annoyance
@@ -490,6 +538,9 @@ F9 become simpler once a durable `exportedWorkflowSlug` exists.
   the same catch-to-'unknown'.
 
 ### F24 — Every node drag is a separate undo entry
+
+- **Status: FIXED.** `MOVE_NODE` coalesces by node id in the history reducer; client history
+  coverage verifies consecutive moves undo as one drag.
 
 - **Where:** `client/src/hooks/useWorkflow.ts:103-109` — `coalesceKey` handles `SET_META` and
   `UPDATE_NODE` but not `MOVE_NODE`.

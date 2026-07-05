@@ -5,7 +5,7 @@ import * as os from 'node:os'
 import * as path from 'node:path'
 import { execFileSync } from 'node:child_process'
 import { createRunStore, type RunStore } from '../../src/server/run-store.js'
-import { fireWorkflow, classifyAndFinish, sweepOrphanWorktrees } from '../../src/server/run-launcher.js'
+import { fireWorkflow, classifyAndFinish, sweepOrphanWorktrees, runShellCommand } from '../../src/server/run-launcher.js'
 import { makeBin } from '../helpers/make-bin.js'
 
 let binDir: string, okBin: string, gateBin: string, gateNoSessionBin: string
@@ -66,6 +66,35 @@ describe('fireWorkflow', () => {
     const r = await fireWorkflow(baseOpts({ precondition: 'exit 1' }))
     expect(r).toEqual({ fired: false, reason: 'precondition' })
     expect(await store.listRuns('wf-1')).toEqual([])
+  })
+
+  it('tree-kills a timed-out shell command and its descendants', async () => {
+    // Script FILES, not nested `node -e` strings: inline scripts would need double-nested
+    // quote escaping that cmd.exe + msvcrt argv parsing mangle on the Windows CI leg.
+    const heartbeat = path.join(runsDir, 'shell-heartbeat.txt')
+    const childPath = path.join(runsDir, 'shell-child.cjs')
+    const parentPath = path.join(runsDir, 'shell-parent.cjs')
+    await fs.writeFile(childPath, `const fs = require('fs')
+const write = () => fs.writeFileSync(${JSON.stringify(heartbeat)}, String(Date.now()))
+write()
+setInterval(write, 50)
+`)
+    await fs.writeFile(parentPath, `const { spawn } = require('child_process')
+spawn(${JSON.stringify(process.execPath)}, [${JSON.stringify(childPath)}], { stdio: 'ignore' })
+setInterval(() => {}, 1000)
+`)
+    // Generous timeout: slow CI runners can take >500ms just to spawn the node chain.
+    const result = await runShellCommand(`"${process.execPath}" "${parentPath}"`, repo, 3000)
+
+    expect(result.ok).toBe(false)
+    expect(result.output).toMatch(/timed out/)
+    // Let the kill finish (250ms SIGKILL escalation / async taskkill), then assert the
+    // grandchild's heartbeat has gone quiet.
+    await new Promise(res => setTimeout(res, 600))
+    const before = await fs.readFile(heartbeat, 'utf-8')
+    await new Promise(res => setTimeout(res, 300))
+    const after = await fs.readFile(heartbeat, 'utf-8')
+    expect(after).toBe(before)
   })
 
   it('isolated happy path: worktree, baseSha on run_started, completion keeps branch, removes worktree', async () => {

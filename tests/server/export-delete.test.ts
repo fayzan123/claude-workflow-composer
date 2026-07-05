@@ -17,8 +17,17 @@ describe('deleteExport', () => {
         position: { x: 0, y: 0 },
         exportedSlug: null,
         agent: { name: 'Owned Agent', description: '', completionCriteria: 'done' },
+      }, {
+        id: 'g1',
+        position: { x: 1, y: 0 },
+        exportedSlug: null,
+        nodeType: 'gate',
+        agent: { name: 'Approval Gate', description: '', completionCriteria: '' },
       }],
-      edges: [{ id: 'e1', from: 'n1', to: null, trigger: 'done', terminalType: 'complete' }],
+      edges: [
+        { id: 'e1', from: 'n1', to: 'g1', trigger: 'review' },
+        { id: 'e2', from: 'g1', to: null, trigger: 'done', terminalType: 'complete' },
+      ],
     }
     const target = { type: 'user' as const, userDir: tmp }
     const first = await exportWorkflow(cwc, target, { skillsDir: path.join(tmp, '.claude', 'skills') })
@@ -27,6 +36,7 @@ describe('deleteExport', () => {
 
     expect(result.deleted.some(p => p.endsWith(path.join('.claude', 'agents', 'owned-agent.md')))).toBe(true)
     expect(result.deleted.some(p => p.endsWith(path.join('.claude', 'skills', 'cwc-delete-me')))).toBe(true)
+    expect([...result.deleted, ...result.skipped, ...result.notFound].some(p => p.includes('approval-gate'))).toBe(false)
     await expect(fs.access(path.join(tmp, '.claude', 'agents', 'owned-agent.md'))).rejects.toThrow()
     await expect(fs.access(path.join(tmp, '.claude', 'skills', 'cwc-delete-me'))).rejects.toThrow()
     await fs.rm(tmp, { recursive: true, force: true })

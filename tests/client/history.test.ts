@@ -79,6 +79,22 @@ describe('historyReducer', () => {
     expect(s.past).toHaveLength(base + 2)
   })
 
+  it('coalesces consecutive moves of the same node into one undo step', () => {
+    let s = initial()
+    s = historyReducer(s, { type: 'ADD_NODE', payload: { agent, position: { x: 0, y: 0 } } })
+    const nodeId = s.present.nodes[0].id
+    const pastAfterAdd = s.past.length
+
+    s = historyReducer(s, { type: 'MOVE_NODE', payload: { nodeId, position: { x: 10, y: 10 } } })
+    s = historyReducer(s, { type: 'MOVE_NODE', payload: { nodeId, position: { x: 20, y: 20 } } })
+    s = historyReducer(s, { type: 'MOVE_NODE', payload: { nodeId, position: { x: 30, y: 30 } } })
+
+    expect(s.past).toHaveLength(pastAfterAdd + 1)
+
+    s = historyReducer(s, { type: 'UNDO' })
+    expect(s.present.nodes[0].position).toEqual({ x: 0, y: 0 })
+  })
+
   it('clears the redo stack on a new action after undo', () => {
     let s = initial()
     s = historyReducer(s, { type: 'ADD_NODE', payload: { agent, position: { x: 0, y: 0 } } })
