@@ -22,6 +22,7 @@ let base: string
 let gateBin: string
 let gateNoSessBin: string
 let gateDiffBin: string
+let gateSlowBin: string
 
 beforeAll(async () => {
   binDir = await fs.mkdtemp(path.join(os.tmpdir(), 'cwc-gates-bin-'))
@@ -55,7 +56,7 @@ beforeEach(async () => {
 
   // Create gate bins that use CWC_RUNS_DIR env var to find the run JSONL dynamically.
   // The bins read this env var at runtime to locate the run JSONL.
-  const makeGate = async (name: string, withSession: boolean, commitChange = false) => {
+  const makeGate = async (name: string, withSession: boolean, commitChange = false, delayMs = 0) => {
     const commitBlock = commitChange ? `
 const { execFileSync } = require('child_process')
 const path2 = require('path')
@@ -67,6 +68,9 @@ execFileSync('git', ['-C', process.cwd(), 'commit', '-m', 'gate change'])
     const resultObj = withSession
       ? `{ type:'result', result:'paused at gate', session_id:'s-gate' }`
       : `{ type:'result', result:'paused' }`
+    const outputBlock = delayMs > 0
+      ? `setTimeout(() => process.stdout.write(JSON.stringify(${resultObj})), ${delayMs})`
+      : `process.stdout.write(JSON.stringify(${resultObj}))`
     // Reads CWC_RUNS_DIR (injected via process.env before server start) to scan for the latest JSONL.
     const src = `const fs=require('fs')
 const path=require('path')
@@ -80,7 +84,7 @@ const firstLine = JSON.parse(fs.readFileSync(jsonl, 'utf-8').trim().split('\\n')
 const runId = firstLine.runId
 ${commitBlock}
 fs.appendFileSync(jsonl, JSON.stringify({ runId, workflowId, workflowSlug: 'cwc-x', type: 'awaiting_approval', ts: new Date().toISOString(), message: 'plan ready' }) + '\\n')
-process.stdout.write(JSON.stringify(${resultObj}))
+${outputBlock}
 `
     return makeBin(binDir, name, src)
   }
@@ -89,6 +93,7 @@ process.stdout.write(JSON.stringify(${resultObj}))
   gateBin = await makeGate(`gate-s-${suffix}`, true)
   gateNoSessBin = await makeGate(`gate-ns-${suffix}`, false)
   gateDiffBin = await makeGate(`gate-diff-${suffix}`, true, true)
+  gateSlowBin = await makeGate(`gate-slow-${suffix}`, true, false, 700)
 })
 afterEach(async () => {
   server?.close()
@@ -122,6 +127,19 @@ async function waitForStatus(workflowId: string, runId: string, want: string, ms
     await new Promise(r => setTimeout(r, 100))
   }
   throw new Error(`run ${runId} never reached status ${want}`)
+}
+
+async function waitForEvent(workflowId: string, runId: string, type: string, ms = 8000): Promise<void> {
+  const deadline = Date.now() + ms
+  while (Date.now() < deadline) {
+    const res = await fetch(`${base}/api/runs/${runId}/events?workflowId=${workflowId}`)
+    if (res.status === 200) {
+      const events = (await res.json()) as Record<string, unknown>[]
+      if (events.some(e => e.type === type)) return
+    }
+    await new Promise(r => setTimeout(r, 50))
+  }
+  throw new Error(`run ${runId} never emitted ${type}`)
 }
 
 describe('gate endpoints', () => {
@@ -262,7 +280,34 @@ describe('gate endpoints', () => {
       body: JSON.stringify({ workflowId: 'wf-1' }),
     })
     expect(second.status).toBe(409)
-    expect(((await second.json()) as { error: string }).error).toContain('already active')
+    expect(((await second.json()) as { error: string }).error).toContain('still finishing')
+  })
+
+  it('4d. Approve/reject while awaiting_approval is still active returns 409', async () => {
+    startApp(gateSlowBin)
+    const res = await fetch(`${base}/api/runs/test`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ workflowId: 'wf-1', workflowSlug: 'cwc-x', cwd: repo }),
+    })
+    expect(res.status).toBe(200)
+    const { runId } = (await res.json()) as { runId: string }
+    await waitForEvent('wf-1', runId, 'awaiting_approval')
+
+    const approveRes = await fetch(`${base}/api/runs/${runId}/approve`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ workflowId: 'wf-1' }),
+    })
+    expect(approveRes.status).toBe(409)
+    expect(((await approveRes.json()) as { error: string }).error).toContain('still finishing')
+
+    const rejectRes = await fetch(`${base}/api/runs/${runId}/reject`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ workflowId: 'wf-1' }),
+    })
+    expect(rejectRes.status).toBe(409)
+    expect(((await rejectRes.json()) as { error: string }).error).toContain('still finishing')
+
+    await waitForStatus('wf-1', runId, 'paused')
   })
 
   it('0. POST /test on an un-exported workflow → 400 (no silent no-op)', async () => {

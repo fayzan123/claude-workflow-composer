@@ -22,3 +22,8 @@ export function agentSlug(name: string): string {
 export function skillSlug(name: string): string {
   return slugify(name) || 'skill'
 }
+
+/** Slug for a workflow skill slash command and export directory. */
+export function workflowSkillSlug(name: string): string {
+  return `cwc-${slugify(name) || 'workflow'}`
+}

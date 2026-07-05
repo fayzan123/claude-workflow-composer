@@ -11,6 +11,7 @@ interface TriggerState {
   runsCount: number
   skippedCount: number
   lastSkip?: { ts: string; reason: string }
+  lastSkippedOccurrence?: string
   armedHash?: string
 }
 
@@ -32,7 +33,7 @@ export interface AutomationState {
   arm(t: CwcTrigger): Promise<void>
   canFire(t: CwcTrigger, now: Date): boolean
   recordFire(triggerId: string, now: Date): Promise<void>
-  recordSkip(triggerId: string, reason: string, now: Date): Promise<void>
+  recordSkip(triggerId: string, reason: string, now: Date, occurrence?: Date): Promise<void>
   getTriggerState(triggerId: string): TriggerState
 }
 
@@ -62,7 +63,9 @@ export function createAutomationState(filePath: string): AutomationState {
       await save()
     },
     canFire(t, now) {
-      if (t.maxRunsPerDay === 0) return false
+      // Non-positive/invalid caps mean "never fire", not "uncapped": legacy triggers saved
+      // with 0 (the old cleared-field bug) must not silently start firing without limit.
+      if (!Number.isFinite(t.maxRunsPerDay) || t.maxRunsPerDay < 1) return false
       const e = entry(t.id)
       if (e.runsOnDate !== dateKey(now)) return true
       return e.runsCount < t.maxRunsPerDay
@@ -74,10 +77,13 @@ export function createAutomationState(filePath: string): AutomationState {
       e.lastFiredAt = now.toISOString()
       await save()
     },
-    async recordSkip(id, reason, now) {
+    async recordSkip(id, reason, now, occurrence) {
       const e = entry(id)
+      const occurrenceIso = occurrence?.toISOString()
+      if (occurrenceIso && e.lastSkippedOccurrence === occurrenceIso && e.lastSkip?.reason === reason) return
       e.skippedCount++
       e.lastSkip = { ts: now.toISOString(), reason }
+      if (occurrenceIso) e.lastSkippedOccurrence = occurrenceIso
       await save()
     },
     getTriggerState: (id) => ({ ...entry(id) }),

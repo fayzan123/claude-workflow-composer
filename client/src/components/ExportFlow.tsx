@@ -3,7 +3,7 @@ import type { CwcFile } from '../types.ts'
 import type { WorkflowAction } from '../hooks/useWorkflow.ts'
 import type { ExportTarget, ExportResult } from '../../../src/export/exporter.ts'
 import type { DeleteExportResult } from '../../../src/server/api/export-delete.ts'
-import { slugify } from '../../../src/slugify.ts'
+import { workflowSkillSlug } from '../../../src/slugify.ts'
 import { api } from '../lib/api.ts'
 import { toast } from '../lib/toast.ts'
 import { FieldHint } from './common/FieldHint.tsx'
@@ -63,9 +63,12 @@ export function ExportFlow({ workflow, dispatch, onClose }: Props) {
           dispatch({ type: 'UPDATE_EXPORTED_SLUG', payload: { nodeId: node.id, slug: node.exportedSlug } })
         }
       }
+      if (res.updatedCwc.meta.exportedWorkflowSlug) {
+        dispatch({ type: 'SET_EXPORTED_WORKFLOW_SLUG', payload: { slug: res.updatedCwc.meta.exportedWorkflowSlug } })
+      }
       setResult(res)
       setStep('result')
-      toast.success('Workflow exported', `/cwc-${slugify(res.updatedCwc.meta.name)} is ready in Claude Code`)
+      toast.success('Workflow exported', `/${workflowSkillSlug(res.updatedCwc.meta.name)} is ready in Claude Code`)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Export failed')
       toast.error('Export failed', err instanceof Error ? err.message : 'Could not export workflow')
@@ -281,7 +284,7 @@ export function ExportFlow({ workflow, dispatch, onClose }: Props) {
         )}
 
         {step === 'result' && result && (() => {
-          const invokeCmd = `/cwc-${slugify(result.updatedCwc.meta.name)}`
+          const invokeCmd = `/${workflowSkillSlug(result.updatedCwc.meta.name)}`
           return (
           <div className="export-flow-step">
             <div className="export-flow-success-icon" aria-hidden="true">

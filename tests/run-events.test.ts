@@ -36,6 +36,12 @@ describe('validateRunEvent', () => {
     }
   })
 
+  it('rejects unparseable timestamps', () => {
+    const r = validateRunEvent({ ...base, ts: 'not-a-date' })
+    expect(r.ok).toBe(false)
+    if (!r.ok) expect(r.error).toMatch(/ts/)
+  })
+
   it('rejects runId/workflowId with path-unsafe characters', () => {
     expect(validateRunEvent({ ...base, runId: '../escape' }).ok).toBe(false)
     expect(validateRunEvent({ ...base, workflowId: 'a/b' }).ok).toBe(false)

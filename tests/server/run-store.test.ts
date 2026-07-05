@@ -85,11 +85,33 @@ describe('RunStore', () => {
     let stops = 0
     store.registerRun('run-1', 'wf-1', () => { stops++ })
     expect(store.hasActiveTestRun('wf-1')).toBe(true)
+    expect(store.isActive('run-1')).toBe(true)
     expect(store.stopRun('run-1')).toBe(true)
     expect(stops).toBe(1)
     store.releaseRun('run-1')
     expect(store.stopRun('run-1')).toBe(false)
     expect(store.hasActiveTestRun('wf-1')).toBe(false)
+    expect(store.isActive('run-1')).toBe(false)
+  })
+
+  it('carries a stop request from a placeholder registration to the real stop function', async () => {
+    let stops = 0
+    store.registerRun('run-1', 'wf-1', () => { /* placeholder */ })
+
+    expect(store.stopRun('run-1')).toBe(true)
+    store.registerRun('run-1', 'wf-1', () => { stops++ })
+
+    expect(stops).toBe(1)
+  })
+
+  it('summarizes pre-existing invalid timestamps without NaN or permanent running state', async () => {
+    await store.append(ev({ type: 'run_started', ts: 'not-a-date' }))
+    await store.append(ev({ type: 'step_started', ts: 'also-not-a-date' }))
+
+    const [run] = await store.listRuns('wf-1')
+
+    expect(run.status).toBe('stale')
+    expect(run.durationMs).toBe(0)
   })
 })
 

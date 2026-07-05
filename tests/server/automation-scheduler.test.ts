@@ -9,12 +9,12 @@ import type { CwcTrigger } from '../../src/schema.js'
 import { makeSchedulerFire } from '../../src/server/index.js'
 
 let dir: string, workflowsDir: string, statePath: string
-let fired: { workflowId: string; trigger: CwcTrigger }[]
+let fired: { workflowId: string; workflowSlug: string; trigger: CwcTrigger }[]
 
-async function writeWorkflow(id: string, triggers: CwcTrigger[]): Promise<void> {
+async function writeWorkflow(id: string, triggers: CwcTrigger[], meta: Record<string, unknown> = {}): Promise<void> {
   const now = new Date().toISOString()
   await fs.writeFile(path.join(workflowsDir, `${id}.cwc`), JSON.stringify({
-    meta: { id, name: id, description: '', version: 1, created: now, updated: now, triggers },
+    meta: { id, name: id, description: '', version: 1, created: now, updated: now, triggers, ...meta },
     nodes: [], edges: [],
   }))
 }
@@ -35,7 +35,7 @@ async function makeScheduler(nowIso: string) {
   const state = createAutomationState(statePath)
   const sched = createScheduler({
     workflowsDir, state,
-    fire: async (workflowId, _slug, trigger) => { fired.push({ workflowId, trigger }); return { fired: true } },
+    fire: async (workflowId, workflowSlug, trigger) => { fired.push({ workflowId, workflowSlug, trigger }); return { fired: true } },
     isWorkflowBusy: async () => false,
     now: () => new Date(nowIso),
     maxConcurrent: 2,
@@ -61,6 +61,16 @@ describe('scheduler', () => {
     expect(fired).toHaveLength(1)
   })
 
+  it('uses persisted exportedWorkflowSlug when scanning cron workflows', async () => {
+    await writeWorkflow('wf-1', [trig()], { name: 'Renamed Flow', exportedWorkflowSlug: 'cwc-old-flow' })
+    const { state, sched } = await makeScheduler('2026-06-12T09:00:30')
+    await state.arm(trig())
+    await state.recordFire('trig-1', new Date('2026-06-11T09:00:00'))
+    await sched.rescan(); await sched.tick()
+    expect(fired).toHaveLength(1)
+    expect(fired[0].workflowSlug).toBe('cwc-old-flow')
+  })
+
   it('catch-up: fires once after a long gap; with catchUp=false marks consumed without firing', async () => {
     await writeWorkflow('wf-1', [trig()])
     const { state, sched } = await makeScheduler('2026-06-12T14:00:00')   // way past 9:00
@@ -80,14 +90,32 @@ describe('scheduler', () => {
     expect(fired).toHaveLength(0)
   })
 
-  it('respects global pause, daily cap, and disabled flag (recorded as skips)', async () => {
-    await writeWorkflow('wf-1', [trig({ maxRunsPerDay: 0 })])
-    const { state, sched } = await makeScheduler('2026-06-12T09:00:30')
-    await state.arm(trig({ maxRunsPerDay: 0 }))
-    await state.recordFire('trig-1', new Date('2026-06-11T09:00:00'))
+  it('respects daily cap and records a skip', async () => {
+    const capped = trig({ schedule: '* * * * *', maxRunsPerDay: 1 })
+    await writeWorkflow('wf-1', [capped])
+    const { state, sched } = await makeScheduler('2026-06-12T09:01:30')
+    await state.arm(capped)
+    await state.recordFire('trig-1', new Date('2026-06-12T09:00:00'))
     await sched.rescan(); await sched.tick()
     expect(fired).toHaveLength(0)
     expect(state.getTriggerState('trig-1').lastSkip?.reason).toBe('daily cap')
+  })
+
+  it('records at most one pause skip for the same due occurrence across repeated ticks', async () => {
+    await writeWorkflow('wf-1', [trig()])
+    const { state, sched } = await makeScheduler('2026-06-12T09:00:30')
+    await state.arm(trig())
+    const lastFiredAt = new Date('2026-06-11T09:00:00')
+    await state.recordFire('trig-1', lastFiredAt)
+    await state.setPaused(true)
+
+    await sched.rescan()
+    for (let i = 0; i < 10; i++) await sched.tick()
+
+    const triggerState = state.getTriggerState('trig-1')
+    expect(fired).toHaveLength(0)
+    expect(triggerState.skippedCount).toBe(1)
+    expect(triggerState.lastFiredAt).toBe(lastFiredAt.toISOString())
   })
 
   it('skips when the workflow is busy (running or paused-from-same-trigger)', async () => {
@@ -153,4 +181,18 @@ it('fans a multi-target trigger into one run per target', async () => {
   const trig = { id: 't', type: 'cron', schedule: '* * * * *', cwd: '/a', targets: ['/b'], isolation: 'worktree', catchUp: false, maxRunsPerDay: 1, enabled: true } as any
   await fire('wf1', 'cwc-flow', trig)
   expect(calls.sort()).toEqual(['/a', '/b'])
+})
+
+it('records a skip for scheduler-fired workflows whose skill is missing', async () => {
+  const skillsDir = path.join(dir, 'skills')
+  const skips: string[] = []
+  const fire = makeSchedulerFire({
+    store: {} as any, worktreesRoot: '/wt', skillsDir,
+    onSkip: async (_triggerId, reason) => { skips.push(reason) },
+  })
+  const trigger = { id: 't', type: 'cron', schedule: '* * * * *', cwd: '/tmp', isolation: 'in-place', catchUp: false, maxRunsPerDay: 1, enabled: true } as any
+
+  await fire('wf1', 'cwc-missing', trigger)
+
+  expect(skips).toEqual(['skill not exported'])
 })

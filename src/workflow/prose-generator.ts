@@ -13,12 +13,16 @@ function formatArtifactLabel(a: CwcArtifact): string {
   return a.type === 'file' && a.path ? `${a.name} (\`${a.path}\`)` : a.name
 }
 
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
 function boldWrapAgentNames(text: string, agentNames: string[]): string {
-  let result = text
-  for (const name of [...agentNames].sort((a, b) => b.length - a.length)) {
-    result = result.replaceAll(name, `**${name}**`)
-  }
-  return result
+  const names = [...new Set(agentNames.map(name => name.trim()).filter(Boolean))]
+    .sort((a, b) => b.length - a.length)
+  if (names.length === 0) return text
+  const pattern = new RegExp(names.map(escapeRegExp).join('|'), 'g')
+  return text.replace(pattern, match => `**${match}**`)
 }
 
 function formatContextClause(context: CwcArtifact[] | undefined): string {

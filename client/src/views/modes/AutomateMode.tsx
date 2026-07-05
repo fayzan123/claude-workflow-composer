@@ -6,6 +6,7 @@ import { describeCron } from '../../lib/schedule-cron.ts'
 import { Cron } from 'croner'
 import type { CwcTrigger } from '../../types.ts'
 import type { ModeProps } from '../modeProps.ts'
+import { isAbsoluteTriggerPath } from '../../lib/trigger.ts'
 import './AutomateMode.css'
 
 /** Lifecycle state of a trigger from the user's perspective. */
@@ -46,6 +47,7 @@ export function AutomateMode({ workflow, dispatch }: ModeProps) {
 
   // Arming confirmation state: trigger awaiting user's trust confirmation
   const [pendingArmId, setPendingArmId] = useState<string | null>(null)
+  const [armError, setArmError] = useState<{ triggerId: string; message: string } | null>(null)
 
   const triggersKey = JSON.stringify(triggers)
 
@@ -71,6 +73,7 @@ export function AutomateMode({ workflow, dispatch }: ModeProps) {
   }
 
   function updateTrigger(id: string, patch: Partial<CwcTrigger>) {
+    setArmError(null)
     setTriggers(triggers.map(t => t.id === id ? { ...t, ...patch } : t))
   }
 
@@ -79,10 +82,15 @@ export function AutomateMode({ workflow, dispatch }: ModeProps) {
   }
 
   async function armAndEnable(t: CwcTrigger) {
-    await api.automations.arm(t)
-    setStatuses(s => ({ ...s, [t.id]: { ...(s[t.id] ?? { skippedCount: 0 }), armed: true } }))
-    updateTrigger(t.id, { enabled: true })
-    setPendingArmId(null)
+    setArmError(null)
+    try {
+      await api.automations.arm(t)
+      setStatuses(s => ({ ...s, [t.id]: { ...(s[t.id] ?? { skippedCount: 0 }), armed: true } }))
+      updateTrigger(t.id, { enabled: true })
+      setPendingArmId(null)
+    } catch (err) {
+      setArmError({ triggerId: t.id, message: err instanceof Error ? err.message : 'Could not arm automation' })
+    }
   }
 
   function openAdd() {
@@ -139,6 +147,11 @@ export function AutomateMode({ workflow, dispatch }: ModeProps) {
             const status = statuses[t.id]
             const state = lifecycleState(t, status)
             const isPendingArm = pendingArmId === t.id
+            const cwdError = !t.cwd.trim()
+              ? 'Working directory is required before arming.'
+              : !isAbsoluteTriggerPath(t.cwd)
+                ? 'Working directory must be an absolute path.'
+                : null
 
             return (
               <li key={t.id} className={`automate-mode__row automate-mode__row--${state}`}>
@@ -197,17 +210,26 @@ export function AutomateMode({ workflow, dispatch }: ModeProps) {
                           <button
                             type="button"
                             className="automate-mode__action-btn automate-mode__action-btn--confirm"
+                            disabled={!!cwdError}
+                            title={cwdError ?? undefined}
                             onClick={() => void armAndEnable(t)}
                           >
                             <Term name="arm">Arm</Term> and turn on
                           </button>
                         </div>
+                        {(cwdError || armError?.triggerId === t.id) && (
+                          <p className="automate-mode__arm-error">
+                            {cwdError ?? armError?.message}
+                          </p>
+                        )}
                       </div>
                     ) : (
                       <button
                         type="button"
                         className="automate-mode__action-btn automate-mode__action-btn--turn-on"
-                        onClick={() => setPendingArmId(t.id)}
+                        disabled={!!cwdError}
+                        title={cwdError ?? undefined}
+                        onClick={() => { setArmError(null); setPendingArmId(t.id) }}
                       >
                         Turn on
                       </button>

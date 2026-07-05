@@ -10,6 +10,7 @@ let tmpDir: string
 let okBin: string
 let failBin: string
 let hangBin: string
+let chattyBin: string
 let stdinEchoArgsBin: string
 
 beforeAll(async () => {
@@ -23,6 +24,8 @@ process.stdout.write(JSON.stringify({ type: 'result', result: 'DONE::' + input +
 process.exit(1)
 `)
   hangBin = await makeBin(tmpDir, 'claude-hang', `setTimeout(() => {}, 60000)
+`)
+  chattyBin = await makeBin(tmpDir, 'claude-chatty', `for (let i = 0; i < 11 * 1024; i++) process.stdout.write('x'.repeat(1024))
 `)
   stdinEchoArgsBin = await makeBin(tmpDir, 'claude-echo-args', `const fs = require('fs')
 fs.appendFileSync(${JSON.stringify(path.join(tmpDir, 'resume-args.log'))}, JSON.stringify(process.argv.slice(2)) + "\\n")
@@ -67,12 +70,20 @@ it('stop() kills the process tree and the run reports aborted', async () => {
   expect(result.status).toBe('aborted')
 })
 
-it('an external SIGTERM (posix) also reports aborted', async () => {
+it('an external SIGTERM (posix) reports an error unless CWC requested the stop', async () => {
   if (process.platform === 'win32') return // direct child.kill only hits the .cmd shim there; stop() is the API
   const { child, done } = runWorkflowSkill({ slug: 'cwc-x', runId: 'r', cwd: tmpDir, binPath: hangBin })
   setTimeout(() => child.kill('SIGTERM'), 200)
   const result = await done
-  expect(result.status).toBe('aborted')
+  expect(result.status).toBe('error')
+  expect(result.message).toContain('SIGTERM')
+})
+
+it('reports maxBuffer overflow as an output-size error, not a stopped run', async () => {
+  const { done } = runWorkflowSkill({ slug: 'cwc-x', runId: 'r', cwd: tmpDir, binPath: chattyBin })
+  const result = await done
+  expect(result.status).toBe('error')
+  expect(result.message).toContain('10MB')
 })
 
 it('captures session_id from the envelope', async () => {

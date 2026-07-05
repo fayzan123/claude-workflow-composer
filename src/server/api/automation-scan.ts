@@ -47,6 +47,7 @@ export function automationScanRouter(opts: AutomationScanRouterOptions): Router 
   const streamingRunner = opts.streamingRunner ?? runClaudeStreaming
   const router = Router()
   let activePromotion: { id: string; controller: AbortController } | null = null
+  let scanStarting = false
 
   function hasPromotionWork(): boolean {
     return opts.store.hasActivePromotion() || activePromotion !== null
@@ -127,14 +128,19 @@ export function automationScanRouter(opts: AutomationScanRouterOptions): Router 
   })
 
   router.post('/', async (req, res) => {
-    if (opts.store.isRunning()) return void res.status(409).json({ error: 'A scan is already running.' })
+    if (scanStarting || opts.store.isRunning()) return void res.status(409).json({ error: 'A scan is already running.' })
     if (hasPromotionWork()) return void res.status(409).json({ error: 'A workflow generation is already running.' })
+    scanStarting = true
     const model = resolveScanModel((req.body ?? {}).model)
     // Gate: Detect's analysis stage spawns `claude -p`; without the binary every scan
     // dies mid-flight with an opaque ENOENT. Probe once up front (result is reused as
     // the diagnostics env snapshot) and refuse with an actionable message instead.
-    const env = await envSnapshot(opts.cwcVersion ?? 'unknown', opts.claudeProbe)
+    const env = await envSnapshot(opts.cwcVersion ?? 'unknown', opts.claudeProbe).catch(err => {
+      scanStarting = false
+      throw err
+    })
     if (!env.claude.found) {
+      scanStarting = false
       return void res.status(422).json({
         error: 'Claude Code CLI not found — the `claude` command is not on this server\'s PATH, and Detect needs it to analyze your history. Install Claude Code, verify `claude --version` works in a terminal, then restart CWC and retry. (Run `npx claude-cwc doctor` for a full environment check.)',
       })
@@ -186,7 +192,7 @@ export function automationScanRouter(opts: AutomationScanRouterOptions): Router 
         opts.store.appendLog({ level: 'error', message: `Scan failed during ${stage}: ${diag.failure.message}` })
         throw err
       }
-    }).catch(() => { /* store records the error */ })
+    }).catch(() => { /* store records the error */ }).finally(() => { scanStarting = false })
   })
 
   router.get('/diagnostics', (_req, res) => {

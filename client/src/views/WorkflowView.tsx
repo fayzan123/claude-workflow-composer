@@ -4,7 +4,7 @@ import { api } from '../lib/api.ts'
 import { useWorkflow } from '../hooks/useWorkflow.ts'
 import { useAutoSave } from '../hooks/useAutoSave.ts'
 import { useRunEvents } from '../hooks/useRunEvents.ts'
-import { slugify } from '../../../src/slugify.ts'
+import { workflowSkillSlug } from '../../../src/slugify.ts'
 import { validateWorkflow } from '../lib/validation.ts'
 import { RunModal } from '../components/RunModal.tsx'
 import { ExportFlow } from '../components/ExportFlow.tsx'
@@ -73,12 +73,12 @@ export function WorkflowView() {
   }, [warningsOpen])
 
   const { workflow, dispatch, canUndo, canRedo } = useWorkflow()
-  const { isSaving, isDirty, flush } = useAutoSave(workflow, filePath, {
+  const { isSaving, isDirty, flush, suspend: suspendAutoSave, resume: resumeAutoSave } = useAutoSave(workflow, filePath, {
     onError: (err) => setSaveError(err),
     onSuccess: () => setSaveError(null),
   })
   const runState = useRunEvents(workflow.meta.id || id || '')
-  const workflowSlug = 'cwc-' + slugify(workflow.meta.name)
+  const workflowSlug = workflowSkillSlug(workflow.meta.name)
 
   // Resolve id → file path on mount or when id changes
   useEffect(() => {
@@ -109,14 +109,21 @@ export function WorkflowView() {
   const handleRename = useCallback(async (newName: string) => {
     if (!filePath) return
     setRenameError(null)
+    suspendAutoSave()
+    let resumePath: string | null | undefined
     try {
       await flush()
       const result = await api.workflows.rename(filePath, newName)
-      if (result.renamed) setFilePath(result.path)
+      if (result.renamed) {
+        resumePath = result.path
+        setFilePath(result.path)
+      }
     } catch (err) {
       setRenameError(err instanceof Error ? err.message : 'Rename failed')
+    } finally {
+      resumeAutoSave(resumePath)
     }
-  }, [filePath, flush])
+  }, [filePath, flush, resumeAutoSave, suspendAutoSave])
 
   // ── Derived values ────────────────────────────────────────────────────────
   const validation = validateWorkflow(workflow)

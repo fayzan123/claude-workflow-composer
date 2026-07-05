@@ -292,10 +292,18 @@ async function uninstallService(): Promise<void> {
 }
 
 async function readPackageVersion(): Promise<string> {
-  const { version } = JSON.parse(
-    await fs.readFile(path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..', 'package.json'), 'utf-8')
-  ) as { version: string }
-  return version
+  let dir = path.dirname(fileURLToPath(import.meta.url))
+  for (let i = 0; i < 8; i++) {
+    const candidate = path.join(dir, 'package.json')
+    try {
+      const { name, version } = JSON.parse(await fs.readFile(candidate, 'utf-8')) as { name?: string; version?: string }
+      if (name === 'claude-cwc' && version) return version
+    } catch { /* keep walking */ }
+    const parent = path.dirname(dir)
+    if (parent === dir) break
+    dir = parent
+  }
+  return 'unknown'
 }
 
 /** `cwc doctor [--bundle [path]]`: offline Detect health check; exit 1 on problems. */

@@ -3,7 +3,7 @@ import * as fs from 'node:fs/promises'
 import * as path from 'node:path'
 import { Cron } from 'croner'
 import type { CwcFile, CwcTrigger } from '../schema.js'
-import { slugify } from '../slugify.js'
+import { workflowSkillSlug } from '../slugify.js'
 import type { AutomationState } from './automation-state.js'
 
 export interface SchedulerDeps {
@@ -19,13 +19,14 @@ export interface SchedulerDeps {
 }
 
 interface Entry { workflowId: string; workflowSlug: string; trigger: CwcTrigger }
+interface DueEntry extends Entry { occurrence: Date }
 
 export function createScheduler(deps: SchedulerDeps) {
   const now = deps.now ?? (() => new Date())
   const maxConcurrent = deps.maxConcurrent ?? 2
   let entries: Entry[] = []
   let active = 0
-  const queue: Entry[] = []
+  const queue: DueEntry[] = []
   let timer: NodeJS.Timeout | null = null
 
   async function rescan(): Promise<void> {
@@ -36,19 +37,19 @@ export function createScheduler(deps: SchedulerDeps) {
       try {
         const cwc = JSON.parse(await fs.readFile(path.join(deps.workflowsDir, f), 'utf-8')) as CwcFile
         for (const t of cwc.meta.triggers ?? []) {
-          if (t.type === 'cron' && t.schedule) next.push({ workflowId: cwc.meta.id, workflowSlug: 'cwc-' + slugify(cwc.meta.name), trigger: t })
+          if (t.type === 'cron' && t.schedule) next.push({ workflowId: cwc.meta.id, workflowSlug: cwc.meta.exportedWorkflowSlug ?? workflowSkillSlug(cwc.meta.name), trigger: t })
         }
       } catch { /* unreadable file — skip */ }
     }
     entries = next
   }
 
-  function isDue(t: CwcTrigger, lastFiredAt: string | undefined, at: Date): boolean {
-    if (!lastFiredAt) return false   // armed-at initializes lastFiredAt; absence means unarmed/new
+  function dueOccurrence(t: CwcTrigger, lastFiredAt: string | undefined, at: Date): Date | null {
+    if (!lastFiredAt) return null   // armed-at initializes lastFiredAt; absence means unarmed/new
     try {
       const nextRun = new Cron(t.schedule!).nextRun(new Date(lastFiredAt))
-      return nextRun !== null && nextRun.getTime() <= at.getTime()
-    } catch { return false }   // invalid expression — client validates; never crash the loop
+      return nextRun !== null && nextRun.getTime() <= at.getTime() ? nextRun : null
+    } catch { return null }   // invalid expression — client validates; never crash the loop
   }
 
   function launch(e: Entry): void {
@@ -62,9 +63,9 @@ export function createScheduler(deps: SchedulerDeps) {
       })
   }
 
-  async function maybeFire(e: Entry): Promise<void> {
+  async function maybeFire(e: DueEntry): Promise<void> {
     const busy = await deps.isWorkflowBusy(e.workflowId, e.trigger.id)
-    if (busy) { await deps.state.recordSkip(e.trigger.id, busy === 'running' ? 'running' : 'paused run awaiting review', now()).catch(() => {}); return }
+    if (busy) { await deps.state.recordSkip(e.trigger.id, busy === 'running' ? 'running' : 'paused run awaiting review', now(), e.occurrence).catch(() => {}); return }
     if (active >= maxConcurrent) { queue.push(e); return }
     launch(e)
   }
@@ -76,20 +77,20 @@ export function createScheduler(deps: SchedulerDeps) {
       if (!t.enabled) continue
       if (!deps.state.isArmed(t)) continue
       const st = deps.state.getTriggerState(t.id)
-      if (!isDue(t, st.lastFiredAt, at)) continue
-      if (deps.state.isPaused()) { await deps.state.recordSkip(t.id, 'automations paused', at); continue }
-      if (!deps.state.canFire(t, at)) { await deps.state.recordSkip(t.id, 'daily cap', at); continue }
+      const occurrence = dueOccurrence(t, st.lastFiredAt, at)
+      if (!occurrence) continue
+      if (deps.state.isPaused()) { await deps.state.recordSkip(t.id, 'automations paused', at, occurrence); continue }
+      if (!deps.state.canFire(t, at)) { await deps.state.recordSkip(t.id, 'daily cap', at, occurrence); continue }
       if (!t.catchUp) {
         // if the due time is older than ~2 ticks, this is a missed firing — consume without firing
-        const nextRun = new Cron(t.schedule!).nextRun(new Date(st.lastFiredAt!))
-        if (nextRun && at.getTime() - nextRun.getTime() > 2 * (deps.intervalMs ?? 30_000)) {
+        if (at.getTime() - occurrence.getTime() > 2 * (deps.intervalMs ?? 30_000)) {
           await deps.state.recordFire(t.id, at)   // consume; recordFire also sets lastFiredAt
-          await deps.state.recordSkip(t.id, 'missed (catch-up off)', at)
+          await deps.state.recordSkip(t.id, 'missed (catch-up off)', at, occurrence)
           continue
         }
       }
       await deps.state.recordFire(t.id, at)   // BEFORE firing — no double-fire on slow spawns
-      await maybeFire(e)
+      await maybeFire({ ...e, occurrence })
     }
     // drain queue opportunistically (slots may have freed between ticks); maybeFire re-checks
     // skip rules and re-queues if slots are still full

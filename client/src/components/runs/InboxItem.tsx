@@ -12,6 +12,7 @@ export interface InboxItemProps {
 export function InboxItem({ run, onChanged }: InboxItemProps) {
   const [expanded, setExpanded] = useState(false)
   const [events, setEvents] = useState<RunEvent[] | null>(null)
+  const [eventsLoadError, setEventsLoadError] = useState<string | null>(null)
   const [diffResult, setDiffResult] = useState<{ diff: string | null; status: string | null; branch: string | null } | null>(null)
   const [note, setNote] = useState('')
   const [actError, setActError] = useState<string | null>(null)
@@ -28,12 +29,20 @@ export function InboxItem({ run, onChanged }: InboxItemProps) {
   useEffect(() => {
     if (!expanded) return
     let cancelled = false
-    void Promise.all([
-      api.runs.events(run.workflowId, run.runId).catch(() => [] as RunEvent[]),
-      api.runs.diff(run.workflowId, run.runId).catch(() => ({ diff: null, status: null, branch: null })),
-    ]).then(([evs, diff]) => {
+    setEvents(null)
+    setEventsLoadError(null)
+    setDiffResult(null)
+    void api.runs.events(run.workflowId, run.runId).then((evs) => {
       if (cancelled) return
       setEvents(evs)
+      setEventsLoadError(null)
+    }).catch((err) => {
+      if (cancelled) return
+      setEvents(null)
+      setEventsLoadError(err instanceof Error ? err.message : 'Failed to load run events')
+    })
+    void api.runs.diff(run.workflowId, run.runId).catch(() => ({ diff: null, status: null, branch: null })).then((diff) => {
+      if (cancelled) return
       setDiffResult(diff)
     })
     return () => { cancelled = true }
@@ -70,7 +79,7 @@ export function InboxItem({ run, onChanged }: InboxItemProps) {
     }
   }
 
-  const approveDisabled = !hasPausedEvent && events !== null
+  const approveDisabled = events !== null && !hasPausedEvent
   const approveTooltip = approveDisabled
     ? "This run was started from a terminal, so CWC can't resume it here — continue it where you launched it, or reject to clean up."
     : undefined
@@ -115,6 +124,7 @@ export function InboxItem({ run, onChanged }: InboxItemProps) {
           />
 
           {actError && <p className="run-panel__inbox-error">{actError}</p>}
+          {eventsLoadError && <p className="run-panel__inbox-error">Could not load run events: {eventsLoadError}</p>}
           {approveDisabled && (
             <p className="run-panel__inbox-hint">{approveTooltip}</p>
           )}

@@ -29,8 +29,8 @@ export function RunModal({ workflowId, workflowSlug, onStarted, onClose, onExpor
   const [isolation, setIsolation] = useState<'worktree' | 'in-place'>('worktree')
   const [error, setError] = useState<string | null>(null)
   const [starting, setStarting] = useState(false)
-  // null = still checking, true/false = resolved export state. Gates the run so a
-  // run against a slug with no SKILL.md can't be launched as a silent no-op.
+  // null = still checking, true/false = whether the user-scoped export list contains this slug.
+  // Project-scoped skills are resolved by the server against the chosen cwd.
   const [exported, setExported] = useState<boolean | null>(null)
 
   useEffect(() => {
@@ -39,9 +39,8 @@ export function RunModal({ workflowId, workflowSlug, onStarted, onClose, onExpor
     return () => document.removeEventListener('keydown', onKey)
   }, [onClose])
 
-  // Pre-flight: confirm the workflow's current slug actually has an exported skill.
-  // The live slug is derived from the name, so a rename-after-export silently breaks
-  // /<slug>. Checking the deployed slug list catches that before we spawn anything.
+  // Pre-flight: check the user-scoped deployed list. This cannot see project-scoped
+  // exports, so it warns only; the server validates user/project skill paths on start.
   useEffect(() => {
     let cancelled = false
     api.exportedWorkflows.list()
@@ -73,11 +72,11 @@ export function RunModal({ workflowId, workflowSlug, onStarted, onClose, onExpor
         </p>
         {exported === false && (
           <div className="run-modal__not-exported">
-            <strong>This workflow isn't exported yet.</strong>
+            <strong>No user-scoped export found.</strong>
             <p>
-              There's no <code>/{workflowSlug}</code> skill on disk, so a run would do nothing.
-              Export it first, then come back to run it.
-              {' '}If you recently renamed this workflow, re-export to refresh the skill name.
+              CWC will still check for <code>/{workflowSlug}</code> under the selected
+              project's <code>.claude/skills</code> directory when the run starts.
+              If neither location has it, the server will stop the run before launching Claude.
             </p>
             {onExport && (
               <button
@@ -126,11 +125,10 @@ export function RunModal({ workflowId, workflowSlug, onStarted, onClose, onExpor
           <button
             type="button"
             className="run-modal__start"
-            disabled={!cwd.trim() || starting || exported === false || exported === null}
-            title={exported === false ? 'Export the workflow before running it' : undefined}
+            disabled={!cwd.trim() || starting}
             onClick={start}
           >
-            {starting ? 'Starting...' : exported === null ? 'Checking...' : 'Start run'}
+            {starting ? 'Starting...' : 'Start run'}
           </button>
         </div>
       </div>

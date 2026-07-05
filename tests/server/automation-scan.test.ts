@@ -225,6 +225,46 @@ describe('scan diagnostics endpoint', () => {
 })
 
 describe('automation-scan API', () => {
+  it('rejects a second scan start while the first start is still probing the environment', async () => {
+    let releaseProbe = () => {}
+    let markProbeStarted = () => {}
+    const probeStarted = new Promise<void>(resolve => { markProbeStarted = resolve })
+    const probeReleased = new Promise<void>(resolve => { releaseProbe = resolve })
+    const app2 = createApp({
+      staticDir: null,
+      userHomeDir: home,
+      automationScanPath: path.join(home, 'scan-concurrent.json'),
+      workflowsDir: wfDir,
+      claudeRunner: smartRunner,
+      streamingRunner: fakeStreaming,
+      claudeProbe: async () => {
+        markProbeStarted()
+        await probeReleased
+        return { version: 'test-claude 9.9.9' }
+      },
+      enableNotifier: false,
+    })
+    const server2 = app2.listen(0)
+    const base2 = `http://localhost:${(server2.address() as AddressInfo).port}`
+    try {
+      const first = fetch(`${base2}/api/automation-scan`, { method: 'POST' })
+      await probeStarted
+      const second = await fetch(`${base2}/api/automation-scan`, { method: 'POST' })
+      expect(second.status).toBe(409)
+      releaseProbe()
+      expect((await first).status).toBe(202)
+      let status = ''
+      for (let i = 0; i < 40 && status !== 'done' && status !== 'error'; i++) {
+        status = ((await (await fetch(`${base2}/api/automation-scan`)).json()) as { status: string }).status
+        if (status !== 'done' && status !== 'error') await new Promise(res => setTimeout(res, 25))
+      }
+      expect(status).toBe('done')
+    } finally {
+      releaseProbe()
+      server2.close()
+    }
+  })
+
   it('runs a scan and returns detected automations, then dismiss persists', async () => {
     const start = await fetch(`${base}/api/automation-scan`, { method: 'POST' })
     expect(start.status).toBe(202)

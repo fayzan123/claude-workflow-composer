@@ -13,6 +13,7 @@ export type WorkflowAction =
   | { type: 'UPDATE_EDGE'; payload: { edgeId: string } & Partial<Omit<CwcEdge, 'id'>> }
   | { type: 'REMOVE_EDGE'; payload: { edgeId: string } }
   | { type: 'UPDATE_EXPORTED_SLUG'; payload: { nodeId: string; slug: string } }
+  | { type: 'SET_EXPORTED_WORKFLOW_SLUG'; payload: { slug: string } }
   | { type: 'UNDO' }
   | { type: 'REDO' }
 
@@ -76,6 +77,10 @@ function reducer(state: CwcFile, action: WorkflowAction): CwcFile {
       ...state,
       nodes: state.nodes.map((n) => n.id === action.payload.nodeId ? { ...n, exportedSlug: action.payload.slug } : n),
     }
+    case 'SET_EXPORTED_WORKFLOW_SLUG': return {
+      ...state,
+      meta: { ...state.meta, exportedWorkflowSlug: action.payload.slug },
+    }
     default: return state
   }
 }
@@ -104,6 +109,7 @@ function coalesceKey(action: WorkflowAction): string | null {
   switch (action.type) {
     case 'SET_META': return 'meta'
     case 'UPDATE_NODE': return `update:${action.payload.nodeId}`
+    case 'MOVE_NODE': return `move:${action.payload.nodeId}`
     default: return null
   }
 }
@@ -124,7 +130,13 @@ export function historyReducer(state: HistoryState, action: WorkflowAction): His
     }
     // Post-export bookkeeping — should never land on the undo stack.
     case 'UPDATE_EXPORTED_SLUG':
-      return { ...state, present: reducer(state.present, action) }
+    case 'SET_EXPORTED_WORKFLOW_SLUG':
+      return {
+        ...state,
+        past: state.past.map((snapshot) => reducer(snapshot, action)),
+        present: reducer(state.present, action),
+        future: state.future.map((snapshot) => reducer(snapshot, action)),
+      }
     default: {
       const present = reducer(state.present, action)
       if (present === state.present) return state

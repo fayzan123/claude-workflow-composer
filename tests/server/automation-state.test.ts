@@ -49,6 +49,13 @@ describe('caps + fire/skip recording', () => {
     expect(s.canFire(trig, day1)).toBe(false)
     expect(s.canFire(trig, new Date('2026-06-13T09:00:00'))).toBe(true)
   })
+  it('treats invalid or non-positive daily caps as never-fire (legacy 0 must not become uncapped)', async () => {
+    const s = createAutomationState(file)
+    const now = new Date('2026-06-12T09:00:00')
+    expect(s.canFire({ ...trig, maxRunsPerDay: 0 }, now)).toBe(false)
+    expect(s.canFire({ ...trig, maxRunsPerDay: -1 }, now)).toBe(false)
+    expect(s.canFire({ ...trig, maxRunsPerDay: Number.NaN }, now)).toBe(false)
+  })
   it('records skips with reason and persists lastFiredAt', async () => {
     const s = createAutomationState(file)
     const now = new Date('2026-06-12T09:00:00')
@@ -58,6 +65,17 @@ describe('caps + fire/skip recording', () => {
     expect(t.lastFiredAt).toBe(now.toISOString())
     expect(t.skippedCount).toBe(1)
     expect(t.lastSkip).toMatchObject({ reason: 'precondition' })
+  })
+  it('dedupes skips for the same due occurrence and reason', async () => {
+    const s = createAutomationState(file)
+    const occurrence = new Date('2026-06-12T09:00:00')
+    await s.recordSkip(trig.id, 'automations paused', new Date('2026-06-12T09:00:30'), occurrence)
+    await s.recordSkip(trig.id, 'automations paused', new Date('2026-06-12T09:01:00'), occurrence)
+    await s.recordSkip(trig.id, 'running', new Date('2026-06-12T09:01:30'), occurrence)
+
+    const t = s.getTriggerState(trig.id)
+    expect(t.skippedCount).toBe(2)
+    expect(t.lastSkip).toMatchObject({ reason: 'running' })
   })
 })
 

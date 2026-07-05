@@ -3,7 +3,7 @@ import * as os from 'node:os'
 import * as path from 'node:path'
 import matter from 'gray-matter'
 import type { CwcFile, CwcNode } from '../schema.js'
-import { slugify, agentSlug } from '../slugify.js'
+import { agentSlug, workflowSkillSlug } from '../slugify.js'
 import { generateOrchestratorBody, collectNodeOverrides } from '../workflow/prose-generator.js'
 import { resolveSkill, SkillResolution } from './skill-resolver.js'
 import { buildAgentFileContent, buildWorkflowSkillContent } from './file-writer.js'
@@ -81,6 +81,21 @@ async function resolveSkillWithOverride(slug: string, userSkillsDir?: string): P
   return resolveSkill(slug)
 }
 
+export { resolveSkillWithOverride }
+
+export function nodeExportedSlug(node: CwcNode): string | null {
+  if (node.agentRef) return node.agentRef
+  if (node.nodeType === 'gate') return null
+  return agentSlug(node.agent.name)
+}
+
+export function applyExportedNodeSlugs(nodes: CwcNode[]): CwcNode[] {
+  return nodes.map((node) => {
+    const slug = nodeExportedSlug(node)
+    return slug === null ? { ...node } : { ...node, exportedSlug: slug }
+  })
+}
+
 export async function exportWorkflow(
   cwc: CwcFile,
   target: ExportTarget,
@@ -88,10 +103,24 @@ export async function exportWorkflow(
 ): Promise<ExportResult> {
   const warnings: string[] = []
   const workflowId = cwc.meta.id
-  const workflowSlug = 'cwc-' + slugify(cwc.meta.name)
+  const workflowSlug = workflowSkillSlug(cwc.meta.name)
   const { agentsDir, skillsDir } = resolveExportPaths(target, { skillsDir: opts.skillsDir })
 
   await ensureDir(agentsDir)
+
+  const currentBespokeSlugs = new Map<string, CwcNode>()
+  for (const node of cwc.nodes) {
+    const slug = nodeExportedSlug(node)
+    if (slug === null || node.agentRef) continue
+    const existing = currentBespokeSlugs.get(slug)
+    if (existing) {
+      throw new ExportConflictError(
+        `Agents "${existing.agent.name}" and "${node.agent.name}" both export to ${slug}. Rename one agent before exporting.`,
+        path.join(agentsDir, `${slug}.md`),
+      )
+    }
+    currentBespokeSlugs.set(slug, node)
+  }
 
   const updatedNodes: CwcNode[] = []
   const nodeOverrides = collectNodeOverrides(cwc.nodes)
@@ -103,7 +132,7 @@ export async function exportWorkflow(
       if (node.exportedSlug && node.exportedSlug !== refSlug) {
         const oldPath = path.join(agentsDir, `${node.exportedSlug}.md`)
         const oldContent = await safeReadFile(oldPath)
-        if (oldContent !== null) {
+        if (oldContent !== null && !currentBespokeSlugs.has(node.exportedSlug)) {
           const status = detectConflict(oldContent, AGENT_OWNERSHIP_REGEX, workflowId)
           if (status === 'owned') {
             await fs.unlink(oldPath)
@@ -135,14 +164,14 @@ export async function exportWorkflow(
       continue
     }
 
-    const newSlug = agentSlug(node.agent.name)
+    const newSlug = nodeExportedSlug(node)!
     const agentPath = path.join(agentsDir, `${newSlug}.md`)
 
     // Rename: old file cleanup
     if (node.exportedSlug && node.exportedSlug !== newSlug) {
       const oldPath = path.join(agentsDir, `${node.exportedSlug}.md`)
       const oldContent = await safeReadFile(oldPath)
-      if (oldContent !== null) {
+      if (oldContent !== null && !currentBespokeSlugs.has(node.exportedSlug)) {
         const status = detectConflict(oldContent, AGENT_OWNERSHIP_REGEX, workflowId)
         if (status === 'owned') {
           await fs.unlink(oldPath)
