@@ -5,6 +5,11 @@ import type { RunEvent, RunStatus } from '../run-events.js'
 
 const STALE_AFTER_MS = 15 * 60_000
 
+function parseTimestamp(ts: string): number | null {
+  const parsed = Date.parse(ts)
+  return Number.isFinite(parsed) ? parsed : null
+}
+
 export interface RunSummary {
   runId: string
   workflowId: string
@@ -28,11 +33,12 @@ export interface RunStore {
   stopRun(runId: string): boolean
   releaseRun(runId: string): void
   hasActiveTestRun(workflowId: string): boolean
+  isActive(runId: string): boolean
 }
 
 export function createRunStore(runsDir: string): RunStore {
   const listeners = new Set<(e: RunEvent) => void>()
-  const activeRuns = new Map<string, { workflowId: string; stop: () => void }>()
+  const activeRuns = new Map<string, { workflowId: string; stop: () => void; stopRequested: boolean }>()
 
   function runFile(workflowId: string, runId: string): string {
     return path.join(runsDir, workflowId, `${runId}.jsonl`)
@@ -50,12 +56,14 @@ export function createRunStore(runsDir: string): RunStore {
   function summarize(events: RunEvent[]): RunSummary {
     const first = events[0]
     const last = events[events.length - 1]
+    const firstTs = parseTimestamp(first.ts)
+    const lastTs = parseTimestamp(last.ts)
     let status: RunSummary['status']
     if (last.type === 'run_completed' && last.status) {
       status = last.status
     } else if (last.type === 'run_paused' || last.type === 'awaiting_approval') {
       status = 'paused'                       // gates can wait days — stale window does not apply
-    } else if (Date.now() - Date.parse(last.ts) > STALE_AFTER_MS) {
+    } else if (lastTs === null || Date.now() - lastTs > STALE_AFTER_MS) {
       status = 'stale'
     } else {
       status = 'running'
@@ -68,7 +76,7 @@ export function createRunStore(runsDir: string): RunStore {
       status,
       startedAt: first.ts,
       lastEventAt: last.ts,
-      durationMs: Math.max(0, Date.parse(last.ts) - Date.parse(first.ts)),
+      durationMs: firstTs === null || lastTs === null ? 0 : Math.max(0, lastTs - firstTs),
       cwd: first.cwd,
       branch: first.branch,
       trigger: first.trigger,
@@ -110,7 +118,7 @@ export function createRunStore(runsDir: string): RunStore {
           summaries.push(summary)
         }
       }
-      return summaries.sort((a, b) => Date.parse(b.startedAt) - Date.parse(a.startedAt))
+      return summaries.sort((a, b) => (parseTimestamp(b.startedAt) ?? 0) - (parseTimestamp(a.startedAt) ?? 0))
     },
 
     onEvent(listener) {
@@ -118,10 +126,15 @@ export function createRunStore(runsDir: string): RunStore {
       return () => listeners.delete(listener)
     },
 
-    registerRun(runId, workflowId, stop) { activeRuns.set(runId, { workflowId, stop }) },
+    registerRun(runId, workflowId, stop) {
+      const stopRequested = activeRuns.get(runId)?.stopRequested ?? false
+      activeRuns.set(runId, { workflowId, stop, stopRequested })
+      if (stopRequested) stop()
+    },
     stopRun(runId) {
       const entry = activeRuns.get(runId)
       if (!entry) return false
+      entry.stopRequested = true
       entry.stop()
       return true
     },
@@ -130,5 +143,6 @@ export function createRunStore(runsDir: string): RunStore {
       for (const v of activeRuns.values()) if (v.workflowId === workflowId) return true
       return false
     },
+    isActive(runId) { return activeRuns.has(runId) },
   }
 }

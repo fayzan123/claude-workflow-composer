@@ -222,6 +222,17 @@
   color: var(--color-primary);
 }
 
+.automate-mode__action-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.automate-mode__action-btn:disabled:hover {
+  background: var(--color-surface);
+  border-color: var(--color-border);
+  color: var(--color-text-secondary);
+}
+
 .automate-mode__action-btn--turn-on {
   background: var(--color-primary);
   border-color: var(--color-primary);
@@ -284,6 +295,13 @@
   font-size: var(--text-xs);
   color: var(--color-warning-dark);
   line-height: 1.5;
+}
+
+.automate-mode__arm-error {
+  margin: 0;
+  font-size: var(--text-xs);
+  color: var(--color-error);
+  line-height: 1.4;
 }
 
 .automate-mode__trust-btns {

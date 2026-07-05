@@ -16,6 +16,7 @@ export interface FireOptions {
   trigger: string                 // trigger id or 'manual'
   store: RunStore
   worktreesRoot: string
+  skillsDir?: string
   baseRef?: string                // default 'HEAD'
   precondition?: string
   setupCommand?: string
@@ -46,6 +47,17 @@ function sh(command: string, cwd: string, timeoutMs: number): Promise<{ ok: bool
 export async function fireWorkflow(opts: FireOptions): Promise<FireOutcome> {
   const now = () => new Date().toISOString()
   const runId = opts.runId ?? `run-${randomUUID().slice(0, 13)}`
+
+  // The skill may live in the user scope OR the target project's .claude/skills —
+  // project-scoped exports are first-class, and `claude` resolves them from the run cwd.
+  if (opts.skillsDir) {
+    const candidates = [
+      path.join(opts.skillsDir, opts.workflowSlug, 'SKILL.md'),
+      path.join(opts.cwd, '.claude', 'skills', opts.workflowSlug, 'SKILL.md'),
+    ]
+    const found = await Promise.all(candidates.map(p => fsp.access(p).then(() => true, () => false)))
+    if (!found.includes(true)) return { fired: false, reason: 'skill not exported' }
+  }
 
   if (opts.precondition) {
     const pre = await sh(opts.precondition, opts.cwd, 60_000)

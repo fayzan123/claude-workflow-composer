@@ -37,6 +37,7 @@ export function validateRunEvent(raw: unknown): ValidationOutcome {
   for (const k of ['runId', 'workflowId', 'workflowSlug', 'ts'] as const) {
     if (typeof e[k] !== 'string' || (e[k] as string).length === 0) return { ok: false, error: `missing or invalid ${k}` }
   }
+  if (!Number.isFinite(Date.parse(e.ts as string))) return { ok: false, error: 'invalid ts' }
   if (!SAFE_ID.test(e.runId as string)) return { ok: false, error: 'runId contains unsafe characters' }
   if (!SAFE_ID.test(e.workflowId as string)) return { ok: false, error: 'workflowId contains unsafe characters' }
   if (!RUN_EVENT_TYPES.includes(e.type as RunEventType)) return { ok: false, error: 'unknown event type' }

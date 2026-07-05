@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { slugify, agentSlug, skillSlug } from '../src/slugify.js'
+import { slugify, agentSlug, skillSlug, workflowSkillSlug } from '../src/slugify.js'
 
 describe('slugify', () => {
   it('lowercases and hyphenates spaces', () => {
@@ -47,4 +47,15 @@ describe('agentSlug', () => {
 describe('skillSlug', () => {
   it('slugifies a name', () => { expect(skillSlug('Migration Reviewer')).toBe('migration-reviewer') })
   it('falls back to "skill" for an empty slug', () => { expect(skillSlug('🎉')).toBe('skill') })
+})
+
+describe('workflowSkillSlug', () => {
+  it('adds the CWC prefix to a slugified workflow name', () => {
+    expect(workflowSkillSlug('Release Prep')).toBe('cwc-release-prep')
+  })
+
+  it('falls back to cwc-workflow for an empty workflow slug', () => {
+    expect(workflowSkillSlug('🎉')).toBe('cwc-workflow')
+    expect(workflowSkillSlug('')).toBe('cwc-workflow')
+  })
 })

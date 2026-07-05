@@ -11,7 +11,7 @@ import {
   type Schedule,
 } from '../../lib/schedule-cron.ts'
 import type { CwcTrigger } from '../../types.ts'
-import { newTrigger } from '../../lib/trigger.ts'
+import { newTrigger, normalizeMaxRunsPerDay, normalizeTriggerForSave, validateTriggerForSave } from '../../lib/trigger.ts'
 import './AutomationModal.css'
 
 export interface AutomationModalProps {
@@ -60,6 +60,7 @@ export function AutomationModal({ open, trigger, onSave, onClose }: AutomationMo
   const [schedule, setSchedule] = useState<Schedule>({ frequency: 'weekdays', time: '09:00' })
   const [showAdvanced, setShowAdvanced] = useState(false)
   const [targetsText, setTargetsText] = useState('')
+  const [validationError, setValidationError] = useState<string | null>(null)
 
   // Initialize draft from trigger (or null for new)
   useEffect(() => {
@@ -74,9 +75,11 @@ export function AutomationModal({ open, trigger, onSave, onClose }: AutomationMo
       setTargetsText('')
     }
     setShowAdvanced(false)
+    setValidationError(null)
   }, [open, trigger])
 
   function patchDraft(patch: Partial<CwcTrigger>) {
+    setValidationError(null)
     setDraft(d => d ? { ...d, ...patch } : d)
   }
 
@@ -93,7 +96,13 @@ export function AutomationModal({ open, trigger, onSave, onClose }: AutomationMo
 
   function handleSave() {
     if (!draft) return
-    onSave({ ...draft, targets: targetsText.split('\n').map(s => s.trim()).filter(Boolean) })
+    const normalized = normalizeTriggerForSave(draft, targetsText)
+    const error = validateTriggerForSave(normalized)
+    if (error) {
+      setValidationError(error)
+      return
+    }
+    onSave(normalized)
     onClose()
   }
 
@@ -264,7 +273,7 @@ export function AutomationModal({ open, trigger, onSave, onClose }: AutomationMo
                   rows={3}
                   placeholder={"/path/to/another/repo\n/path/to/a/third/repo"}
                   value={targetsText}
-                  onChange={(e) => setTargetsText(e.target.value)}
+                  onChange={(e) => { setValidationError(null); setTargetsText(e.target.value) }}
                 />
                 <span className="automation-modal__field-hint">
                   Leave blank to run only in the working directory above. Each repo gets its own isolated run.
@@ -333,10 +342,11 @@ export function AutomationModal({ open, trigger, onSave, onClose }: AutomationMo
                   <input
                     type="number"
                     className="automation-modal__input automation-modal__input--number"
-                    min={0}
+                    min={1}
                     value={draft.maxRunsPerDay}
-                    onChange={e => patchDraft({ maxRunsPerDay: Number(e.target.value) })}
+                    onChange={e => patchDraft({ maxRunsPerDay: normalizeMaxRunsPerDay(e.target.value, draft.maxRunsPerDay || 10) })}
                   />
+                  <span className="automation-modal__field-hint">Use 1 or more. Turn the automation off to stop all runs.</span>
                 </label>
 
                 {draft.type === 'cron' && (
@@ -353,6 +363,11 @@ export function AutomationModal({ open, trigger, onSave, onClose }: AutomationMo
             </details>
 
             {/* ── Footer actions ── */}
+            {validationError && (
+              <div className="automation-modal__error" role="alert">
+                {validationError}
+              </div>
+            )}
             <div className="automation-modal__footer">
               <button type="button" className="automation-modal__btn automation-modal__btn--ghost" onClick={onClose}>
                 Cancel

@@ -21,6 +21,7 @@ let binDir: string
 let echoBin: string   // echoes stdin back as a run_completed message (for payload assertions)
 
 let workflowsDir: string
+let skillsDir: string
 let runsDir: string
 let statePath: string
 let wtRoot: string
@@ -38,13 +39,19 @@ function makeTrigger(over: Partial<CwcTrigger> = {}): CwcTrigger {
   }
 }
 
-async function writeWorkflow(trigger: CwcTrigger): Promise<void> {
+async function writeWorkflow(trigger: CwcTrigger, metaOverrides: Partial<CwcFile['meta']> = {}): Promise<void> {
   const now = new Date().toISOString()
   const cwc: CwcFile = {
-    meta: { id: WF_ID, name: WF_NAME, description: '', version: 1, created: now, updated: now, triggers: [trigger] },
+    meta: { id: WF_ID, name: WF_NAME, description: '', version: 1, created: now, updated: now, triggers: [trigger], ...metaOverrides },
     nodes: [], edges: [],
   }
   await fs.writeFile(path.join(workflowsDir, `${WF_ID}.cwc`), JSON.stringify(cwc))
+}
+
+async function writeExportedSkill(slug = 'cwc-webhook-flow'): Promise<void> {
+  const skillDir = path.join(skillsDir, slug)
+  await fs.mkdir(skillDir, { recursive: true })
+  await fs.writeFile(path.join(skillDir, 'SKILL.md'), `# ${slug}\n<!-- cwc:workflow:${WF_ID} -->\n`, 'utf-8')
 }
 
 async function waitForStatus(runId: string, want: string, ms = 5000): Promise<void> {
@@ -75,6 +82,8 @@ afterAll(async () => { await fs.rm(binDir, { recursive: true }) })
 
 beforeEach(async () => {
   workflowsDir = await fs.mkdtemp(path.join(os.tmpdir(), 'cwc-whtrig-wf-'))
+  skillsDir = path.join(workflowsDir, 'skills')
+  await writeExportedSkill()
   runsDir = await fs.mkdtemp(path.join(os.tmpdir(), 'cwc-whtrig-runs-'))
   statePath = path.join(workflowsDir, 'automation-state.json')
   wtRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'cwc-whtrig-wt-'))
@@ -85,12 +94,13 @@ beforeEach(async () => {
   const app = express()
   app.use(express.json())
   // Mount the real runs router for waitForStatus / getEvents polling
-  app.use('/api/runs', runsRouter({ store: sharedStore, claudeBinPath: echoBin, worktreesRoot: wtRoot, runsDirPath: runsDir, skillsDir: path.join(workflowsDir, 'skills') }))
+  app.use('/api/runs', runsRouter({ store: sharedStore, claudeBinPath: echoBin, worktreesRoot: wtRoot, runsDirPath: runsDir, skillsDir }))
   app.use('/api/triggers', triggersRouter({
     workflowsDir,
     state: sharedState,
     store: sharedStore,
     worktreesRoot: wtRoot,
+    skillsDir,
     claudeBinPath: echoBin,
     isWorkflowBusy: async () => false,
   }))
@@ -141,7 +151,7 @@ describe('POST /api/triggers/:token', () => {
     app2.use(express.json())
     app2.use('/api/triggers', triggersRouter({
       workflowsDir, state: sharedState,
-      store: sharedStore, worktreesRoot: wtRoot,
+      store: sharedStore, worktreesRoot: wtRoot, skillsDir,
       claudeBinPath: echoBin,
       isWorkflowBusy: async () => 'running' as const,
     }))
@@ -152,6 +162,59 @@ describe('POST /api/triggers/:token', () => {
     // skip state should be recorded
     const skipReason = sharedState.getTriggerState(t.id).lastSkip?.reason
     expect(skipReason).toBe('running')
+  })
+
+  it('returns 409 and records a skip when the workflow skill is missing', async () => {
+    const t = makeTrigger({ cwd: workflowsDir })
+    await fs.rm(path.join(skillsDir, 'cwc-webhook-flow'), { recursive: true, force: true })
+    await writeWorkflow(t)
+    await sharedState.arm(t)
+
+    const res = await fetch(`${base}/api/triggers/${TOKEN}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })
+
+    expect(res.status).toBe(409)
+    const body = await res.json() as Record<string, unknown>
+    expect(body.error).toMatch(/skill not exported/)
+    expect(sharedState.getTriggerState(t.id).lastSkip?.reason).toBe('skill not exported')
+    expect(await sharedStore.listRuns(WF_ID)).toEqual([])
+  })
+
+  it('fires when the skill exists only project-scoped in the trigger cwd', async () => {
+    const t = makeTrigger({ cwd: workflowsDir })
+    await fs.rm(path.join(skillsDir, 'cwc-webhook-flow'), { recursive: true, force: true })
+    const projectSkillDir = path.join(workflowsDir, '.claude', 'skills', 'cwc-webhook-flow')
+    await fs.mkdir(projectSkillDir, { recursive: true })
+    await fs.writeFile(path.join(projectSkillDir, 'SKILL.md'), `# cwc-webhook-flow\n<!-- cwc:workflow:${WF_ID} -->\n`, 'utf-8')
+    await writeWorkflow(t)
+    await sharedState.arm(t)
+
+    const res = await fetch(`${base}/api/triggers/${TOKEN}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })
+
+    expect(res.status).toBe(202)
+    const { runId } = await res.json() as { runId: string }
+    await waitForStatus(runId, 'complete')
+  })
+
+  it('uses persisted exportedWorkflowSlug after a workflow rename', async () => {
+    const t = makeTrigger({ cwd: workflowsDir })
+    await fs.rm(path.join(skillsDir, 'cwc-webhook-flow'), { recursive: true, force: true })
+    await writeExportedSkill('cwc-old-webhook-flow')
+    await writeWorkflow(t, { name: 'Renamed Webhook Flow', exportedWorkflowSlug: 'cwc-old-webhook-flow' })
+    await sharedState.arm(t)
+
+    const res = await fetch(`${base}/api/triggers/${TOKEN}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: '{}',
+    })
+
+    expect(res.status).toBe(202)
+    const { runId } = await res.json() as { runId: string }
+    await waitForStatus(runId, 'complete')
+    const events = await getEvents(runId)
+    const completed = events.find(e => e.type === 'run_completed') as Record<string, unknown> | undefined
+    expect(completed!.message).toContain('/cwc-old-webhook-flow')
+    expect(completed!.message).not.toContain('/cwc-renamed-webhook-flow')
   })
 
   it('returns 202 and fires for an armed token; prompt contains "Trigger payload:" with JSON body', async () => {

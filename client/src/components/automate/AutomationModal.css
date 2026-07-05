@@ -253,6 +253,15 @@ details[open] .automation-modal__advanced-summary::before {
   cursor: pointer;
 }
 
+.automation-modal__error {
+  padding: 8px 10px;
+  border: 1px solid var(--color-error);
+  border-radius: var(--radius-md);
+  background: var(--color-error-lighter);
+  color: var(--color-error);
+  font-size: var(--text-sm);
+}
+
 /* ── Buttons ── */
 
 .automation-modal__btn {

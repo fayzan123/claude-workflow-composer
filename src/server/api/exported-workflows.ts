@@ -39,12 +39,29 @@ export function exportedWorkflowsRouter(homeDir: string) {
   })
 
   router.delete('/', async (req, res) => {
-    const slug = req.query['slug'] as string
-    if (!slug) return void res.status(400).json({ error: 'slug required' })
+    const slug = req.query['slug']
+    if (typeof slug !== 'string' || slug === '') return void res.status(400).json({ error: 'slug required' })
+    if (!/^[a-z0-9-]+$/.test(slug)) return void res.status(400).json({ error: 'invalid slug' })
 
     const skillDir = path.join(skillsDir, slug)
+    const resolvedSkillsDir = path.resolve(skillsDir)
+    const resolvedSkillDir = path.resolve(skillDir)
+    if (!resolvedSkillDir.startsWith(resolvedSkillsDir + path.sep)) {
+      return void res.status(403).json({ error: 'skill path outside skills directory' })
+    }
+
     try {
       await fs.access(skillDir)
+    } catch {
+      return void res.status(404).json({ error: 'not found' })
+    }
+
+    const skillFile = path.join(skillDir, 'SKILL.md')
+    try {
+      const raw = await fs.readFile(skillFile, 'utf-8')
+      if (!WORKFLOW_ID_REGEX.test(raw)) {
+        return void res.status(403).json({ error: 'not a CWC-exported workflow' })
+      }
     } catch {
       return void res.status(404).json({ error: 'not found' })
     }

@@ -3,7 +3,7 @@ import { Router } from 'express'
 import * as fs from 'node:fs/promises'
 import * as path from 'node:path'
 import type { CwcFile, CwcTrigger } from '../../schema.js'
-import { slugify } from '../../slugify.js'
+import { workflowSkillSlug } from '../../slugify.js'
 import type { AutomationState } from '../automation-state.js'
 import { fireWorkflow } from '../run-launcher.js'
 import type { RunStore } from '../run-store.js'
@@ -13,6 +13,7 @@ export interface TriggersRouterOptions {
   state: AutomationState
   store: RunStore
   worktreesRoot: string
+  skillsDir: string
   claudeBinPath?: string
   isWorkflowBusy: (workflowId: string, triggerId: string) => Promise<'running' | 'paused-same-trigger' | false>
 }
@@ -65,10 +66,10 @@ export function triggersRouter(opts: TriggersRouterOptions): Router {
 
     await opts.state.recordFire(trigger.id, nowD)
     const outcome = await fireWorkflow({
-      workflowId: cwc.meta.id, workflowSlug: 'cwc-' + slugify(cwc.meta.name),
+      workflowId: cwc.meta.id, workflowSlug: cwc.meta.exportedWorkflowSlug ?? workflowSkillSlug(cwc.meta.name),
       cwd: trigger.cwd, isolation: trigger.isolation, baseRef: trigger.baseRef,
       precondition: trigger.precondition, setupCommand: trigger.setupCommand,
-      trigger: trigger.id, payload, store: opts.store, worktreesRoot: opts.worktreesRoot, binPath: opts.claudeBinPath,
+      trigger: trigger.id, payload, store: opts.store, worktreesRoot: opts.worktreesRoot, skillsDir: opts.skillsDir, binPath: opts.claudeBinPath,
     })
     if (outcome.fired === false) {
       await opts.state.recordSkip(trigger.id, outcome.reason, nowD)

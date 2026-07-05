@@ -4,7 +4,7 @@ import { api } from '../lib/api.ts'
 import { useWorkflow } from '../hooks/useWorkflow.ts'
 import { useAutoSave } from '../hooks/useAutoSave.ts'
 import { useRunEvents } from '../hooks/useRunEvents.ts'
-import { slugify } from '../../../src/slugify.ts'
+import { workflowSkillSlug } from '../../../src/slugify.ts'
 import { validateWorkflow } from '../lib/validation.ts'
 import { RunModal } from '../components/RunModal.tsx'
 import { ExportFlow } from '../components/ExportFlow.tsx'
@@ -78,7 +78,7 @@ export function WorkflowView() {
     onSuccess: () => setSaveError(null),
   })
   const runState = useRunEvents(workflow.meta.id || id || '')
-  const workflowSlug = 'cwc-' + slugify(workflow.meta.name)
+  const workflowSlug = workflowSkillSlug(workflow.meta.name)
 
   // Resolve id → file path on mount or when id changes
   useEffect(() => {

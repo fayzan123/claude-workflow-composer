@@ -104,6 +104,7 @@ export function createApp(opts: AppOptions): express.Express {
 
   const runsDir = opts.runsDir ?? path.join(os.homedir(), '.cwc', 'runs')
   const worktreesRoot = opts.worktreesRoot ?? path.join(os.homedir(), '.cwc', 'worktrees')
+  const skillsDir = path.join(homeDir, '.claude', 'skills')
   const statePath = opts.automationStatePath ?? path.join(os.homedir(), '.cwc', 'automation-state.json')
   const configPath = opts.configPath ?? path.join(os.homedir(), '.cwc', 'config.json')
 
@@ -126,8 +127,8 @@ export function createApp(opts: AppOptions): express.Express {
     return false as const
   }
 
-  app.use('/api/runs', runsRouter({ store: runStore, claudeBinPath: opts.claudeBinPath, worktreesRoot, runsDirPath: runsDir, skillsDir: path.join(homeDir, '.claude', 'skills') }))
-  app.use('/api/triggers', triggersRouter({ workflowsDir: wfDir, state: autoState, store: runStore, worktreesRoot, claudeBinPath: opts.claudeBinPath, isWorkflowBusy }))
+  app.use('/api/runs', runsRouter({ store: runStore, claudeBinPath: opts.claudeBinPath, worktreesRoot, runsDirPath: runsDir, skillsDir }))
+  app.use('/api/triggers', triggersRouter({ workflowsDir: wfDir, state: autoState, store: runStore, worktreesRoot, skillsDir, claudeBinPath: opts.claudeBinPath, isWorkflowBusy }))
 
   let config = loadConfig(configPath)
   app.use('/api/automations', automationsRouter({ state: autoState, configPath, workflowsDir: wfDir, onConfigChanged: (c) => { config = c } }))
@@ -138,7 +139,7 @@ export function createApp(opts: AppOptions): express.Express {
     scheduler = createScheduler({
       workflowsDir: wfDir, state: autoState, isWorkflowBusy,
       fire: makeSchedulerFire({
-        store: runStore, worktreesRoot, claudeBinPath: opts.claudeBinPath,
+        store: runStore, worktreesRoot, skillsDir, claudeBinPath: opts.claudeBinPath,
         onSkip: (id, reason) => autoState.recordSkip(id, reason, new Date()),
       }),
     })
@@ -160,6 +161,7 @@ export function createApp(opts: AppOptions): express.Express {
 export interface SchedulerFireDeps {
   store: RunStore
   worktreesRoot: string
+  skillsDir?: string
   claudeBinPath?: string
   onSkip: (triggerId: string, reason: string) => Promise<void>
   fireOne?: (cwd: string, args: { workflowId: string; workflowSlug: string; trigger: CwcTrigger }) => Promise<FireOutcome>
@@ -170,7 +172,7 @@ export function makeSchedulerFire(deps: SchedulerFireDeps) {
     fireWorkflow({
       workflowId: a.workflowId, workflowSlug: a.workflowSlug, cwd, isolation: a.trigger.isolation,
       baseRef: a.trigger.baseRef, precondition: a.trigger.precondition, setupCommand: a.trigger.setupCommand,
-      trigger: a.trigger.id, store: deps.store, worktreesRoot: deps.worktreesRoot, binPath: deps.claudeBinPath,
+      trigger: a.trigger.id, store: deps.store, worktreesRoot: deps.worktreesRoot, skillsDir: deps.skillsDir, binPath: deps.claudeBinPath,
     }))
   return async (workflowId: string, workflowSlug: string, t: CwcTrigger): Promise<void> => {
     const outcomes = await Promise.all(resolveTargets(t).map(cwd => fireOne(cwd, { workflowId, workflowSlug, trigger: t })))

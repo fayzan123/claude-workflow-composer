@@ -87,6 +87,21 @@ describe('POST /api/runs/test', () => {
     expect(last.message).toContain('workflow finished')
   })
 
+  it('allows a run when the workflow skill exists only in the selected project', async () => {
+    await fs.rm(path.join(homeDir, '.claude', 'skills', 'cwc-flow'), { recursive: true, force: true })
+    const projectSkillDir = path.join(cwd, '.claude', 'skills', 'cwc-flow')
+    await fs.mkdir(projectSkillDir, { recursive: true })
+    await fs.writeFile(path.join(projectSkillDir, 'SKILL.md'), '# cwc-flow\n<!-- cwc:workflow:wf-1 -->\n', 'utf-8')
+
+    startApp(okBin)
+    const res = await fetch(`${base}/api/runs/test`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: startBody() })
+
+    expect(res.status).toBe(200)
+    const { runId } = (await res.json()) as { runId: string }
+    const run = await waitForStatus(runId, 'complete')
+    expect(run.status).toBe('complete')
+  })
+
   it('400 on missing fields or nonexistent cwd', async () => {
     startApp(okBin)
     expect((await fetch(`${base}/api/runs/test`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })).status).toBe(400)

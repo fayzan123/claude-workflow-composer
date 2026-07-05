@@ -87,9 +87,12 @@ export function runWorkflowSkill(opts: RunWorkflowOptions): RunningWorkflow {
         return
       }
       if (err) {
-        const e = err as NodeJS.ErrnoException & { killed?: boolean; signal?: string }
-        if (e.killed || e.signal === 'SIGTERM') {
-          resolveDone({ status: 'aborted', message: 'Run stopped.' })
+        const e = err as NodeJS.ErrnoException & { killed?: boolean; signal?: string; code?: string }
+        const message = err.message || ''
+        if (e.code === 'ERR_CHILD_PROCESS_STDIO_MAXBUFFER' || message.includes('maxBuffer')) {
+          resolveDone({ status: 'error', message: 'Run output exceeded 10MB.' })
+        } else if (e.killed || e.signal) {
+          resolveDone({ status: 'error', message: `Run process exited by signal ${e.signal ?? 'unknown'}.` })
         } else {
           resolveDone({ status: 'error', message: stderr?.toString().trim() || err.message })
         }

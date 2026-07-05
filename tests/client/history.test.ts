@@ -192,5 +192,42 @@ describe('historyReducer', () => {
     s = historyReducer(s, { type: 'UPDATE_EXPORTED_SLUG', payload: { nodeId, slug: 'a' } })
     expect(s.past).toHaveLength(pastBefore)
     expect(s.present.nodes[0].exportedSlug).toBe('a')
+
+    s = historyReducer(s, { type: 'UNDO' })
+    expect(s.present.nodes).toHaveLength(0)
+  })
+
+  it('UPDATE_EXPORTED_SLUG survives undoing an edit to an existing node', () => {
+    let s = initial()
+    s = historyReducer(s, { type: 'ADD_NODE', payload: { agent, position: { x: 0, y: 0 } } })
+    const nodeId = s.present.nodes[0].id
+    s = historyReducer(s, { type: 'UPDATE_NODE', payload: { nodeId, agent: { description: 'changed' } } })
+    const pastBefore = s.past.length
+
+    s = historyReducer(s, { type: 'UPDATE_EXPORTED_SLUG', payload: { nodeId, slug: 'exported-a' } })
+
+    expect(s.past).toHaveLength(pastBefore)
+    expect(s.present.nodes[0].exportedSlug).toBe('exported-a')
+
+    s = historyReducer(s, { type: 'UNDO' })
+
+    expect(s.present.nodes[0].agent.description).toBe('')
+    expect(s.present.nodes[0].exportedSlug).toBe('exported-a')
+  })
+
+  it('SET_EXPORTED_WORKFLOW_SLUG does not touch the undo stack or disappear on undo', () => {
+    let s = initial()
+    s = historyReducer(s, { type: 'SET_META', payload: { name: 'Renamed' } })
+    const pastBefore = s.past.length
+
+    s = historyReducer(s, { type: 'SET_EXPORTED_WORKFLOW_SLUG', payload: { slug: 'cwc-renamed' } })
+
+    expect(s.past).toHaveLength(pastBefore)
+    expect(s.present.meta.exportedWorkflowSlug).toBe('cwc-renamed')
+
+    s = historyReducer(s, { type: 'UNDO' })
+
+    expect(s.present.meta.name).toBe('Test')
+    expect(s.present.meta.exportedWorkflowSlug).toBe('cwc-renamed')
   })
 })

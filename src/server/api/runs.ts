@@ -66,7 +66,9 @@ export function runsRouter(opts: RunsRouterOptions): Router {
     // The run spawns `claude -p "/<slug>"`; if the skill isn't on disk the slash command
     // silently resolves to nothing and the run is a confusing no-op. Verify it's exported.
     // A rename changes the slug, so this also catches "exported, then renamed, not re-exported".
-    if (!fs.existsSync(path.join(opts.skillsDir, workflowSlug, 'SKILL.md'))) {
+    const userSkill = path.join(opts.skillsDir, workflowSlug, 'SKILL.md')
+    const projectSkill = path.join(cwd, '.claude', 'skills', workflowSlug, 'SKILL.md')
+    if (!fs.existsSync(userSkill) && !fs.existsSync(projectSkill)) {
       res.status(400).json({ error: `workflow not exported: no skill found for /${workflowSlug}. Export the workflow first (re-export if you renamed it).` })
       return
     }
@@ -166,6 +168,9 @@ export function runsRouter(opts: RunsRouterOptions): Router {
     const { workflowId, note } = (req.body ?? {}) as { workflowId?: string; note?: string }
     if (!workflowId) return void res.status(400).json({ error: 'workflowId required' })
     const runId = req.params.runId
+    if (store.isActive(runId)) {
+      return void res.status(409).json({ error: 'run is still finishing — try again in a moment' })
+    }
     // Claim the run synchronously (no await between the check and the reserve) so a
     // rapid second Approve click can't also spawn a resume. A paused run has already
     // been released from the active registry, so the first claim wins; the rest 409.
@@ -200,6 +205,9 @@ export function runsRouter(opts: RunsRouterOptions): Router {
   router.post('/:runId/reject', async (req, res) => {
     const { workflowId, note } = (req.body ?? {}) as { workflowId?: string; note?: string }
     if (!workflowId) return void res.status(400).json({ error: 'workflowId required' })
+    if (store.isActive(req.params.runId)) {
+      return void res.status(409).json({ error: 'run is still finishing — try again in a moment' })
+    }
     const events = await store.getEvents(workflowId, req.params.runId)
     if (!events) return void res.status(404).json({ error: 'run not found' })
     const last = events[events.length - 1]
