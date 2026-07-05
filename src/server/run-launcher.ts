@@ -1,5 +1,5 @@
 // src/server/run-launcher.ts
-import { execFile } from 'node:child_process'
+import { exec, execFile } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import * as fsp from 'node:fs/promises'
 import * as path from 'node:path'
@@ -35,9 +35,11 @@ export function runShellCommand(command: string, cwd: string, timeoutMs: number)
   return new Promise(resolve => {
     const timedOutMessage = `command timed out after ${Math.round(timeoutMs / 1000)}s`
     let timedOut = false
-    const child = process.platform === 'win32'
-      ? execFile('cmd', ['/d', '/s', '/c', command], { cwd, maxBuffer: 1024 * 1024 }, onExit)
-      : execFile('sh', ['-c', command], { cwd, maxBuffer: 1024 * 1024 }, onExit)
+    // exec, not execFile('cmd'/'sh', ..., command): on Windows, execFile lets Node escape
+    // embedded double quotes in the command as \" — which cmd.exe does not understand, so
+    // any quoted path in a precondition/setup command breaks. exec passes the raw command
+    // line to the platform shell verbatim (cmd /d /s /c on win32, sh -c elsewhere).
+    const child = exec(command, { cwd, maxBuffer: 1024 * 1024 }, onExit)
     const timer = setTimeout(() => {
       timedOut = true
       killProcessTree(child)
