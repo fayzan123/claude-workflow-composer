@@ -148,3 +148,8 @@ vite.config.ts.timestamp-*
 .gstack/
 .superpowers/
 .impeccable.md
+
+# Product-strategy docs at docs/ root are local-only (curated specs/plans in
+# docs/specs and docs/plans remain tracked)
+docs/*.md
+!docs/README.md
