@@ -21,8 +21,30 @@ export function runsRouter(opts: RunsRouterOptions): Router {
   const { store } = opts
   const router = Router()
 
-  async function ingest(event: RunEvent): Promise<void> {
-    await store.append(event)   // append also fans out to SSE subscribers
+  function externalEvent(event: RunEvent): RunEvent {
+    const sanitized: RunEvent = {
+      runId: event.runId,
+      workflowId: event.workflowId,
+      workflowSlug: event.workflowSlug,
+      type: event.type,
+      ts: event.ts,
+      source: 'external',
+    }
+    if (typeof event.nodeId === 'string') sanitized.nodeId = event.nodeId
+    if (typeof event.agentSlug === 'string') sanitized.agentSlug = event.agentSlug
+    if (typeof event.message === 'string') sanitized.message = event.message
+    if (typeof event.artifactPath === 'string') sanitized.artifactPath = event.artifactPath
+    if (typeof event.status === 'string') sanitized.status = event.status
+    if (typeof event.costUsd === 'number' && Number.isFinite(event.costUsd)) sanitized.costUsd = event.costUsd
+    return sanitized
+  }
+
+  function lastManagedEvent(events: RunEvent[]): RunEvent | undefined {
+    for (let i = events.length - 1; i >= 0; i--) {
+      const event = events[i]
+      if (event.source === 'test') return event
+    }
+    return undefined
   }
 
   router.post('/events', async (req, res) => {
@@ -32,7 +54,10 @@ export function runsRouter(opts: RunsRouterOptions): Router {
       return
     }
     try {
-      await ingest(outcome.event)
+      const accepted = await store.appendExternal(externalEvent(outcome.event))
+      if (!accepted) {
+        return void res.status(409).json({ error: 'managed run is no longer accepting external events' })
+      }
       res.json({ ok: true })
     } catch (err) {
       res.status(500).json({ error: err instanceof Error ? err.message : 'failed to persist event' })
@@ -88,7 +113,7 @@ export function runsRouter(opts: RunsRouterOptions): Router {
       store, worktreesRoot: opts.worktreesRoot, binPath: opts.claudeBinPath,
     })
     if (!outcome.fired) {
-      res.status(400).json({ error: outcome.reason })
+      res.status(outcome.reason === 'workflow already active' ? 409 : 400).json({ error: outcome.reason })
       return
     }
     res.json({ runId: outcome.runId })
@@ -144,7 +169,7 @@ export function runsRouter(opts: RunsRouterOptions): Router {
     const events = await store.getEvents(workflowId, req.params.runId)
     if (!events) return void res.status(404).json({ error: 'run not found' })
     const started = events.find(e => e.type === 'run_started')
-    if (!started?.baseSha) return void res.json({ diff: null, status: null, branch: started?.branch ?? null })
+    if (started?.source !== 'test' || !started.baseSha) return void res.json({ diff: null, status: null, branch: null })
     try {
       // Prefer the live worktree (paused/running runs); fall back to the kept branch
       // (completed worktree runs — worktree swept, branch retained); else in-place HEAD.
@@ -177,22 +202,52 @@ export function runsRouter(opts: RunsRouterOptions): Router {
     if (store.hasActiveTestRun(workflowId)) {
       return void res.status(409).json({ error: 'a run for this workflow is already active' })
     }
-    store.registerRun(runId, workflowId, () => { /* placeholder until the resume spawns */ })
+    if (!store.registerRun(runId, workflowId, () => { /* placeholder until the resume spawns */ })) {
+      return void res.status(409).json({ error: 'the workflow is active or reserved by another operation' })
+    }
     const bail = (code: number, error: string) => { store.releaseRun(runId); res.status(code).json({ error }) }
 
     const events = await store.getEvents(workflowId, runId)
     if (!events) return void bail(404, 'run not found')
-    const last = events[events.length - 1]
-    if (last.type !== 'run_paused' && last.type !== 'awaiting_approval') return void bail(409, 'run is not paused')
-    if (last.type !== 'run_paused' || !last.sessionId) return void bail(409, "cannot resume this run from CWC — it was started from a terminal. Continue it where you launched it, or reject it to clean up.")
-    const started = events.find(e => e.type === 'run_started')!
+    const managedEvent = lastManagedEvent(events)
+    const observedLast = events[events.length - 1]
+    if (managedEvent?.type === 'run_completed') return void bail(409, 'run is not paused')
+    if (managedEvent?.type !== 'run_paused') {
+      if (observedLast.type === 'run_paused' || observedLast.type === 'awaiting_approval') {
+        return void bail(409, 'cannot resume this run from CWC because it is not a managed resumable run')
+      }
+      return void bail(409, 'run is not paused')
+    }
+    const last = managedEvent
+    if (!last.sessionId) return void bail(409, 'cannot resume this run from CWC because it is not a managed resumable run')
+    const started = events.find(e => e.type === 'run_started' && e.source === 'test')
+    if (!started) return void bail(409, 'run is not managed by CWC')
     const runCwd = last.worktreePath ?? started.worktreePath ?? started.cwd!
     const wt = started.worktreePath && started.branch
       ? { worktreePath: started.worktreePath, branch: started.branch, baseSha: started.baseSha ?? '' }
       : null
     const prompt = `Approved — continue the workflow from the gate.${note ? `\nNote from the reviewer: ${note}` : ''}`
     // Human action: bypasses the scheduler queue/cap by design (Addendum 2).
-    const { stop, done } = runWorkflowSkill({ slug: started.workflowSlug, runId, cwd: runCwd, binPath: opts.claudeBinPath, resume: last.sessionId, promptOverride: prompt })
+    try {
+      await store.append({
+        runId,
+        workflowId,
+        workflowSlug: started.workflowSlug,
+        type: 'run_started',
+        ts: new Date().toISOString(),
+        source: 'test',
+        message: 'Run resumed after approval',
+      })
+    } catch {
+      return void bail(500, 'could not record the run resume')
+    }
+    let resumed
+    try {
+      resumed = runWorkflowSkill({ slug: started.workflowSlug, runId, cwd: runCwd, binPath: opts.claudeBinPath, resume: last.sessionId, promptOverride: prompt })
+    } catch {
+      return void bail(500, 'could not resume the workflow process')
+    }
+    const { stop, done } = resumed
     store.registerRun(runId, workflowId, stop)
     void done.then(result => classifyAndFinish({
       workflowId, workflowSlug: started.workflowSlug, cwd: started.cwd ?? runCwd,
@@ -210,9 +265,13 @@ export function runsRouter(opts: RunsRouterOptions): Router {
     }
     const events = await store.getEvents(workflowId, req.params.runId)
     if (!events) return void res.status(404).json({ error: 'run not found' })
-    const last = events[events.length - 1]
+    const managedEvent = lastManagedEvent(events)
+    const last = managedEvent?.type === 'run_completed' || managedEvent?.type === 'run_paused'
+      ? managedEvent
+      : events[events.length - 1]
     if (last.type !== 'run_paused' && last.type !== 'awaiting_approval') return void res.status(409).json({ error: 'run is not paused' })
     const started = events.find(e => e.type === 'run_started')
+    if (started?.source !== 'test') return void res.status(409).json({ error: 'run is not managed by CWC' })
     await store.append({
       runId: req.params.runId, workflowId, workflowSlug: started?.workflowSlug ?? '', type: 'run_completed',
       ts: new Date().toISOString(), status: 'aborted', source: started?.source ?? 'external',

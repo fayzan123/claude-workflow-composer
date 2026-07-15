@@ -39,8 +39,9 @@ export const api = {
   workflows: {
     list: () => req<{ id: string; path: string; name: string; nodeCount: number; updated: string }[]>('GET', '/workflows/list'),
     read: (filePath: string) => req<CwcFile>('GET', `/workflows?path=${encodeURIComponent(filePath)}`),
+    create: (content: CwcFile) => req<{ saved: boolean; path: string }>('POST', '/workflows/create', { content }),
     save: (filePath: string, content: CwcFile) => req<{ saved: boolean }>('POST', '/workflows', { path: filePath, content }),
-    delete: (filePath: string) => req<{ deleted: boolean }>('DELETE', `/workflows?path=${encodeURIComponent(filePath)}`),
+    delete: (filePath: string) => reqWithError<{ deleted: boolean }>('DELETE', `/workflows?path=${encodeURIComponent(filePath)}`),
     rename: (oldPath: string, newName: string) =>
       req<{ path: string; renamed: boolean }>('POST', '/workflows/rename', { oldPath, newName }),
   },
@@ -129,6 +130,9 @@ export const api = {
   automationScan: {
     latest: () => fetch('/api/automation-scan').then(r => r.json()) as Promise<{
       status: string
+      startedAt?: string
+      finishedAt?: string
+      error?: string
       log?: Array<{ ts: string; level: string; message: string }>
       generation?: { id: string; step: string; startedAt: string; workflowId?: string; error?: string } | null
       automations: Array<{ id: string; title: string; description: string; steps: string[]; evidence: { count: number; repos: string[] }; suggestedTrigger: { label: string; cron?: string }; confidence: number; status: string; statusDetail?: string }>
@@ -139,6 +143,7 @@ export const api = {
       body: JSON.stringify(model ? { model } : {}),
     }),
     dismiss: (id: string) => fetch(`/api/automation-scan/${id}/dismiss`, { method: 'POST' }),
+    restore: (id: string) => fetch(`/api/automation-scan/${id}/restore`, { method: 'POST' }),
     promote: async (id: string) => {
       const res = await fetch(`/api/automation-scan/${id}/promote`, { method: 'POST' })
       const json = await res.json().catch(() => ({})) as { status?: string; error?: string; cancelled?: boolean }

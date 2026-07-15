@@ -1,4 +1,5 @@
 import type { CwcTrigger } from '../types.ts'
+import { isAbsolutePath } from './path.ts'
 
 /** Factory for a new trigger of the given type, with sensible defaults. */
 export function newTrigger(type: CwcTrigger['type']): CwcTrigger {
@@ -13,11 +14,6 @@ export function newTrigger(type: CwcTrigger['type']): CwcTrigger {
     maxRunsPerDay: 10,
     enabled: true,
   }
-}
-
-export function isAbsoluteTriggerPath(value: string): boolean {
-  const trimmed = value.trim()
-  return /^([a-zA-Z]:[\\/]|\/|\\\\)/.test(trimmed)
 }
 
 export function normalizeMaxRunsPerDay(value: unknown, fallback = 10): number {
@@ -38,8 +34,8 @@ export function normalizeTriggerForSave(trigger: CwcTrigger, targetsText: string
 
 export function validateTriggerForSave(trigger: CwcTrigger): string | null {
   if (!trigger.cwd.trim()) return 'Working directory is required.'
-  if (!isAbsoluteTriggerPath(trigger.cwd)) return 'Working directory must be an absolute path.'
-  const relativeTarget = (trigger.targets ?? []).find(t => !isAbsoluteTriggerPath(t))
+  if (!isAbsolutePath(trigger.cwd)) return 'Working directory must be an absolute path.'
+  const relativeTarget = (trigger.targets ?? []).find(t => !isAbsolutePath(t))
   if (relativeTarget) return 'Additional target repos must use absolute paths.'
   return null
 }

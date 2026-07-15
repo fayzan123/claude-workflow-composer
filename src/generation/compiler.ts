@@ -119,9 +119,35 @@ function compileInner(input: CompileInput, deps?: CompilerDeps): CwcFile {
     const archetype = decision.attach ? GENERIC : matchArchetype(phase.archetypeHint, stepText)
     const useArchetypeRisk = deps?.scanRisk === undefined
     const risky = scanRisk(phase, automation) || (useArchetypeRisk && !decision.attach && archetype.risky)
-    // A gate needs a preceding agent to approve — it can never be the workflow's entry node.
-    // If the first phase is risky there is nothing before it to gate; the phase's own systemPrompt
-    // still carries the risk policy.
+
+    // Entry gates are not runnable: approval resumes the preceding agent session. Give a risky
+    // first phase a read-only preflight so the reviewer has concrete context before approving it.
+    if (risky && !previousId) {
+      const preflightId = `node-preflight-${phase.id}`
+      const preflightName = uniqueName('Preflight Review', usedNames)
+      nodes.push({
+        id: preflightId,
+        position: { x, y: Y_BASE },
+        exportedSlug: null,
+        startTrigger: `Start when this repeated work is needed: ${automation.suggestedTrigger.label}`,
+        agent: {
+          name: preflightName,
+          description: `Prepare approval context before ${phase.intent}.`,
+          completionCriteria: 'The reviewer has the target, prerequisites, current state, requested external action, and material risks needed for approval.',
+          color: 'blue',
+          tools: ['Read'],
+          skills: [],
+          systemPrompt: `Perform a read-only preflight for the upcoming phase: ${phase.intent}.
+
+Inspect relevant repository files and the workflow input. Summarize the target, prerequisites, current state, exact irreversible external action requested, and material risks for the reviewer.
+
+Do not publish, deploy, push, send, or mutate files or external systems. Do not run shell commands. Stop after preparing approval context.`,
+        },
+      })
+      previousId = preflightId
+      x += X_STEP
+    }
+
     if (risky && previousId) {
       const gateId = `node-gate-${phase.id}`
       const gateName = uniqueName('Approval Gate', usedNames)
@@ -202,8 +228,7 @@ function compileInner(input: CompileInput, deps?: CompilerDeps): CwcFile {
       }
     }
 
-    // No gate ever precedes the first phase, so the first phase node is always the entry node.
-    if (phaseIndex === 0) {
+    if (!previousId) {
       node.startTrigger = `Start when this repeated work is needed: ${automation.suggestedTrigger.label}`
     }
 

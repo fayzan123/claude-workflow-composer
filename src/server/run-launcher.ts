@@ -6,7 +6,7 @@ import * as path from 'node:path'
 import type { RunStore } from './run-store.js'
 import type { RunEvent } from '../run-events.js'
 import { runWorkflowSkill, type WorkflowRunResult } from './workflow-runner.js'
-import { isGitRepo, resolveBaseSha, createWorktree, removeWorktree, type WorktreeInfo } from './run-isolation.js'
+import { checkpointWorktree, isGitRepo, resolveBaseSha, createWorktree, removeWorktree, type WorktreeInfo } from './run-isolation.js'
 import { killProcessTree } from './process-tree.js'
 
 export interface FireOptions {
@@ -25,6 +25,7 @@ export interface FireOptions {
   runId?: string                  // test injection
   binPath?: string                // test injection
   env?: Record<string, string>    // test injection (passed to the child)
+  launchGroupId?: string          // one trigger delivery may intentionally fan out to many targets
 }
 
 export type FireOutcome =
@@ -56,67 +57,99 @@ export function runShellCommand(command: string, cwd: string, timeoutMs: number)
 export async function fireWorkflow(opts: FireOptions): Promise<FireOutcome> {
   const now = () => new Date().toISOString()
   const runId = opts.runId ?? `run-${randomUUID().slice(0, 13)}`
-
-  // The skill may live in the user scope OR the target project's .claude/skills —
-  // project-scoped exports are first-class, and `claude` resolves them from the run cwd.
-  if (opts.skillsDir) {
-    const candidates = [
-      path.join(opts.skillsDir, opts.workflowSlug, 'SKILL.md'),
-      path.join(opts.cwd, '.claude', 'skills', opts.workflowSlug, 'SKILL.md'),
-    ]
-    const found = await Promise.all(candidates.map(p => fsp.access(p).then(() => true, () => false)))
-    if (!found.includes(true)) return { fired: false, reason: 'skill not exported' }
+  if (!opts.store.registerRun(runId, opts.workflowId, () => { /* launch placeholder */ }, opts.launchGroupId)) {
+    return { fired: false, reason: 'workflow already active' }
+  }
+  const skip = (reason: string): FireOutcome => {
+    opts.store.releaseRun(runId)
+    return { fired: false, reason }
   }
 
-  if (opts.precondition) {
-    const pre = await runShellCommand(opts.precondition, opts.cwd, 60_000)
-    if (!pre.ok) return { fired: false, reason: 'precondition' }
-  }
-
-  // Isolation + baseSha (baseSha recorded for ANY git cwd — Addendum 6)
-  let wt: WorktreeInfo | null = null
-  let baseSha: string | undefined
-  const git = await isGitRepo(opts.cwd)
-  if (opts.isolation === 'worktree') {
-    if (!git) return { fired: false, reason: 'not a git repo' }
-    try {
-      wt = await createWorktree(opts.cwd, opts.workflowSlug, runId, opts.baseRef ?? 'HEAD', opts.worktreesRoot)
-      baseSha = wt.baseSha
-    } catch (err) {
-      return { fired: false, reason: `worktree: ${err instanceof Error ? err.message : String(err)}` }
+  try {
+    // The skill may live in the user scope OR the target project's .claude/skills —
+    // project-scoped exports are first-class, and `claude` resolves them from the run cwd.
+    if (opts.skillsDir) {
+      const candidates = [
+        path.join(opts.skillsDir, opts.workflowSlug, 'SKILL.md'),
+        path.join(opts.cwd, '.claude', 'skills', opts.workflowSlug, 'SKILL.md'),
+      ]
+      const found = await Promise.all(candidates.map(p => fsp.access(p).then(() => true, () => false)))
+      if (!found.includes(true)) return skip('skill not exported')
     }
-  } else if (git) {
-    baseSha = await resolveBaseSha(opts.cwd, 'HEAD').catch(() => undefined)
-  }
-  const runCwd = wt?.worktreePath ?? opts.cwd
 
-  const started: RunEvent = {
-    runId, workflowId: opts.workflowId, workflowSlug: opts.workflowSlug,
-    type: 'run_started', ts: now(), source: 'test', trigger: opts.trigger,
-    cwd: opts.cwd, baseSha,
-    ...(wt ? { worktreePath: wt.worktreePath, branch: wt.branch } : {}),
-    message: opts.trigger === 'manual' ? 'Test run started from CWC' : `Fired by trigger ${opts.trigger}`,
-  }
-
-  const emit = (e: RunEvent) => opts.store.append(e).catch(() => { /* teardown race */ })
-
-  if (opts.setupCommand) {
-    const setup = await runShellCommand(opts.setupCommand, runCwd, 600_000)
-    if (!setup.ok) {
-      await emit(started)
-      await emit({ runId, workflowId: opts.workflowId, workflowSlug: opts.workflowSlug, type: 'run_completed', ts: now(), status: 'error', source: 'test', message: `setupCommand failed: ${setup.output.slice(0, 2000)}` })
-      if (wt) await removeWorktree(opts.cwd, wt.worktreePath, wt.branch, { keepBranch: false })
-      return { fired: true, runId, settled: Promise.resolve() }
+    if (opts.precondition) {
+      const pre = await runShellCommand(opts.precondition, opts.cwd, 60_000)
+      if (!pre.ok) return skip('precondition')
     }
+
+    // Isolation + baseSha (baseSha recorded for ANY git cwd — Addendum 6)
+    let wt: WorktreeInfo | null = null
+    let baseSha: string | undefined
+    const git = await isGitRepo(opts.cwd)
+    if (opts.isolation === 'worktree') {
+      if (!git) return skip('not a git repo')
+      try {
+        wt = await createWorktree(opts.cwd, opts.workflowSlug, runId, opts.baseRef?.trim() || 'HEAD', opts.worktreesRoot)
+        baseSha = wt.baseSha
+      } catch (err) {
+        return skip(`worktree: ${err instanceof Error ? err.message : String(err)}`)
+      }
+    } else if (git) {
+      baseSha = await resolveBaseSha(opts.cwd, 'HEAD').catch(() => undefined)
+    }
+    const runCwd = wt?.worktreePath ?? opts.cwd
+
+    const started: RunEvent = {
+      runId, workflowId: opts.workflowId, workflowSlug: opts.workflowSlug,
+      type: 'run_started', ts: now(), source: 'test', trigger: opts.trigger,
+      cwd: opts.cwd, baseSha,
+      ...(wt ? { worktreePath: wt.worktreePath, branch: wt.branch } : {}),
+      message: opts.trigger === 'manual' ? 'Test run started from CWC' : `Fired by trigger ${opts.trigger}`,
+    }
+
+    const emit = (e: RunEvent) => opts.store.append(e).catch(() => { /* teardown race */ })
+
+    if (opts.setupCommand) {
+      const setup = await runShellCommand(opts.setupCommand, runCwd, 600_000)
+      if (!setup.ok) {
+        await emit(started)
+        let keepBranch = false
+        if (wt) {
+          try {
+            keepBranch = await checkpointWorktree(wt.worktreePath, runId)
+          } catch (err) {
+            await emit({
+              runId,
+              workflowId: opts.workflowId,
+              workflowSlug: opts.workflowSlug,
+              type: 'run_completed',
+              ts: now(),
+              status: 'error',
+              source: 'test',
+              message: `The setup command failed, and CWC could not preserve its changes. The worktree was retained at ${wt.worktreePath}: ${err instanceof Error ? err.message : String(err)}`,
+            })
+            opts.store.releaseRun(runId)
+            return { fired: true, runId, settled: Promise.resolve() }
+          }
+        }
+        await emit({ runId, workflowId: opts.workflowId, workflowSlug: opts.workflowSlug, type: 'run_completed', ts: now(), status: 'error', source: 'test', message: `setupCommand failed: ${setup.output.slice(0, 2000)}` })
+        if (wt) await removeWorktree(opts.cwd, wt.worktreePath, wt.branch, { keepBranch })
+        opts.store.releaseRun(runId)
+        return { fired: true, runId, settled: Promise.resolve() }
+      }
+    }
+
+    await emit(started)
+    const prompt = `/${opts.workflowSlug}\nUse run id ${runId} when logging run events.` + (opts.payload ? `\nTrigger payload:\n${opts.payload}` : '')
+    const { stop, done } = runWorkflowSkill({ slug: opts.workflowSlug, runId, cwd: runCwd, binPath: opts.binPath, promptOverride: prompt, env: opts.env })
+    opts.store.registerRun(runId, opts.workflowId, stop)
+
+    const settled = done.then(result => classifyAndFinish({ ...opts, runId, wt, result }))
+    return { fired: true, runId, settled }
+  } catch (err) {
+    opts.store.releaseRun(runId)
+    throw err
   }
-
-  await emit(started)
-  const prompt = `/${opts.workflowSlug}\nUse run id ${runId} when logging run events.` + (opts.payload ? `\nTrigger payload:\n${opts.payload}` : '')
-  const { stop, done } = runWorkflowSkill({ slug: opts.workflowSlug, runId, cwd: runCwd, binPath: opts.binPath, promptOverride: prompt, env: opts.env })
-  opts.store.registerRun(runId, opts.workflowId, stop)
-
-  const settled = done.then(result => classifyAndFinish({ ...opts, runId, wt, result }))
-  return { fired: true, runId, settled }
 }
 
 /** On server start: remove worktrees whose runs are finished (or unknown); paused/running runs keep theirs. */
@@ -135,13 +168,17 @@ export async function sweepOrphanWorktrees(store: RunStore, runsDirPath: string,
     if (!runId.startsWith('run-')) continue   // only CWC-created run dirs — never delete other content under worktreesRoot
     if (live.has(runId)) continue
     const wtPath = path.join(worktreesRoot, runId)
-    // resolve the owning repo via the worktree's git linkage; fall back to plain rm
+    // Resolve the owning repo through verified worktree linkage before cleanup.
     await new Promise<void>(resolve => {
       execFile('git', ['-C', wtPath, 'rev-parse', '--path-format=absolute', '--git-common-dir'], (err, stdout) => {
         const finish = () => void fsp.rm(wtPath, { recursive: true, force: true }).catch(() => {}).then(() => resolve())
-        if (err) return finish()
+        // Without verified Git linkage there is nowhere safe to checkpoint the work.
+        // Retain the directory for manual recovery instead of treating it as disposable.
+        if (err) return resolve()
         const repo = path.dirname(stdout.toString().trim())   // <repo>/.git → <repo>
-        execFile('git', ['-C', repo, 'worktree', 'remove', '--force', wtPath], () => finish())
+        void checkpointWorktree(wtPath, runId).then(() => {
+          execFile('git', ['-C', repo, 'worktree', 'remove', '--force', wtPath], () => finish())
+        }).catch(() => resolve())
       })
     })
   }
@@ -150,22 +187,47 @@ export async function sweepOrphanWorktrees(store: RunStore, runsDirPath: string,
 /** Addendum 8 precedence. Also used by the approve (resume) path. */
 export async function classifyAndFinish(args: FireOptions & { runId: string; wt: WorktreeInfo | null; result: WorkflowRunResult }): Promise<void> {
   const { store, runId, workflowId, workflowSlug, wt, result } = args
-  store.releaseRun(runId)
   const now = () => new Date().toISOString()
   const emit = (e: RunEvent) => store.append(e).catch(() => { /* teardown race */ })
 
-  if (result.status === 'complete') {
-    const events = await store.getEvents(workflowId, runId)
-    const last = events?.[events.length - 1]
-    if (last?.type === 'awaiting_approval') {
-      if (result.sessionId) {
-        await emit({ runId, workflowId, workflowSlug, type: 'run_paused', ts: now(), sessionId: result.sessionId, source: 'test', ...(wt ? { worktreePath: wt.worktreePath } : {}) })
+  try {
+    if (result.status === 'complete') {
+      const events = await store.getEvents(workflowId, runId)
+      const last = events?.[events.length - 1]
+      if (last?.type === 'awaiting_approval') {
+        if (result.sessionId) {
+          await emit({ runId, workflowId, workflowSlug, type: 'run_paused', ts: now(), sessionId: result.sessionId, source: 'test', ...(wt ? { worktreePath: wt.worktreePath } : {}) })
+        }
+        return   // paused either way; worktree intentionally kept
       }
-      return   // paused either way; worktree intentionally kept
     }
-    await emit({ runId, workflowId, workflowSlug, type: 'run_completed', ts: now(), status: 'complete', source: 'test', message: result.message, costUsd: result.costUsd, sessionId: result.sessionId })
-  } else {
-    await emit({ runId, workflowId, workflowSlug, type: 'run_completed', ts: now(), status: result.status, source: 'test', message: result.message })
+
+    if (wt) {
+      try {
+        await checkpointWorktree(wt.worktreePath, runId)
+      } catch (err) {
+        await emit({
+          runId,
+          workflowId,
+          workflowSlug,
+          type: 'run_completed',
+          ts: now(),
+          status: 'error',
+          source: 'test',
+          message: `The run finished, but CWC could not preserve its work on the run branch. The worktree was retained at ${wt.worktreePath}. Resolve the Git error before removing it: ${err instanceof Error ? err.message : String(err)}`,
+          sessionId: result.sessionId,
+        })
+        return
+      }
+    }
+
+    if (result.status === 'complete') {
+      await emit({ runId, workflowId, workflowSlug, type: 'run_completed', ts: now(), status: 'complete', source: 'test', message: result.message, costUsd: result.costUsd, sessionId: result.sessionId })
+    } else {
+      await emit({ runId, workflowId, workflowSlug, type: 'run_completed', ts: now(), status: result.status, source: 'test', message: result.message })
+    }
+    if (wt) await removeWorktree(args.cwd, wt.worktreePath, wt.branch, { keepBranch: true })   // only reject deletes the branch
+  } finally {
+    store.releaseRun(runId)
   }
-  if (wt) await removeWorktree(args.cwd, wt.worktreePath, wt.branch, { keepBranch: true })   // only reject deletes the branch
 }

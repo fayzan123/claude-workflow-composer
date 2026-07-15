@@ -46,7 +46,7 @@ describe('createScanStore', () => {
   it('rejects a concurrent scan and preserves dismissed status across re-scans', async () => {
     const store = createScanStore(file)
     await store.runScan(async () => [auto({ id: 'id1' })])
-    await store.setStatus('id1', 'dismissed')
+    await store.dismiss('id1')
     // a re-scan that re-detects id1 keeps it dismissed
     await store.runScan(async () => [auto({ id: 'id1', status: 'new' })])
     expect(store.getLatest()?.automations[0].status).toBe('dismissed')
@@ -61,6 +61,38 @@ describe('createScanStore', () => {
     expect(store.getLatest()?.status).toBe('done')
   })
 
+  it('reconciles and persists a scan interrupted by server restart', async () => {
+    const startedAt = '2026-07-14T12:00:00.000Z'
+    await fs.writeFile(file, JSON.stringify({
+      status: 'running',
+      startedAt,
+      automations: [auto({ id: 'partial-result' })],
+      log: [{ ts: startedAt, level: 'info', message: 'Analyzing history' }],
+    }))
+
+    const store = createScanStore(file)
+    const recovered = store.getLatest()!
+    expect(recovered.status).toBe('error')
+    expect(recovered.startedAt).toBe(startedAt)
+    expect(recovered.finishedAt).toEqual(expect.any(String))
+    expect(recovered.error).toContain('interrupted')
+    expect(recovered.error).toContain('Start a new scan')
+    expect(recovered.automations).toEqual([])
+    expect(recovered.log[0].message).toBe('Analyzing history')
+    expect(recovered.log.at(-1)).toMatchObject({ level: 'error', message: recovered.error })
+    expect(store.isRunning()).toBe(false)
+
+    await store.whenPromotionSettled()
+    const persisted = JSON.parse(await fs.readFile(file, 'utf-8'))
+    expect(persisted).toMatchObject({
+      status: 'error',
+      startedAt,
+      finishedAt: recovered.finishedAt,
+      error: recovered.error,
+    })
+    expect(createScanStore(file).getLatest()?.status).toBe('error')
+  })
+
   it('records a job failure as an error result, clears running, and persists it', async () => {
     const store = createScanStore(file)
     // runScan swallows the job error into an error status — it does not reject
@@ -70,6 +102,44 @@ describe('createScanStore', () => {
     expect(store.isRunning()).toBe(false)
     // error state is durable across reload
     expect(createScanStore(file).getLatest()?.status).toBe('error')
+  })
+
+  it('preserves terminal decisions across a failed replacement scan', async () => {
+    const store = createScanStore(file)
+    await store.runScan(async () => [
+      auto({ id: 'dismissed' }),
+      auto({ id: 'promoted' }),
+    ])
+    await store.dismiss('dismissed')
+    await store.setStatus('promoted', 'promoted')
+
+    await store.runScan(async () => { throw new Error('replacement failed') })
+    expect(store.getLatest()).toMatchObject({ status: 'error', automations: [] })
+
+    await store.runScan(async () => [
+      auto({ id: 'dismissed', status: 'new' }),
+      auto({ id: 'promoted', status: 'new' }),
+    ])
+    expect(store.getLatest()?.automations).toEqual([
+      expect.objectContaining({ id: 'dismissed', status: 'dismissed' }),
+      expect.objectContaining({ id: 'promoted', status: 'promoted' }),
+    ])
+  })
+
+  it('preserves decisions across an interrupted replacement scan', async () => {
+    const startedAt = '2026-07-14T12:00:00.000Z'
+    await fs.writeFile(file, JSON.stringify({
+      status: 'running',
+      startedAt,
+      automations: [],
+      priorAutomations: [auto({ id: 'dismissed', status: 'dismissed', dismissedFromStatus: 'new' })],
+      log: [],
+    }))
+
+    const store = createScanStore(file)
+    expect(store.getLatest()).toMatchObject({ status: 'error', automations: [] })
+    await store.runScan(async () => [auto({ id: 'dismissed', status: 'new' })])
+    expect(store.getLatest()?.automations[0]).toMatchObject({ id: 'dismissed', status: 'dismissed' })
   })
 
   it('can run a new scan after a failed one', async () => {
@@ -91,6 +161,25 @@ describe('createScanStore', () => {
     await store.setStatus('id1', 'promoted')
     await store.runScan(async () => [auto({ id: 'id1', status: 'new' })])
     expect(store.getLatest()?.automations[0].status).toBe('promoted')
+  })
+
+  it('restores the exact status and detail that preceded dismissal across reloads', async () => {
+    const store = createScanStore(file)
+    await store.runScan(async () => [auto({ id: 'id1' })])
+    await store.setStatus('id1', 'promotion_failed', 'planner timed out')
+    await store.dismiss('id1')
+
+    const reloaded = createScanStore(file)
+    expect(reloaded.getLatest()?.automations[0]).toMatchObject({
+      status: 'dismissed',
+      dismissedFromStatus: 'promotion_failed',
+      dismissedFromStatusDetail: 'planner timed out',
+    })
+    await reloaded.restore('id1')
+    expect(reloaded.getLatest()?.automations[0]).toMatchObject({
+      status: 'promotion_failed',
+      statusDetail: 'planner timed out',
+    })
   })
 
   it('persists active promotion state with detail and exposes a single-flight flag', async () => {

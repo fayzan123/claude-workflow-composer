@@ -29,6 +29,20 @@ export async function createWorktree(repoCwd: string, workflowSlug: string, runI
   return { worktreePath, branch, baseSha }
 }
 
+/** Commit every non-ignored worktree change so forced cleanup cannot discard run output. */
+export async function checkpointWorktree(worktreePath: string, runId: string): Promise<boolean> {
+  const status = await gitP(worktreePath, ['status', '--porcelain', '--untracked-files=all'])
+  if (!status.trim()) return false
+  await gitP(worktreePath, ['add', '-A'])
+  await gitP(worktreePath, [
+    '-c', 'user.name=Claude Workflow Composer',
+    '-c', 'user.email=cwc@localhost',
+    '-c', 'commit.gpgsign=false',
+    'commit', '--no-verify', '-m', `CWC run ${runId} result`,
+  ])
+  return true
+}
+
 export async function removeWorktree(repoCwd: string, worktreePath: string, branch: string, opts: { keepBranch: boolean }): Promise<void> {
   await gitP(repoCwd, ['worktree', 'remove', '--force', worktreePath]).catch(() => { /* already gone */ })
   if (!opts.keepBranch) await gitP(repoCwd, ['branch', '-D', branch]).catch(() => { /* already gone */ })

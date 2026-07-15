@@ -4,7 +4,7 @@ import * as fs from 'node:fs/promises'
 import * as os from 'node:os'
 import * as path from 'node:path'
 import { execFileSync } from 'node:child_process'
-import { isGitRepo, resolveBaseSha, createWorktree, removeWorktree, getDiff } from '../../src/server/run-isolation.js'
+import { checkpointWorktree, isGitRepo, resolveBaseSha, createWorktree, removeWorktree, getDiff } from '../../src/server/run-isolation.js'
 
 let repo: string
 let wtRoot: string
@@ -57,6 +57,27 @@ describe('createWorktree / removeWorktree', () => {
     await removeWorktree(repo, b.worktreePath, b.branch, { keepBranch: false })
     expect(git('branch', '--list', b.branch)).toBe('')
     await expect(fs.access(b.worktreePath)).rejects.toThrow()
+  })
+})
+
+describe('checkpointWorktree', () => {
+  it('does nothing when the worktree is clean', async () => {
+    const info = await createWorktree(repo, 'f', 'run-clean', 'HEAD', wtRoot)
+    const before = execFileSync('git', ['-C', info.worktreePath, 'rev-parse', 'HEAD'], { encoding: 'utf-8' }).trim()
+
+    expect(await checkpointWorktree(info.worktreePath, 'run-clean')).toBe(false)
+    expect(execFileSync('git', ['-C', info.worktreePath, 'rev-parse', 'HEAD'], { encoding: 'utf-8' }).trim()).toBe(before)
+  })
+
+  it('commits tracked and untracked run output with a deterministic identity and message', async () => {
+    const info = await createWorktree(repo, 'f', 'run-dirty', 'HEAD', wtRoot)
+    await fs.writeFile(path.join(info.worktreePath, 'a.txt'), 'changed\n')
+    await fs.writeFile(path.join(info.worktreePath, 'new.txt'), 'created\n')
+
+    expect(await checkpointWorktree(info.worktreePath, 'run-dirty')).toBe(true)
+    expect(execFileSync('git', ['-C', info.worktreePath, 'status', '--porcelain'], { encoding: 'utf-8' })).toBe('')
+    expect(execFileSync('git', ['-C', info.worktreePath, 'log', '-1', '--format=%s'], { encoding: 'utf-8' }).trim()).toBe('CWC run run-dirty result')
+    expect(execFileSync('git', ['-C', info.worktreePath, 'log', '-1', '--format=%an <%ae>'], { encoding: 'utf-8' }).trim()).toBe('Claude Workflow Composer <cwc@localhost>')
   })
 })
 

@@ -26,10 +26,13 @@ export interface RunSummary {
 
 export interface RunStore {
   append(event: RunEvent): Promise<void>
+  appendExternal(event: RunEvent): Promise<boolean>
   getEvents(workflowId: string, runId: string): Promise<RunEvent[] | null>
   listRuns(workflowId: string): Promise<RunSummary[]>
   onEvent(listener: (e: RunEvent) => void): () => void
-  registerRun(runId: string, workflowId: string, stop: () => void): void
+  registerRun(runId: string, workflowId: string, stop: () => void, launchGroupId?: string): boolean
+  reserveWorkflow(workflowId: string, reservationId: string): boolean
+  releaseWorkflowReservation(workflowId: string, reservationId: string): void
   stopRun(runId: string): boolean
   releaseRun(runId: string): void
   hasActiveTestRun(workflowId: string): boolean
@@ -38,7 +41,9 @@ export interface RunStore {
 
 export function createRunStore(runsDir: string): RunStore {
   const listeners = new Set<(e: RunEvent) => void>()
-  const activeRuns = new Map<string, { workflowId: string; stop: () => void; stopRequested: boolean }>()
+  const activeRuns = new Map<string, { workflowId: string; launchGroupId: string; stop: () => void; stopRequested: boolean }>()
+  const workflowReservations = new Map<string, string>()
+  const appendQueues = new Map<string, Promise<void>>()
 
   function runFile(workflowId: string, runId: string): string {
     return path.join(runsDir, workflowId, `${runId}.jsonl`)
@@ -53,15 +58,50 @@ export function createRunStore(runsDir: string): RunStore {
     }
   }
 
+  function appendKey(workflowId: string, runId: string): string {
+    return JSON.stringify([workflowId, runId])
+  }
+
+  function serializeAppend<T>(workflowId: string, runId: string, job: () => Promise<T>): Promise<T> {
+    const key = appendKey(workflowId, runId)
+    const previous = appendQueues.get(key) ?? Promise.resolve()
+    const result = previous.catch(() => undefined).then(job)
+    const tail = result.then(() => undefined, () => undefined)
+    appendQueues.set(key, tail)
+    void tail.then(() => {
+      if (appendQueues.get(key) === tail) appendQueues.delete(key)
+    })
+    return result
+  }
+
+  async function writeEvent(event: RunEvent): Promise<void> {
+    const dir = path.join(runsDir, event.workflowId)
+    await fs.mkdir(dir, { recursive: true })
+    await fs.appendFile(runFile(event.workflowId, event.runId), JSON.stringify(event) + '\n')
+    for (const listener of listeners) listener(event)
+  }
+
+  function managedRunSettled(events: RunEvent[] | null): boolean {
+    if (!events || events[0]?.source !== 'test') return false
+    const managedEvent = [...events].reverse().find(event => event.source === 'test')
+    return managedEvent?.type === 'run_completed' || managedEvent?.type === 'run_paused'
+  }
+
   function summarize(events: RunEvent[]): RunSummary {
     const first = events[0]
     const last = events[events.length - 1]
+    const lastManagedEvent = first.source === 'test'
+      ? [...events].reverse().find(event => event.source === 'test')
+      : undefined
+    const stateEvent = lastManagedEvent?.type === 'run_completed' || lastManagedEvent?.type === 'run_paused'
+      ? lastManagedEvent
+      : last
     const firstTs = parseTimestamp(first.ts)
-    const lastTs = parseTimestamp(last.ts)
+    const lastTs = parseTimestamp(stateEvent.ts)
     let status: RunSummary['status']
-    if (last.type === 'run_completed' && last.status) {
-      status = last.status
-    } else if (last.type === 'run_paused' || last.type === 'awaiting_approval') {
+    if (stateEvent.type === 'run_completed' && stateEvent.status) {
+      status = stateEvent.status
+    } else if (stateEvent.type === 'run_paused' || stateEvent.type === 'awaiting_approval') {
       status = 'paused'                       // gates can wait days — stale window does not apply
     } else if (lastTs === null || Date.now() - lastTs > STALE_AFTER_MS) {
       status = 'stale'
@@ -75,7 +115,7 @@ export function createRunStore(runsDir: string): RunStore {
       source: first.source ?? 'external',
       status,
       startedAt: first.ts,
-      lastEventAt: last.ts,
+      lastEventAt: stateEvent.ts,
       durationMs: firstTs === null || lastTs === null ? 0 : Math.max(0, lastTs - firstTs),
       cwd: first.cwd,
       branch: first.branch,
@@ -84,11 +124,16 @@ export function createRunStore(runsDir: string): RunStore {
   }
 
   return {
-    async append(event: RunEvent): Promise<void> {
-      const dir = path.join(runsDir, event.workflowId)
-      await fs.mkdir(dir, { recursive: true })
-      await fs.appendFile(runFile(event.workflowId, event.runId), JSON.stringify(event) + '\n')
-      for (const l of listeners) l(event)
+    append(event: RunEvent): Promise<void> {
+      return serializeAppend(event.workflowId, event.runId, () => writeEvent(event))
+    },
+
+    appendExternal(event: RunEvent): Promise<boolean> {
+      return serializeAppend(event.workflowId, event.runId, async () => {
+        if (managedRunSettled(await readEvents(event.workflowId, event.runId))) return false
+        await writeEvent(event)
+        return true
+      })
     },
 
     getEvents: readEvents,
@@ -126,10 +171,35 @@ export function createRunStore(runsDir: string): RunStore {
       return () => listeners.delete(listener)
     },
 
-    registerRun(runId, workflowId, stop) {
-      const stopRequested = activeRuns.get(runId)?.stopRequested ?? false
-      activeRuns.set(runId, { workflowId, stop, stopRequested })
-      if (stopRequested) stop()
+    registerRun(runId, workflowId, stop, launchGroupId) {
+      const existing = activeRuns.get(runId)
+      if (existing) {
+        if (existing.workflowId !== workflowId) return false
+        activeRuns.set(runId, { ...existing, stop })
+        if (existing.stopRequested) stop()
+        return true
+      }
+
+      if (workflowReservations.has(workflowId)) return false
+      const claim = launchGroupId ?? runId
+      for (const active of activeRuns.values()) {
+        if (active.workflowId === workflowId && active.launchGroupId !== claim) return false
+      }
+      activeRuns.set(runId, { workflowId, launchGroupId: claim, stop, stopRequested: false })
+      return true
+    },
+    reserveWorkflow(workflowId, reservationId) {
+      if (workflowReservations.has(workflowId)) return false
+      for (const active of activeRuns.values()) {
+        if (active.workflowId === workflowId) return false
+      }
+      workflowReservations.set(workflowId, reservationId)
+      return true
+    },
+    releaseWorkflowReservation(workflowId, reservationId) {
+      if (workflowReservations.get(workflowId) === reservationId) {
+        workflowReservations.delete(workflowId)
+      }
     },
     stopRun(runId) {
       const entry = activeRuns.get(runId)

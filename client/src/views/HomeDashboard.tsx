@@ -225,10 +225,8 @@ export function HomeDashboard() {
     setError(null)
     setCreating(true)
     try {
-      const pathRes = await fetch(`/api/workflows/default-path?name=${encodeURIComponent(cwc.meta.name)}`)
-      const { path: resolvedPath } = await pathRes.json() as { path: string }
-      await api.workflows.save(resolvedPath, cwc)
-      await api.recents.add(resolvedPath)
+      const { path: resolvedPath } = await api.workflows.create(cwc)
+      try { await api.recents.add(resolvedPath) } catch { /* non-critical */ }
       toast.success('Workflow created', `"${cwc.meta.name}" is ready to edit`)
       handleSelect(cwc, resolvedPath)
     } catch {
@@ -265,16 +263,17 @@ export function HomeDashboard() {
       let cwcFile: CwcFile | undefined
       try { cwcFile = await api.workflows.read(path) } catch { /* corrupted or missing */ }
       const name = cwcFile?.meta.name ?? fallbackName
+      await api.workflows.delete(path)
       if (cwcFile) {
         try { await api.deleteExport(cwcFile, { type: 'user' }) } catch { /* best-effort */ }
       }
-      await api.workflows.delete(path)
       await api.recents.remove(path)
       setWorkflows((ws) => ws.filter((w) => w.path !== path))
       toast.success('Workflow deleted', `"${name}" was removed`)
-    } catch {
-      setWorkflows((ws) => ws.filter((w) => w.path !== path))
-      toast.info('Workflow removed from list', `"${fallbackName}" may already have been deleted or moved`)
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'The workflow could not be deleted.'
+      setError(message)
+      toast.error('Workflow not deleted', message)
     } finally {
       setDeletingPath(null)
     }
@@ -352,6 +351,16 @@ export function HomeDashboard() {
           </span>
         </div>
         <div className="hd-bar__actions">
+          <button
+            className="hd-bar__scan"
+            onClick={() => navigate('/detect')}
+            type="button"
+            aria-label="History scan"
+            title="History scan"
+          >
+            <IconActivity size={14} />
+            <span className="hd-bar__scan-label">History scan</span>
+          </button>
           <ThemeToggle className="hd-bar__theme" />
           <button
             className="hd-bar__cta"

@@ -74,7 +74,7 @@ Return JSON only, no markdown fences, matching this shape:
 Rules:
 - Keep output small: about 10-15 lines of JSON, judgment only.
 - Do not write systemPrompts, tools, nodes, edges, or .cwc metadata.
-- Cover every observed step exactly once in phase stepIndexes unless a step is intentionally omitted because it is noise.
+- Cover every observed step exactly once in phase stepIndexes. Do not omit steps as noise or repeat them across phases.
 - Use reuse only when one listed slug clearly covers that phase. Never invent slugs.
 - reuse.coversStepIndexes must reference real observed step numbers.
 - A single reuse must not cover all steps of a multi-step automation unless the whole automation is truly one reusable capability.

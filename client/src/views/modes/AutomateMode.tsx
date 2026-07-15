@@ -6,7 +6,7 @@ import { describeCron } from '../../lib/schedule-cron.ts'
 import { Cron } from 'croner'
 import type { CwcTrigger } from '../../types.ts'
 import type { ModeProps } from '../modeProps.ts'
-import { isAbsoluteTriggerPath } from '../../lib/trigger.ts'
+import { isAbsolutePath } from '../../lib/path.ts'
 import './AutomateMode.css'
 
 /** Lifecycle state of a trigger from the user's perspective. */
@@ -149,7 +149,7 @@ export function AutomateMode({ workflow, dispatch }: ModeProps) {
             const isPendingArm = pendingArmId === t.id
             const cwdError = !t.cwd.trim()
               ? 'Working directory is required before arming.'
-              : !isAbsoluteTriggerPath(t.cwd)
+              : !isAbsolutePath(t.cwd)
                 ? 'Working directory must be an absolute path.'
                 : null
 

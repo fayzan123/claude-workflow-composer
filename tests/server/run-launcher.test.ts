@@ -6,15 +6,21 @@ import * as path from 'node:path'
 import { execFileSync } from 'node:child_process'
 import { createRunStore, type RunStore } from '../../src/server/run-store.js'
 import { fireWorkflow, classifyAndFinish, sweepOrphanWorktrees, runShellCommand } from '../../src/server/run-launcher.js'
+import { createWorktree } from '../../src/server/run-isolation.js'
 import { makeBin } from '../helpers/make-bin.js'
 
-let binDir: string, okBin: string, gateBin: string, gateNoSessionBin: string
+let binDir: string, okBin: string, dirtyBin: string, gateBin: string, gateNoSessionBin: string
 let runsDir: string, wtRoot: string, repo: string, store: RunStore
 
 beforeAll(async () => {
   binDir = await fs.mkdtemp(path.join(os.tmpdir(), 'cwc-launch-bin-'))
   okBin = await makeBin(binDir, 'claude', `const fs=require('fs');fs.readFileSync(0,'utf-8')
 process.stdout.write(JSON.stringify({ type:'result', result:'done', session_id:'s-ok', total_cost_usd:0.01 }))
+`)
+  dirtyBin = await makeBin(binDir, 'claude-dirty', `const fs=require('fs');fs.readFileSync(0,'utf-8')
+fs.writeFileSync('f.txt', 'changed by run')
+fs.writeFileSync('generated.txt', 'untracked run output')
+process.stdout.write(JSON.stringify({ type:'result', result:'done', session_id:'s-dirty' }))
 `)
   // Gate fixtures read CWC_TEST_CFG (a JSON file the test writes: { jsonl, runId, workflowId })
   // and append an awaiting_approval line to the run JSONL — standing in for the orchestrator's curl.
@@ -66,6 +72,25 @@ describe('fireWorkflow', () => {
     const r = await fireWorkflow(baseOpts({ precondition: 'exit 1' }))
     expect(r).toEqual({ fired: false, reason: 'precondition' })
     expect(await store.listRuns('wf-1')).toEqual([])
+    expect(store.hasActiveTestRun('wf-1')).toBe(false)
+  })
+
+  it('claims the workflow before asynchronous launch preparation begins', async () => {
+    const precondition = path.join(runsDir, 'precondition.cjs')
+    await fs.writeFile(precondition, 'setTimeout(() => process.exit(0), 100)\n')
+    const firstPromise = fireWorkflow(baseOpts({
+      runId: 'run-preparing',
+      precondition: `"${process.execPath}" "${precondition}"`,
+    }))
+
+    const second = await fireWorkflow(baseOpts({ runId: 'run-overlap' }))
+    expect(second).toEqual({ fired: false, reason: 'workflow already active' })
+    expect(store.hasActiveTestRun('wf-1')).toBe(true)
+
+    const first = await firstPromise
+    if (first.fired !== true) return expect.fail('first run should fire')
+    await first.settled
+    expect(store.hasActiveTestRun('wf-1')).toBe(false)
   })
 
   it('tree-kills a timed-out shell command and its descendants', async () => {
@@ -113,6 +138,19 @@ setInterval(() => {}, 1000)
     expect(branches).toContain(r.runId)
   })
 
+  it('snapshots uncommitted work onto the kept branch before removing an isolated worktree', async () => {
+    const r = await fireWorkflow(baseOpts({ binPath: dirtyBin }))
+    expect(r.fired).toBe(true)
+    if (r.fired !== true) return
+    await r.settled
+
+    const branch = `cwc/cwc-x/${r.runId}`
+    await expect(fs.access(path.join(wtRoot, r.runId))).rejects.toThrow()
+    expect(execFileSync('git', ['-C', repo, 'show', `${branch}:f.txt`], { encoding: 'utf-8' })).toBe('changed by run')
+    expect(execFileSync('git', ['-C', repo, 'show', `${branch}:generated.txt`], { encoding: 'utf-8' })).toBe('untracked run output')
+    expect(execFileSync('git', ['-C', repo, 'log', '-1', '--format=%s', branch], { encoding: 'utf-8' }).trim()).toContain(r.runId)
+  })
+
   it('setupCommand failure → run exists with status error; worktree and branch removed', async () => {
     const r = await fireWorkflow(baseOpts({ setupCommand: 'exit 7' }))
     expect(r.fired).toBe(true)
@@ -122,6 +160,20 @@ setInterval(() => {}, 1000)
     expect(run.status).toBe('error')
     const branches = execFileSync('git', ['-C', repo, 'branch', '--list', `cwc/cwc-x/${r.runId}`], { encoding: 'utf-8' }).trim()
     expect(branches).toBe('')
+  })
+
+  it('checkpoints setup changes before cleaning up a failed isolated run', async () => {
+    const setupScript = path.join(runsDir, 'setup-fail.cjs')
+    await fs.writeFile(setupScript, "require('fs').writeFileSync('setup-output.txt', 'recoverable setup work')\nprocess.exit(7)\n")
+    const r = await fireWorkflow(baseOpts({ setupCommand: `"${process.execPath}" "${setupScript}"` }))
+    expect(r.fired).toBe(true)
+    if (r.fired !== true) return
+    await r.settled
+
+    const branch = `cwc/cwc-x/${r.runId}`
+    expect(execFileSync('git', ['-C', repo, 'show', `${branch}:setup-output.txt`], { encoding: 'utf-8' })).toBe('recoverable setup work')
+    await expect(fs.access(path.join(wtRoot, r.runId))).rejects.toThrow()
+    expect((await store.listRuns('wf-1'))[0].status).toBe('error')
   })
 
   it('gate exit with session → run_paused with sessionId + worktree KEPT', async () => {
@@ -167,7 +219,7 @@ setInterval(() => {}, 1000)
 })
 
 describe('sweepOrphanWorktrees', () => {
-  it('removes worktree dir for completed run, keeps dir for paused run', async () => {
+  it('removes a verified completed worktree and retains paused or unverifiable directories', async () => {
     // Set up a paused run (JSONL ends with run_paused)
     const pausedRunId = 'run-paused-sweep'
     await fs.mkdir(path.join(runsDir, 'wf-1'), { recursive: true })
@@ -185,11 +237,18 @@ describe('sweepOrphanWorktrees', () => {
     ].join('\n') + '\n'
     await fs.writeFile(path.join(runsDir, 'wf-1', `${doneRunId}.jsonl`), doneJSONL)
 
-    // Create plain directories in wtRoot named after each run
+    // A paused worktree is never inspected. The completed worktree has valid Git
+    // linkage, so it can be checkpointed before removal.
     const pausedWtPath = path.join(wtRoot, pausedRunId)
-    const doneWtPath = path.join(wtRoot, doneRunId)
     await fs.mkdir(pausedWtPath, { recursive: true })
-    await fs.mkdir(doneWtPath, { recursive: true })
+    const doneWorktree = await createWorktree(repo, 'x', doneRunId, 'HEAD', wtRoot)
+    const doneWtPath = doneWorktree.worktreePath
+
+    // Unknown/damaged Git linkage is retained for manual recovery, even when no run
+    // claims it as live.
+    const damagedWtPath = path.join(wtRoot, 'run-damaged-sweep')
+    await fs.mkdir(damagedWtPath, { recursive: true })
+    await fs.writeFile(path.join(damagedWtPath, 'recover-me.txt'), 'work')
 
     await sweepOrphanWorktrees(store, runsDir, wtRoot)
 
@@ -197,5 +256,6 @@ describe('sweepOrphanWorktrees', () => {
     await expect(fs.access(pausedWtPath)).resolves.toBeUndefined()
     // completed run's worktree must be removed
     await expect(fs.access(doneWtPath)).rejects.toThrow()
+    await expect(fs.readFile(path.join(damagedWtPath, 'recover-me.txt'), 'utf-8')).resolves.toBe('work')
   })
 })

@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs'
 import * as path from 'node:path'
 import { createHash } from 'node:crypto'
 import type { CwcTrigger } from '../schema.js'
+import { resolveTargets } from './trigger-targets.js'
 
 interface TriggerState {
   lastFiredAt?: string
@@ -19,8 +20,18 @@ interface StateFile { paused: boolean; triggers: Record<string, TriggerState> }
 
 /** Hash of the fields whose edit must force re-arming (arbitrary-shell / where / when). */
 export function armHash(t: CwcTrigger): string {
+  const targets = resolveTargets(t).sort()
+  const baseRef = t.baseRef?.trim() || 'HEAD'
   return createHash('sha256')
-    .update(JSON.stringify([t.precondition ?? '', t.setupCommand ?? '', t.cwd, t.schedule ?? t.token ?? '']))
+    .update(JSON.stringify([
+      t.type,
+      t.precondition ?? '',
+      t.setupCommand ?? '',
+      targets,
+      t.isolation,
+      baseRef,
+      t.schedule ?? t.token ?? '',
+    ]))
     .digest('hex')
 }
 
@@ -40,12 +51,19 @@ export interface AutomationState {
 export function createAutomationState(filePath: string): AutomationState {
   let state: StateFile = { paused: false, triggers: {} }
   try { state = JSON.parse(readFileSync(filePath, 'utf-8')) } catch { /* fresh */ }
+  let saveQueue: Promise<void> = Promise.resolve()
+  let saveCounter = 0
 
-  async function save(): Promise<void> {
-    await fs.mkdir(path.dirname(filePath), { recursive: true })
-    const tmp = `${filePath}.tmp`
-    await fs.writeFile(tmp, JSON.stringify(state, null, 2))
-    await fs.rename(tmp, filePath)
+  function save(): Promise<void> {
+    const snapshot = JSON.stringify(state, null, 2)
+    const tmp = `${filePath}.${process.pid}.${++saveCounter}.tmp`
+    const write = saveQueue.then(async () => {
+      await fs.mkdir(path.dirname(filePath), { recursive: true })
+      await fs.writeFile(tmp, snapshot)
+      await fs.rename(tmp, filePath)
+    })
+    saveQueue = write.catch(() => undefined)
+    return write
   }
 
   function entry(id: string): TriggerState {

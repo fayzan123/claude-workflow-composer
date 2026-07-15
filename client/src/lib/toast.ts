@@ -4,11 +4,17 @@
 
 export type ToastTone = 'success' | 'error' | 'info'
 
+export interface ToastAction {
+  label: string
+  onClick: () => void
+}
+
 export interface Toast {
   id: string
   tone: ToastTone
   title: string
   detail?: string
+  action?: ToastAction
   /** ms before auto-dismiss; 0 = sticky until dismissed. */
   duration: number
 }
@@ -31,15 +37,15 @@ export function dismissToast(id: string): void {
   emit()
 }
 
-function push(tone: ToastTone, title: string, detail?: string, duration = 5000): string {
+function push(tone: ToastTone, title: string, detail?: string, duration = 5000, action?: ToastAction): string {
   const id = Math.random().toString(36).slice(2)
-  toasts = [...toasts, { id, tone, title, detail, duration }]
+  toasts = [...toasts, { id, tone, title, detail, duration, action }]
   emit()
   return id
 }
 
 export const toast = {
-  success: (title: string, detail?: string) => push('success', title, detail, 6000),
-  error: (title: string, detail?: string) => push('error', title, detail, 9000),
-  info: (title: string, detail?: string) => push('info', title, detail, 6000),
+  success: (title: string, detail?: string, action?: ToastAction) => push('success', title, detail, 6000, action),
+  error: (title: string, detail?: string, action?: ToastAction) => push('error', title, detail, 9000, action),
+  info: (title: string, detail?: string, action?: ToastAction) => push('info', title, detail, 6000, action),
 }

@@ -105,14 +105,14 @@ afterEach(async () => {
   }
 })
 
-function startApp(binPath: string) {
+function startApp(binPath: string, runStore?: ReturnType<typeof createRunStore>) {
   // Set env so gate bins can find the run JSONL at runtime
   process.env.CWC_RUNS_DIR = runsDir
   process.env.CWC_WF_ID = 'wf-1'
   const app = createApp({
     staticDir: null, runsDir, claudeBinPath: binPath, worktreesRoot: wtRoot, userHomeDir: homeDir,
     automationStatePath: path.join(runsDir, 'astate.json'), configPath: path.join(runsDir, 'config.json'),
-    enableNotifier: false,
+    enableNotifier: false, runStore,
   })
   server = app.listen(0)
   base = `http://localhost:${(server.address() as AddressInfo).port}`
@@ -275,6 +275,14 @@ describe('gate endpoints', () => {
       body: JSON.stringify({ workflowId: 'wf-1' }),
     })
     expect(first.status).toBe(200)
+    const resumedLog = await fetch(`${base}/api/runs/events`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        runId, workflowId: 'wf-1', workflowSlug: 'cwc-x', type: 'step_started',
+        ts: new Date().toISOString(), message: 'resumed work is logging',
+      }),
+    })
+    expect(resumedLog.status).toBe(200)
     const second = await fetch(`${base}/api/runs/${runId}/approve`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ workflowId: 'wf-1' }),
@@ -308,6 +316,33 @@ describe('gate endpoints', () => {
     expect(((await rejectRes.json()) as { error: string }).error).toContain('still finishing')
 
     await waitForStatus('wf-1', runId, 'paused')
+  })
+
+  it('4e. Approve cannot resume while workflow deletion holds the workflow reservation', async () => {
+    const runStore = createRunStore(runsDir)
+    startApp(gateBin, runStore)
+    const res = await fetch(`${base}/api/runs/test`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ workflowId: 'wf-1', workflowSlug: 'cwc-x', cwd: repo }),
+    })
+    const { runId } = (await res.json()) as { runId: string }
+    await waitForStatus('wf-1', runId, 'paused')
+
+    expect(runStore.reserveWorkflow('wf-1', 'delete-in-progress')).toBe(true)
+    try {
+      const approveRes = await fetch(`${base}/api/runs/${runId}/approve`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ workflowId: 'wf-1' }),
+      })
+      expect(approveRes.status).toBe(409)
+      expect(((await approveRes.json()) as { error: string }).error).toContain('reserved')
+      expect(runStore.isActive(runId)).toBe(false)
+
+      const events = await runStore.getEvents('wf-1', runId)
+      expect(events?.some(event => event.message === 'Run resumed after approval')).toBe(false)
+    } finally {
+      runStore.releaseWorkflowReservation('wf-1', 'delete-in-progress')
+    }
   })
 
   it('0. POST /test on an un-exported workflow → 400 (no silent no-op)', async () => {

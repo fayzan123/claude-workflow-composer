@@ -39,4 +39,10 @@ describe('buildPlannerPrompt', () => {
     expect(lower).toMatch(/one phase|fewer, more capable/)
     expect(lower).toContain('risk boundary')
   })
+
+  it('requires complete, nonduplicated observed-step coverage', () => {
+    const lower = prompt.toLowerCase()
+    expect(lower).toContain('every observed step exactly once')
+    expect(lower).toMatch(/do not omit|no omissions/)
+  })
 })

@@ -49,24 +49,38 @@ function validatePhase(value: unknown, stepCount: number): PlanPhase | null {
   const phase: PlanPhase = { id, intent, stepIndexes: [...stepIndexes] }
   if (typeof archetypeHint === 'string') phase.archetypeHint = archetypeHint
   const r = validateReuse(reuse, stepCount)
-  if (r) phase.reuse = r
+  if (r) {
+    const phaseSteps = new Set(phase.stepIndexes)
+    if (!r.coversStepIndexes.every(i => phaseSteps.has(i))) return null
+    phase.reuse = r
+  }
   if (dispatch === 'sequential' || dispatch === 'parallel' || dispatch === 'conditional') phase.dispatch = dispatch
   if (Array.isArray(riskHint)) phase.riskHint = riskHint.filter((h): h is string => typeof h === 'string')
   return phase
 }
 
-/** Returns the typed plan if structurally valid for an automation with `stepCount` steps, else null. */
+/** Returns the typed plan if valid for an automation with `stepCount` steps, else null. */
 export function validatePlan(value: unknown, stepCount: number): WorkflowPlan | null {
+  if (!Number.isInteger(stepCount) || stepCount < 0) return null
   if (!isRecord(value)) return null
   const { name, description, phases } = value
   if (typeof name !== 'string' || name.length === 0) return null
   if (typeof description !== 'string') return null
   if (!Array.isArray(phases) || phases.length === 0) return null
   const out: PlanPhase[] = []
+  const phaseIds = new Set<string>()
+  const coveredSteps = new Set<number>()
   for (const p of phases) {
     const phase = validatePhase(p, stepCount)
     if (!phase) return null
+    if (phaseIds.has(phase.id)) return null
+    phaseIds.add(phase.id)
+    for (const stepIndex of phase.stepIndexes) {
+      if (coveredSteps.has(stepIndex)) return null
+      coveredSteps.add(stepIndex)
+    }
     out.push(phase)
   }
+  if (coveredSteps.size !== stepCount) return null
   return { name, description, phases: out }
 }

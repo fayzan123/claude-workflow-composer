@@ -1,5 +1,6 @@
 // src/server/api/triggers.ts
 import { Router } from 'express'
+import { randomUUID } from 'node:crypto'
 import * as fs from 'node:fs/promises'
 import * as path from 'node:path'
 import type { CwcFile, CwcTrigger } from '../../schema.js'
@@ -7,6 +8,7 @@ import { workflowSkillSlug } from '../../slugify.js'
 import type { AutomationState } from '../automation-state.js'
 import { fireWorkflow } from '../run-launcher.js'
 import type { RunStore } from '../run-store.js'
+import { launchTriggerTargets } from '../trigger-targets.js'
 
 export interface TriggersRouterOptions {
   workflowsDir: string
@@ -65,17 +67,22 @@ export function triggersRouter(opts: TriggersRouterOptions): Router {
     }
 
     await opts.state.recordFire(trigger.id, nowD)
-    const outcome = await fireWorkflow({
-      workflowId: cwc.meta.id, workflowSlug: cwc.meta.exportedWorkflowSlug ?? workflowSkillSlug(cwc.meta.name),
-      cwd: trigger.cwd, isolation: trigger.isolation, baseRef: trigger.baseRef,
+    const workflowSlug = cwc.meta.exportedWorkflowSlug ?? workflowSkillSlug(cwc.meta.name)
+    const launchGroupId = randomUUID()
+    const launched = await launchTriggerTargets(trigger, cwd => fireWorkflow({
+      workflowId: cwc.meta.id, workflowSlug,
+      cwd, isolation: trigger.isolation, baseRef: trigger.baseRef,
       precondition: trigger.precondition, setupCommand: trigger.setupCommand,
-      trigger: trigger.id, payload, store: opts.store, worktreesRoot: opts.worktreesRoot, skillsDir: opts.skillsDir, binPath: opts.claudeBinPath,
-    })
-    if (outcome.fired === false) {
-      await opts.state.recordSkip(trigger.id, outcome.reason, nowD)
-      return void res.status(409).json({ error: `skipped: ${outcome.reason}` })
+      trigger: trigger.id, payload, store: opts.store, worktreesRoot: opts.worktreesRoot, skillsDir: opts.skillsDir, binPath: opts.claudeBinPath, launchGroupId,
+    }))
+    const runs = launched.flatMap(({ cwd, outcome }) => outcome.fired ? [{ cwd, runId: outcome.runId }] : [])
+    const skipped = launched.flatMap(({ cwd, outcome }) => outcome.fired ? [] : [{ cwd, reason: outcome.reason }])
+    await Promise.all(skipped.map(item => opts.state.recordSkip(trigger.id, item.reason, nowD)))
+    if (runs.length === 0) {
+      const reason = skipped.map(item => `${item.cwd}: ${item.reason}`).join('; ') || 'no target directories configured'
+      return void res.status(409).json({ error: `skipped: ${reason}`, skipped })
     }
-    res.status(202).json({ runId: outcome.runId })
+    res.status(202).json({ runId: runs[0].runId, runs, skipped })
   })
 
   return router

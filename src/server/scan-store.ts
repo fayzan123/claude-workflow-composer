@@ -22,6 +22,8 @@ interface ScanResult {
   finishedAt?: string
   error?: string
   automations: DetectedAutomation[]
+  /** Previous completed results retained only while a replacement scan is unresolved. */
+  priorAutomations?: DetectedAutomation[]
   log: LogEntry[]
   generation?: GenerationState | null
   diagnostics?: ScanDiagnostics
@@ -43,12 +45,24 @@ export interface ScanStore {
   setDiagnostics(d: ScanDiagnostics): Promise<void>
   runScan(job: () => Promise<DetectedAutomation[]>): Promise<void>
   setStatus(id: string, status: DetectedAutomation['status'], statusDetail?: string): Promise<DetectedAutomation | null>
+  dismiss(id: string): Promise<DetectedAutomation | null>
+  restore(id: string): Promise<DetectedAutomation | null>
 }
 
 export function createScanStore(filePath: string): ScanStore {
   let latest: ScanResult | null = null
+  let recoveredInterruptedScan = false
   try { latest = JSON.parse(readFileSync(filePath, 'utf-8')) } catch { /* none yet */ }
   if (latest) {
+    const interruptedScan = latest.status === 'running'
+    if (interruptedScan) {
+      latest.status = 'error'
+      latest.finishedAt = new Date().toISOString()
+      latest.error = 'The previous history scan was interrupted before it finished. Start a new scan to try again.'
+      latest.log.push({ ts: latest.finishedAt, level: 'error', message: latest.error })
+      if (latest.log.length > 2000) latest.log.shift()
+      recoveredInterruptedScan = true
+    }
     for (const a of latest.automations) {
       if (a.status === 'promoting') {
         a.status = 'promotion_failed'
@@ -63,6 +77,10 @@ export function createScanStore(filePath: string): ScanStore {
         a.status = 'promotion_failed'
         a.statusDetail = 'Workflow generation was interrupted before it finished.'
       }
+    }
+    if (interruptedScan) {
+      latest.priorAutomations = latest.priorAutomations ?? latest.automations
+      latest.automations = []
     }
   }
   let running = false
@@ -84,12 +102,22 @@ export function createScanStore(filePath: string): ScanStore {
     return write
   }
 
+  if (recoveredInterruptedScan) void persist().catch(() => undefined)
+
   /** Carry terminal user decisions forward onto freshly-detected automations by id. */
   function reconcile(fresh: DetectedAutomation[], prior: DetectedAutomation[]): DetectedAutomation[] {
-    const priorMap = new Map(prior.map(a => [a.id, a.status]))
+    const priorMap = new Map(prior.map(a => [a.id, a]))
     return fresh.map(a => {
       const was = priorMap.get(a.id)
-      return was === 'dismissed' || was === 'promoted' ? { ...a, status: was } : a
+      if (was?.status === 'dismissed') {
+        return {
+          ...a,
+          status: 'dismissed',
+          dismissedFromStatus: was.dismissedFromStatus,
+          dismissedFromStatusDetail: was.dismissedFromStatusDetail,
+        }
+      }
+      return was?.status === 'promoted' ? { ...a, status: 'promoted' } : a
     })
   }
 
@@ -131,14 +159,14 @@ export function createScanStore(filePath: string): ScanStore {
     async runScan(job) {
       if (running) throw new Error('A scan is already running.')
       running = true
-      const priorAutomations = latest?.automations ?? []
-      latest = { status: 'running', startedAt: new Date().toISOString(), automations: [], log: [] }
+      const priorAutomations = latest?.priorAutomations ?? latest?.automations ?? []
+      latest = { status: 'running', startedAt: new Date().toISOString(), automations: [], priorAutomations, log: [] }
       await persist()
       try {
         const automations = reconcile(await job(), priorAutomations)
         latest = { status: 'done', startedAt: latest.startedAt, finishedAt: new Date().toISOString(), automations, log: latest.log, generation: latest.generation ?? null, diagnostics: latest.diagnostics }
       } catch (err) {
-        latest = { status: 'error', startedAt: latest.startedAt, finishedAt: new Date().toISOString(), error: err instanceof Error ? err.message : 'scan failed', automations: [], log: latest?.log ?? [], generation: latest?.generation ?? null, diagnostics: latest?.diagnostics }
+        latest = { status: 'error', startedAt: latest.startedAt, finishedAt: new Date().toISOString(), error: err instanceof Error ? err.message : 'scan failed', automations: [], priorAutomations, log: latest?.log ?? [], generation: latest?.generation ?? null, diagnostics: latest?.diagnostics }
       } finally {
         running = false
         await persist()
@@ -150,6 +178,30 @@ export function createScanStore(filePath: string): ScanStore {
       a.status = status
       if (statusDetail) a.statusDetail = statusDetail
       else delete a.statusDetail
+      await persist()
+      return a
+    },
+    async dismiss(id) {
+      const a = latest?.automations.find(candidate => candidate.id === id)
+      if (!a) return null
+      if (a.status !== 'dismissed' && a.status !== 'promoting') {
+        a.dismissedFromStatus = a.status
+        if (a.statusDetail) a.dismissedFromStatusDetail = a.statusDetail
+        else delete a.dismissedFromStatusDetail
+      }
+      a.status = 'dismissed'
+      delete a.statusDetail
+      await persist()
+      return a
+    },
+    async restore(id) {
+      const a = latest?.automations.find(candidate => candidate.id === id)
+      if (!a) return null
+      a.status = a.dismissedFromStatus ?? 'new'
+      if (a.dismissedFromStatusDetail) a.statusDetail = a.dismissedFromStatusDetail
+      else delete a.statusDetail
+      delete a.dismissedFromStatus
+      delete a.dismissedFromStatusDetail
       await persist()
       return a
     },

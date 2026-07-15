@@ -5,6 +5,7 @@ import type { ExportTarget, ExportResult } from '../../../src/export/exporter.ts
 import type { DeleteExportResult } from '../../../src/server/api/export-delete.ts'
 import { workflowSkillSlug } from '../../../src/slugify.ts'
 import { api } from '../lib/api.ts'
+import { isAbsolutePath } from '../lib/path.ts'
 import { toast } from '../lib/toast.ts'
 import { FieldHint } from './common/FieldHint.tsx'
 import './ExportFlow.css'
@@ -32,6 +33,7 @@ export function ExportFlow({ workflow, dispatch, onClose }: Props) {
   const [deleteResult, setDeleteResult] = useState<DeleteExportResult | null>(null)
   const [projectDir, setProjectDir] = useState(() => localStorage.getItem('cwc:lastProjectDir') ?? '')
   const [copied, setCopied] = useState(false)
+  const projectPathValid = isAbsolutePath(projectDir)
   const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   useEffect(() => () => { if (copyTimerRef.current) clearTimeout(copyTimerRef.current) }, [])
 
@@ -81,8 +83,10 @@ export function ExportFlow({ workflow, dispatch, onClose }: Props) {
   }
 
   function handleProjectExport() {
-    localStorage.setItem('cwc:lastProjectDir', projectDir)
-    runPreview({ type: 'project', projectDir })
+    const normalizedProjectDir = projectDir.trim()
+    localStorage.setItem('cwc:lastProjectDir', normalizedProjectDir)
+    setProjectDir(normalizedProjectDir)
+    runPreview({ type: 'project', projectDir: normalizedProjectDir })
   }
 
   async function runDelete(target: ExportTarget) {
@@ -157,9 +161,9 @@ export function ExportFlow({ workflow, dispatch, onClose }: Props) {
                 <button
                   className="export-flow-target-btn"
                   onClick={handleProjectExport}
-                  disabled={!projectDir.startsWith('/')}
+                  disabled={!projectPathValid}
                   type="button"
-                  title={!projectDir.startsWith('/') ? 'Enter an absolute path starting with /' : undefined}
+                  title={!projectPathValid ? 'Enter an absolute project path' : undefined}
                 >
                   <span className="export-flow-target-btn__icon">
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
@@ -374,10 +378,10 @@ export function ExportFlow({ workflow, dispatch, onClose }: Props) {
 
               <button
                 className="export-flow-target-btn export-flow-target-btn--danger"
-                onClick={() => runDelete({ type: 'project', projectDir })}
-                disabled={!projectDir.startsWith('/')}
+                onClick={() => runDelete({ type: 'project', projectDir: projectDir.trim() })}
+                disabled={!projectPathValid}
                 type="button"
-                title={!projectDir.startsWith('/') ? 'Enter an absolute path starting with /' : undefined}
+                title={!projectPathValid ? 'Enter an absolute project path' : undefined}
               >
                 <span className="export-flow-target-btn__icon export-flow-target-btn__icon--danger">
                   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">

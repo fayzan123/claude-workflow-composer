@@ -27,6 +27,8 @@ export interface AutomationEvidence {
   timing?: string
 }
 
+export type AutomationStatus = 'new' | 'dismissed' | 'promoting' | 'promotion_cancelled' | 'promotion_failed' | 'promoted'
+
 export interface DetectedAutomation {
   id: string                 // server-derived: hash(sorted repos + sorted stepTokens)
   title: string
@@ -36,6 +38,8 @@ export interface DetectedAutomation {
   evidence: AutomationEvidence
   suggestedTrigger: InferredTrigger & { cron?: string }
   confidence: number         // 0..1
-  status: 'new' | 'dismissed' | 'promoting' | 'promotion_cancelled' | 'promotion_failed' | 'promoted'
+  status: AutomationStatus
   statusDetail?: string
+  dismissedFromStatus?: Exclude<AutomationStatus, 'dismissed' | 'promoting'>
+  dismissedFromStatusDetail?: string
 }

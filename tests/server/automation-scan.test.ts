@@ -265,7 +265,7 @@ describe('automation-scan API', () => {
     }
   })
 
-  it('runs a scan and returns detected automations, then dismiss persists', async () => {
+  it('runs a scan and persists reversible dismissal', async () => {
     const start = await fetch(`${base}/api/automation-scan`, { method: 'POST' })
     expect(start.status).toBe(202)
     const done = await waitForDone()
@@ -281,6 +281,18 @@ describe('automation-scan API', () => {
     expect(dis.status).toBe(200)
     const after = await (await fetch(`${base}/api/automation-scan`)).json() as { automations: { status: string }[] }
     expect(after.automations[0].status).toBe('dismissed')
+
+    const restore = await fetch(`${base}/api/automation-scan/${id}/restore`, { method: 'POST' })
+    expect(restore.status).toBe(200)
+    const restored = await (await fetch(`${base}/api/automation-scan`)).json() as { automations: { status: string }[] }
+    expect(restored.automations[0].status).toBe('new')
+    expect((await fetch(`${base}/api/automation-scan/${id}/restore`, { method: 'POST' })).status).toBe(409)
+
+    await scanStore.setStatus(id, 'promoted')
+    expect((await fetch(`${base}/api/automation-scan/${id}/dismiss`, { method: 'POST' })).status).toBe(200)
+    expect((await fetch(`${base}/api/automation-scan/${id}/restore`, { method: 'POST' })).status).toBe(200)
+    const promoted = await (await fetch(`${base}/api/automation-scan`)).json() as { automations: { status: string }[] }
+    expect(promoted.automations[0].status).toBe('promoted')
   })
 
   it('runs the analysis on the requested allowlisted model', async () => {
