@@ -29,6 +29,15 @@ function ToastCard({ toast }: { toast: Toast }) {
         <p className="toast__title">{toast.title}</p>
         {toast.detail && <p className="toast__detail">{toast.detail}</p>}
       </div>
+      {toast.action && (
+        <button
+          className="toast__action"
+          type="button"
+          onClick={() => { dismissToast(toast.id); toast.action?.onClick() }}
+        >
+          {toast.action.label}
+        </button>
+      )}
       <button className="toast__close" type="button" aria-label="Dismiss notification" onClick={() => dismissToast(toast.id)}>×</button>
     </div>
   )

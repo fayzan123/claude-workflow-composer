@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { resolveTargets } from '../../src/server/trigger-targets.js'
+import { launchTriggerTargets, resolveTargets } from '../../src/server/trigger-targets.js'
 import type { CwcTrigger } from '../../src/schema.js'
 
 const base: CwcTrigger = { id: 't', type: 'cron', schedule: '* * * * *', cwd: '/a', isolation: 'worktree', catchUp: false, maxRunsPerDay: 1, enabled: true }
@@ -13,5 +13,12 @@ describe('resolveTargets', () => {
   })
   it('ignores blank entries', () => {
     expect(resolveTargets({ ...base, targets: ['', '  ', '/b'] })).toEqual(['/a', '/b'])
+  })
+  it('launches each normalized target once and retains target/result pairing', async () => {
+    const launched = await launchTriggerTargets({ ...base, targets: ['/b', '/a'] }, async cwd => `run:${cwd}`)
+    expect(launched).toEqual([
+      { cwd: '/a', outcome: 'run:/a' },
+      { cwd: '/b', outcome: 'run:/b' },
+    ])
   })
 })

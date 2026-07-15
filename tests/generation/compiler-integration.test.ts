@@ -37,28 +37,35 @@ describe('compile with real reuse + risk deps', () => {
     expect(gateIdx).toBeLessThan(pubIdx)
   })
 
-  it('never starts the workflow with a gate when the first phase is risky', () => {
+  it('preflights and gates a risky first phase before any external action', () => {
     const cwc = compile({
-      automation: auto(['commit and push to main', 'publish to npm']),
+      automation: auto(['publish to npm']),
       plan: {
         name: 'x',
         description: 'd',
         phases: [
-          { id: 'p1', intent: 'commit and push to main', stepIndexes: [0] },
-          { id: 'p2', intent: 'publish to npm', stepIndexes: [1] },
+          { id: 'p1', intent: 'publish to npm', stepIndexes: [0] },
         ],
       },
       catalog: { skills: [], agents: [], cards: [] },
       triggers: [],
     })
-    // The entry node is the one with no incoming edge — it must be an agent, never a gate.
+
     const targets = new Set(cwc.edges.filter(e => e.to !== null).map(e => e.to))
     const entries = cwc.nodes.filter(node => !targets.has(node.id))
     expect(entries).toHaveLength(1)
     expect(entries[0].nodeType ?? 'agent').toBe('agent')
     expect(entries[0].startTrigger).toBeTruthy()
-    // The publish phase still gets its gate (a gate between two agents is valid).
-    expect(cwc.nodes.some(node => node.nodeType === 'gate')).toBe(true)
+    expect(entries[0].agent.tools).toEqual(['Read'])
+    expect(entries[0].agent.systemPrompt).toMatch(/do not publish, deploy, push, send, or mutate/i)
+
+    const gateIdx = cwc.nodes.findIndex(node => node.nodeType === 'gate')
+    const publishIdx = cwc.nodes.findIndex(node => node.id === 'node-p1')
+    expect(gateIdx).toBeGreaterThan(0)
+    expect(publishIdx).toBeGreaterThan(gateIdx)
+    expect(cwc.nodes[publishIdx].agent.systemPrompt).toContain('publish to npm')
+    expect(cwc.nodes[publishIdx].startTrigger).toBeUndefined()
+    expect(cwc.edges.filter(edge => edge.to === null)).toHaveLength(1)
   })
 
   it('rejects a broad skill that would collapse the automation, keeping bespoke nodes', () => {
@@ -71,9 +78,9 @@ describe('compile with real reuse + risk deps', () => {
         phases: [
           {
             id: 'p1',
-            intent: 'do the whole thing',
-            stepIndexes: [0, 1, 2],
-            reuse: { kind: 'skill', slug: 'design-system', coversStepIndexes: [0, 1, 2], why: 'covers all' },
+            intent: 'research and rebrand',
+            stepIndexes: [0, 1],
+            reuse: { kind: 'skill', slug: 'design-system', coversStepIndexes: [0, 1], why: 'covers both' },
           },
           { id: 'p2', intent: 'deploy', stepIndexes: [2] },
         ],

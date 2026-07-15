@@ -33,9 +33,23 @@ describe('arming', () => {
     const s = createAutomationState(file)
     await s.arm(trig)
     expect(s.isArmed({ ...trig, precondition: 'rm -rf /' })).toBe(false)
+    expect(s.isArmed({ ...trig, setupCommand: 'npm install' })).toBe(false)
     expect(s.isArmed({ ...trig, cwd: '/elsewhere' })).toBe(false)
+    expect(s.isArmed({ ...trig, targets: ['/another-repo'] })).toBe(false)
+    expect(s.isArmed({ ...trig, isolation: 'worktree' })).toBe(false)
+    expect(s.isArmed({ ...trig, baseRef: 'release' })).toBe(false)
+    expect(s.isArmed({ ...trig, type: 'webhook', token: trig.schedule, schedule: undefined })).toBe(false)
     expect(s.isArmed({ ...trig, schedule: '* * * * *' })).toBe(false)
     expect(s.isArmed({ ...trig, maxRunsPerDay: 99 })).toBe(true)   // cap is not a dangerous field
+    expect(s.isArmed({ ...trig, catchUp: false, enabled: false })).toBe(true)
+  })
+
+  it('normalizes equivalent target sets and the default base ref', async () => {
+    const s = createAutomationState(file)
+    const configured = { ...trig, cwd: ' /tmp/p ', targets: ['/b', '/a', '/b'], baseRef: ' HEAD ' }
+    await s.arm(configured)
+
+    expect(s.isArmed({ ...configured, cwd: '/tmp/p', targets: ['/a', '/b'], baseRef: undefined })).toBe(true)
   })
 })
 
@@ -76,6 +90,19 @@ describe('caps + fire/skip recording', () => {
     const t = s.getTriggerState(trig.id)
     expect(t.skippedCount).toBe(2)
     expect(t.lastSkip).toMatchObject({ reason: 'running' })
+  })
+
+  it('serializes concurrent state writes without losing mutations or temp-file races', async () => {
+    const s = createAutomationState(file)
+    const now = new Date('2026-06-12T09:00:00')
+
+    await Promise.all(Array.from({ length: 20 }, (_, i) =>
+      s.recordSkip(trig.id, `target-${i}`, now),
+    ))
+
+    expect(s.getTriggerState(trig.id).skippedCount).toBe(20)
+    const reloaded = createAutomationState(file)
+    expect(reloaded.getTriggerState(trig.id).skippedCount).toBe(20)
   })
 })
 

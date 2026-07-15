@@ -44,16 +44,36 @@ describe('buildAnalysisContext + parseAutomations', () => {
     const units = [
       { sessionId: 'A', cwd: '/repo', promptText: 'x', startedAt: '2026-06-10T09:00:00.000Z', endedAt: '', tools: ['Bash'], commands: ['npm test'] },
       { sessionId: 'B', cwd: '/repo', promptText: 'x', startedAt: '2026-06-12T09:00:00.000Z', endedAt: '', tools: ['Bash'], commands: ['npm test'] },
+      { sessionId: 'C', cwd: '/repo', promptText: 'x', startedAt: '2026-06-14T09:00:00.000Z', endedAt: '', tools: ['Bash'], commands: ['npm test'] },
     ]
     const ctx = buildAnalysisContext(units)!
     expect(ctx).not.toBeNull()
-    expect(ctx.refIndex.size).toBe(2)
+    expect(ctx.refIndex.size).toBe(3)
     const out = parseAutomations(JSON.stringify({ automations: [{
-      title: 'T', description: 'd', steps: [], stepTokens: ['run-tests'], refs: ['r0', 'r1'],
+      title: 'T', description: 'd', steps: [], stepTokens: ['run-tests'], refs: ['r0', 'r1', 'r2'],
       suggestedTrigger: { kind: 'manual', label: '' }, confidence: 0.8,
     }] }), ctx.refIndex)
     expect(out).toHaveLength(1)
-    expect(out[0].evidence.count).toBe(2)
+    expect(out[0].evidence.count).toBe(3)
+  })
+
+  it('deduplicates cited refs and requires three unique valid occurrences', () => {
+    const units = [
+      unit({ sessionId: 'A' }),
+      unit({ sessionId: 'B' }),
+      unit({ sessionId: 'C' }),
+    ]
+    const ctx = buildAnalysisContext(units)!
+    const result = (refs: string[]) => JSON.stringify({ automations: [{
+      title: 'T', description: 'd', steps: [], stepTokens: ['run-tests'], refs,
+      suggestedTrigger: { kind: 'manual', label: '' }, confidence: 0.8,
+    }] })
+
+    const accepted = parseAutomations(result(['r0', 'r0', 'r1', 'r2', 'missing']), ctx.refIndex)
+    expect(accepted).toHaveLength(1)
+    expect(accepted[0].evidence.count).toBe(3)
+
+    expect(parseAutomations(result(['r0', 'r0', 'r1', 'missing']), ctx.refIndex)).toEqual([])
   })
 
   it('buildAnalysisContext returns null when there is nothing meaningful', () => {

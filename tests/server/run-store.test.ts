@@ -104,6 +104,32 @@ describe('RunStore', () => {
     expect(stops).toBe(1)
   })
 
+  it('claims one workflow per launch group while allowing target fan-out', () => {
+    expect(store.registerRun('run-a', 'wf-1', () => {}, 'delivery-a')).toBe(true)
+    expect(store.registerRun('run-b', 'wf-1', () => {}, 'delivery-b')).toBe(false)
+    expect(store.registerRun('run-c', 'wf-1', () => {}, 'delivery-a')).toBe(true)
+    expect(store.registerRun('run-d', 'wf-2', () => {}, 'delivery-b')).toBe(true)
+  })
+
+  it('holds an exclusive workflow reservation against new run launches', () => {
+    expect(store.reserveWorkflow('wf-1', 'delete-a')).toBe(true)
+    expect(store.reserveWorkflow('wf-1', 'delete-b')).toBe(false)
+    expect(store.registerRun('run-a', 'wf-1', () => {})).toBe(false)
+
+    store.releaseWorkflowReservation('wf-1', 'not-the-owner')
+    expect(store.registerRun('run-b', 'wf-1', () => {})).toBe(false)
+
+    store.releaseWorkflowReservation('wf-1', 'delete-a')
+    expect(store.registerRun('run-c', 'wf-1', () => {})).toBe(true)
+  })
+
+  it('does not reserve a workflow while it has an active run', () => {
+    expect(store.registerRun('run-a', 'wf-1', () => {})).toBe(true)
+    expect(store.reserveWorkflow('wf-1', 'delete-a')).toBe(false)
+    store.releaseRun('run-a')
+    expect(store.reserveWorkflow('wf-1', 'delete-a')).toBe(true)
+  })
+
   it('summarizes pre-existing invalid timestamps without NaN or permanent running state', async () => {
     await store.append(ev({ type: 'run_started', ts: 'not-a-date' }))
     await store.append(ev({ type: 'step_started', ts: 'also-not-a-date' }))
@@ -112,6 +138,40 @@ describe('RunStore', () => {
 
     expect(run.status).toBe('stale')
     expect(run.durationMs).toBe(0)
+  })
+
+  it('keeps a managed terminal authoritative over a late external log event', async () => {
+    const completedAt = '2026-06-12T09:05:00.000Z'
+    await store.append(ev({ type: 'run_started', source: 'test', ts: '2026-06-12T09:00:00.000Z' }))
+    await store.append(ev({ type: 'run_completed', source: 'test', status: 'complete', ts: completedAt }))
+    await store.append(ev({ type: 'step_completed', source: 'external', ts: '2026-06-12T09:06:00.000Z' }))
+
+    const [run] = await store.listRuns('wf-1')
+    expect(run.status).toBe('complete')
+    expect(run.lastEventAt).toBe(completedAt)
+    expect(run.durationMs).toBe(5 * 60_000)
+  })
+
+  it('serializes terminal writes ahead of external event admission', async () => {
+    await store.append(ev({ type: 'run_started', source: 'test' }))
+
+    const terminal = store.append(ev({ type: 'run_completed', source: 'test', status: 'complete' }))
+    const accepted = store.appendExternal(ev({ type: 'step_completed', source: 'external' }))
+
+    await expect(terminal).resolves.toBeUndefined()
+    await expect(accepted).resolves.toBe(false)
+    expect((await store.getEvents('wf-1', 'run-1'))?.map(event => event.type)).toEqual([
+      'run_started',
+      'run_completed',
+    ])
+  })
+
+  it('accepts external logging after a managed resume marker', async () => {
+    await store.append(ev({ type: 'run_started', source: 'test' }))
+    await store.append(ev({ type: 'run_paused', source: 'test', sessionId: 'session-1' }))
+    await store.append(ev({ type: 'run_started', source: 'test', message: 'Run resumed after approval' }))
+
+    await expect(store.appendExternal(ev({ type: 'step_started', source: 'external' }))).resolves.toBe(true)
   })
 })
 

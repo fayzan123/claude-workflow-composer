@@ -7,6 +7,7 @@ import { createScheduler } from '../../src/server/automation-scheduler.js'
 import { createAutomationState } from '../../src/server/automation-state.js'
 import type { CwcTrigger } from '../../src/schema.js'
 import { makeSchedulerFire } from '../../src/server/index.js'
+import { createRunStore } from '../../src/server/run-store.js'
 
 let dir: string, workflowsDir: string, statePath: string
 let fired: { workflowId: string; workflowSlug: string; trigger: CwcTrigger }[]
@@ -187,7 +188,7 @@ it('records a skip for scheduler-fired workflows whose skill is missing', async 
   const skillsDir = path.join(dir, 'skills')
   const skips: string[] = []
   const fire = makeSchedulerFire({
-    store: {} as any, worktreesRoot: '/wt', skillsDir,
+    store: createRunStore(path.join(dir, 'runs')), worktreesRoot: '/wt', skillsDir,
     onSkip: async (_triggerId, reason) => { skips.push(reason) },
   })
   const trigger = { id: 't', type: 'cron', schedule: '* * * * *', cwd: '/tmp', isolation: 'in-place', catchUp: false, maxRunsPerDay: 1, enabled: true } as any

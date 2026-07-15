@@ -98,6 +98,22 @@ describe('compile', () => {
     for (const edge of bad.edges) if (edge.to !== null) expect(ids.has(edge.to)).toBe(true)
   })
 
+  it('falls back when a structurally valid planner result omits observed steps', () => {
+    const bad = compile({
+      automation: auto(['run tests', 'npm publish']),
+      plan: {
+        name: 'Incomplete planner result',
+        description: 'Missing the publish step.',
+        phases: [{ id: 'p1', intent: 'tests', stepIndexes: [0] }],
+      },
+      catalog,
+      triggers: [],
+    }, noRiskDeps)
+
+    expect(bad.meta.name).toBe('NPM Release')
+    expect(bad.nodes.some(node => node.agent.systemPrompt.includes('npm publish'))).toBe(true)
+  })
+
   it('inserts a gate before a phase when risk is flagged', () => {
     const gated = compile({
       automation: auto(['run tests', 'npm publish']),

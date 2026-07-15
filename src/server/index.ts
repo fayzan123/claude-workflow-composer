@@ -3,6 +3,7 @@ import * as path from 'node:path'
 import * as fs from 'node:fs'
 import * as os from 'node:os'
 import { fileURLToPath } from 'node:url'
+import { randomUUID } from 'node:crypto'
 import { healthRouter } from './api/health.js'
 import { claudeCheckRouter } from './api/claude-check.js'
 import { workflowsRouter } from './api/workflows.js'
@@ -28,7 +29,7 @@ import { createScheduler } from './automation-scheduler.js'
 import { startNotifier } from './notifier.js'
 import { loadConfig } from './config.js'
 import { sweepOrphanWorktrees, fireWorkflow, type FireOutcome } from './run-launcher.js'
-import { resolveTargets } from './trigger-targets.js'
+import { launchTriggerTargets } from './trigger-targets.js'
 import type { RunStore } from './run-store.js'
 import type { CwcTrigger } from '../schema.js'
 import { serviceRouter } from './api/service.js'
@@ -56,6 +57,7 @@ export interface AppOptions {
   allowedOrigins?: string[]       // CORS allowlist for explicit cross-origin dev clients
   claudeProbe?: ClaudeProbe       // injectable `claude --version` probe for scan diagnostics
   cwcVersion?: string             // reported in scan diagnostics; default read from package.json
+  runStore?: RunStore             // test injection; default is a filesystem-backed store under runsDir
 }
 
 /** Best-effort package version for diagnostics; works from both src/ (tsx) and dist/ layouts. */
@@ -108,7 +110,7 @@ export function createApp(opts: AppOptions): express.Express {
   const statePath = opts.automationStatePath ?? path.join(os.homedir(), '.cwc', 'automation-state.json')
   const configPath = opts.configPath ?? path.join(os.homedir(), '.cwc', 'config.json')
 
-  const runStore = createRunStore(runsDir)
+  const runStore = opts.runStore ?? createRunStore(runsDir)
   const autoState = createAutomationState(statePath)
 
   const scanPath = opts.automationScanPath ?? path.join(os.homedir(), '.cwc', 'automation-scan.json')
@@ -146,7 +148,31 @@ export function createApp(opts: AppOptions): express.Express {
     scheduler.start()
   }
   // workflowsRouter call gains the third arg for scheduler rescan on save
-  app.use('/api/workflows', workflowsRouter(wfDir, recPath, () => { void scheduler?.rescan() }))
+  app.use('/api/workflows', workflowsRouter(
+    wfDir,
+    recPath,
+    () => { void scheduler?.rescan() },
+    async workflowId => {
+      const reservationId = randomUUID()
+      if (!runStore.reserveWorkflow(workflowId, reservationId)) {
+        return { reason: 'Stop the active run before deleting this workflow.', release() {} }
+      }
+      const release = () => runStore.releaseWorkflowReservation(workflowId, reservationId)
+      try {
+        const runs = await runStore.listRuns(workflowId)
+        if (runs.some(run => run.source === 'test' && run.status === 'running')) {
+          return { reason: 'Wait for the managed run to finish before deleting this workflow.', release }
+        }
+        if (runs.some(run => run.source === 'test' && run.status === 'paused')) {
+          return { reason: 'Approve or reject the paused run before deleting this workflow.', release }
+        }
+        return { reason: null, release }
+      } catch (err) {
+        release()
+        throw err
+      }
+    },
+  ))
 
   if (opts.staticDir && fs.existsSync(opts.staticDir)) {
     app.use(express.static(opts.staticDir))
@@ -164,7 +190,7 @@ export interface SchedulerFireDeps {
   skillsDir?: string
   claudeBinPath?: string
   onSkip: (triggerId: string, reason: string) => Promise<void>
-  fireOne?: (cwd: string, args: { workflowId: string; workflowSlug: string; trigger: CwcTrigger }) => Promise<FireOutcome>
+  fireOne?: (cwd: string, args: { workflowId: string; workflowSlug: string; trigger: CwcTrigger; launchGroupId: string }) => Promise<FireOutcome>
 }
 
 export function makeSchedulerFire(deps: SchedulerFireDeps) {
@@ -172,12 +198,13 @@ export function makeSchedulerFire(deps: SchedulerFireDeps) {
     fireWorkflow({
       workflowId: a.workflowId, workflowSlug: a.workflowSlug, cwd, isolation: a.trigger.isolation,
       baseRef: a.trigger.baseRef, precondition: a.trigger.precondition, setupCommand: a.trigger.setupCommand,
-      trigger: a.trigger.id, store: deps.store, worktreesRoot: deps.worktreesRoot, skillsDir: deps.skillsDir, binPath: deps.claudeBinPath,
+      trigger: a.trigger.id, store: deps.store, worktreesRoot: deps.worktreesRoot, skillsDir: deps.skillsDir, binPath: deps.claudeBinPath, launchGroupId: a.launchGroupId,
     }))
   return async (workflowId: string, workflowSlug: string, t: CwcTrigger): Promise<void> => {
-    const outcomes = await Promise.all(resolveTargets(t).map(cwd => fireOne(cwd, { workflowId, workflowSlug, trigger: t })))
-    await Promise.all(outcomes.map(o =>
-      o.fired === false ? deps.onSkip(t.id, o.reason) : o.settled))
+    const launchGroupId = randomUUID()
+    const launched = await launchTriggerTargets(t, cwd => fireOne(cwd, { workflowId, workflowSlug, trigger: t, launchGroupId }))
+    await Promise.all(launched.map(({ outcome }) =>
+      outcome.fired === false ? deps.onSkip(t.id, outcome.reason) : outcome.settled))
   }
 }
 

@@ -11,6 +11,8 @@ interface RawAutomation {
   suggestedTrigger?: { kind?: string; cron?: string; label?: string }; confidence?: number
 }
 
+const MIN_EVIDENCE_OCCURRENCES = 3
+
 function strArray(v: unknown): string[] {
   return Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : []
 }
@@ -46,9 +48,9 @@ export function parseAutomations(resultText: string, refIndex: Map<string, TaskU
 
   const results: DetectedAutomation[] = []
   for (const a of parsed.automations ?? []) {
-    const refs = strArray(a.refs)
+    const refs = [...new Set(strArray(a.refs))]
     const refUnits = refs.map(r => refIndex.get(r)).filter((u): u is TaskUnit => !!u)
-    if (refUnits.length === 0) continue
+    if (refUnits.length < MIN_EVIDENCE_OCCURRENCES) continue
     const stepTokens = strArray(a.stepTokens)
     const evidence = evidenceFrom(refUnits)
     const kind = a.suggestedTrigger?.kind === 'schedule' || a.suggestedTrigger?.kind === 'event' ? a.suggestedTrigger.kind : 'manual'

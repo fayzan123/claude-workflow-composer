@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { api } from '../lib/api.ts'
+import { deriveScanUiState, homeScanActionPath, homeScanContent } from '../lib/scan-state.ts'
 
 type Latest = Awaited<ReturnType<typeof api.automationScan.latest>>
 type Auto = Latest['automations'][number]
@@ -44,11 +45,13 @@ function useCountUp(target: number): number {
   return value
 }
 
-/** Top candidates worth teasing on the hero (mirror DetectedAutomations' confidence bar). */
-function topCandidates(autos: Auto[], activeGenerationId?: string): Auto[] {
+/** Keep the active promotion visible, then preview the strongest current results. */
+function topCandidates(autos: Auto[], activeGenerationId: string | undefined, includeLowerConfidence: boolean): Auto[] {
   const active = autos.find(a => a.id === activeGenerationId) ?? autos.find(a => a.status === 'promoting') ?? null
-  const high = autos.filter(a => a.confidence >= 0.6 && a.id !== active?.id).slice(0, active ? 2 : 3)
-  return active ? [active, ...high] : high
+  const remaining = autos
+    .filter(a => (includeLowerConfidence || a.confidence >= 0.6) && a.id !== active?.id)
+    .slice(0, active ? 2 : 3)
+  return active ? [active, ...remaining] : remaining
 }
 
 export function DetectHero() {
@@ -80,6 +83,10 @@ export function DetectHero() {
     navigate(to, { viewTransition: true })
   }
 
+  function runAction(kind: 'view' | 'start') {
+    go(homeScanActionPath(kind))
+  }
+
   // Cancel a background generation straight from the hero, so the home screen isn't a
   // dead end during a multi-minute job. The 1.5s poll reconciles; we also refresh now.
   async function cancelGeneration(id: string) {
@@ -96,10 +103,11 @@ export function DetectHero() {
 
   const running = status === 'running'
   const activeGeneration = generation && !generation.workflowId && !generation.error ? generation : null
-  const candidates = topCandidates(autos, activeGeneration?.id)
+  const scanState = deriveScanUiState(status, autos)
+  const content = homeScanContent(scanState)
+  const candidates = topCandidates(autos, activeGeneration?.id, scanState.kind === 'low-confidence')
   const generationInProgress = Boolean(activeGeneration)
-  const count = Math.max(autos.filter(a => a.confidence >= 0.6).length, candidates.length)
-  const noneFound = status === 'done' && candidates.length === 0
+  const count = scanState.kind === 'results' ? scanState.strongCandidateCount : scanState.candidateCount
   const shownCount = useCountUp(count)
 
   useEffect(() => {
@@ -141,15 +149,20 @@ export function DetectHero() {
     return () => ro.disconnect()
   }, [])
 
-  // ── State: has candidates ──
-  if (candidates.length > 0) {
+  // State: detected candidates, including lower-confidence results that still need review.
+  if (candidates.length > 0 && scanState.kind !== 'error') {
     return (
       <section className="hd-hero" aria-label="Detected automations">
         <span className="hd-hero__eyebrow">History scan</span>
         <h1 className="hd-hero__title">
-          We found <span className="hd-hero__count">{shownCount}</span>{' '}
-          {count === 1 ? 'thing' : 'things'} you keep doing by hand
+          {scanState.kind === 'low-confidence' ? (
+            <><span className="hd-hero__count">{shownCount}</span> potential {count === 1 ? 'pattern needs' : 'patterns need'} review</>
+          ) : (
+            <>We found <span className="hd-hero__count">{shownCount}</span>{' '}
+              {count === 1 ? 'thing' : 'things'} you keep doing by hand</>
+          )}
         </h1>
+        {content.description && <p className="hd-hero__subtitle">{content.description}</p>}
         <ul className="hd-hero__candidates" role="list">
           {candidates.map((a, i) => {
             const busy = a.id === activeGeneration?.id || a.status === 'promoting'
@@ -163,7 +176,7 @@ export function DetectHero() {
                 <span className="hd-hero__candidate-meta">
                   {busy
                     ? `Generating workflow · ${formatElapsed(elapsed)}`
-                    : `seen ${a.evidence.count}× · ${a.suggestedTrigger.label || 'manual'}`}
+                    : `seen ${a.evidence.count}× · ${a.suggestedTrigger.label || 'manual'} · ${Math.round(a.confidence * 100)}% confidence`}
                 </span>
                 {busy && (
                   <>
@@ -190,42 +203,48 @@ export function DetectHero() {
           })}
         </ul>
         <div className="hd-hero__actions">
-          <button className="hd-hero__cta" type="button" onClick={() => go('/detect')}>
-            Review automations
+          <button className="hd-hero__cta" type="button" onClick={() => runAction(content.primary.kind)}>
+            {content.primary.label}
           </button>
-          <button
-            className="hd-hero__ghost"
-            type="button"
-            onClick={() => go('/detect?autostart=1')}
-            disabled={generationInProgress || running}
-            title={generationInProgress ? 'A workflow is already being generated.' : undefined}
-          >
-            {generationInProgress ? 'Generating...' : 'Scan again'}
-          </button>
+          {content.secondary && (
+            <button
+              className="hd-hero__ghost"
+              type="button"
+              onClick={() => runAction(content.secondary!.kind)}
+              disabled={generationInProgress || running}
+              title={generationInProgress ? 'A workflow is already being generated.' : undefined}
+            >
+              {generationInProgress ? 'Generating...' : content.secondary.label}
+            </button>
+          )}
         </div>
       </section>
     )
   }
 
-  // ── State: scanned, none found ──
-  if (noneFound) {
+  // State: a completed or failed scan with no candidates. Reviewing the latest scan
+  // and starting a replacement scan are deliberately separate actions.
+  if (scanState.kind === 'empty' || scanState.kind === 'error') {
     return (
       <section className="hd-hero" aria-label="Detect automations">
         <span className="hd-hero__eyebrow">History scan</span>
-        <h1 className="hd-hero__title hd-hero__title--quiet">No strong patterns yet</h1>
-        <p className="hd-hero__subtitle">
-          Try again after a few more Claude Code sessions, or build one from scratch below.
-        </p>
+        <h1 className="hd-hero__title hd-hero__title--quiet">{content.title}</h1>
+        {content.description && <p className="hd-hero__subtitle">{content.description}</p>}
         <div className="hd-hero__actions">
-          <button className="hd-hero__cta" type="button" onClick={() => go('/detect?autostart=1')}>
-            Scan again
+          <button className="hd-hero__cta" type="button" onClick={() => runAction(content.primary.kind)}>
+            {content.primary.label}
           </button>
+          {content.secondary && (
+            <button className="hd-hero__ghost" type="button" onClick={() => runAction(content.secondary!.kind)}>
+              {content.secondary.label}
+            </button>
+          )}
         </div>
       </section>
     )
   }
 
-  // ── State: idle / scanning ──
+  // State: no scan yet, or a scan currently in progress.
   return (
     <section
       ref={heroRef}
@@ -234,20 +253,17 @@ export function DetectHero() {
     >
       <div className="hd-hero__scanlines" aria-hidden="true" />
       <span className="hd-hero__eyebrow">History scan</span>
-      <h1 className="hd-hero__title">Find the work you keep repeating in Claude Code</h1>
-      <p className="hd-hero__subtitle">
-        CWC scans your Claude Code history, spots the tasks you do by hand again and again,
-        and turns them into one-click workflows.
-      </p>
+      <h1 className="hd-hero__title">{content.title}</h1>
+      {content.description && <p className="hd-hero__subtitle">{content.description}</p>}
       <div className="hd-hero__actions">
         <button
           className="hd-hero__cta"
           type="button"
-          onClick={() => go('/detect?autostart=1')}
-          disabled={running || generationInProgress}
+          onClick={() => runAction(content.primary.kind)}
+          disabled={generationInProgress}
           title={generationInProgress ? 'A workflow is already being generated.' : undefined}
         >
-          {generationInProgress ? 'Generating workflow...' : running ? 'Scanning your history...' : 'Scan my history'}
+          {generationInProgress ? 'Generating workflow...' : content.primary.label}
         </button>
       </div>
       {running && (

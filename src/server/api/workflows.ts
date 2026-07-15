@@ -1,11 +1,20 @@
 import { Router as createRouter } from 'express'
 import * as fs from 'node:fs/promises'
 import * as path from 'node:path'
-import * as os from 'node:os'
 import type { CwcFile } from '../../schema.js'
 import { slugify } from '../../slugify.js'
 
-export function workflowsRouter(workflowsDir: string, recentsPath: string, onSaved?: () => void) {
+export interface WorkflowDeleteLease {
+  reason: string | null
+  release(): void
+}
+
+export function workflowsRouter(
+  workflowsDir: string,
+  recentsPath: string,
+  onSaved?: () => void,
+  acquireDeleteLease?: (workflowId: string) => Promise<WorkflowDeleteLease>,
+) {
   const router = createRouter()
   const root = path.resolve(workflowsDir)
 
@@ -22,10 +31,52 @@ export function workflowsRouter(workflowsDir: string, recentsPath: string, onSav
     return resolved === root || resolved.startsWith(root + path.sep) ? resolved : null
   }
 
-  router.get('/default-path', (req, res) => {
-    const name = (req.query['name'] as string) || 'untitled'
-    const slug = slugify(name) || 'untitled'
-    res.json({ path: path.join(workflowsDir || path.join(os.homedir(), '.cwc', 'workflows'), `${slug}.cwc`) })
+  function workflowPath(name: unknown, sequence: number): string {
+    const slug = slugify(typeof name === 'string' ? name : '') || 'untitled'
+    const suffix = sequence === 1 ? '' : `-${sequence}`
+    return path.join(root, `${slug}${suffix}.cwc`)
+  }
+
+  function isFsError(err: unknown, code: string): boolean {
+    return typeof err === 'object' && err !== null && 'code' in err
+      && (err as NodeJS.ErrnoException).code === code
+  }
+
+  async function firstAvailableWorkflowPath(name: unknown): Promise<string> {
+    for (let sequence = 1; ; sequence++) {
+      const candidate = workflowPath(name, sequence)
+      try {
+        await fs.lstat(candidate)
+      } catch (err) {
+        if (isFsError(err, 'ENOENT')) return candidate
+        throw err
+      }
+    }
+  }
+
+  async function createWorkflow(content: CwcFile): Promise<string> {
+    await fs.mkdir(root, { recursive: true })
+    const serialized = JSON.stringify(content, null, 2)
+    for (let sequence = 1; ; sequence++) {
+      const candidate = workflowPath(content?.meta?.name, sequence)
+      try {
+        await fs.writeFile(candidate, serialized, { encoding: 'utf-8', flag: 'wx' })
+        return candidate
+      } catch (err) {
+        if (isFsError(err, 'EEXIST')) continue
+        throw err
+      }
+    }
+  }
+
+  // This route is an advisory preview. Creation still uses an exclusive write because
+  // another request can claim the returned path before a client acts on it.
+  router.get('/default-path', async (req, res) => {
+    try {
+      res.json({ path: await firstAvailableWorkflowPath(req.query['name']) })
+    } catch (err) {
+      res.status(500).json({ error: String(err) })
+    }
   })
 
   router.get('/list', async (_req, res) => {
@@ -72,6 +123,18 @@ export function workflowsRouter(workflowsDir: string, recentsPath: string, onSav
     }
   })
 
+  router.post('/create', async (req, res) => {
+    const { content } = (req.body ?? {}) as { content?: CwcFile }
+    if (!content) return void res.status(400).json({ error: 'content required' })
+    try {
+      const filePath = await createWorkflow(content)
+      onSaved?.()
+      res.status(201).json({ saved: true, path: filePath })
+    } catch (err) {
+      res.status(500).json({ error: String(err) })
+    }
+  })
+
   router.post('/', async (req, res) => {
     const { path: filePath, content } = req.body as { path: string; content: CwcFile }
     if (!filePath || !content) return void res.status(400).json({ error: 'path and content required' })
@@ -92,11 +155,24 @@ export function workflowsRouter(workflowsDir: string, recentsPath: string, onSav
     if (!filePath) return void res.status(400).json({ error: 'path required' })
     const resolved = resolveWorkflowPath(filePath)
     if (!resolved) return void res.status(403).json({ error: 'Access restricted to workflows directory' })
+    let releaseDeleteLease: (() => void) | undefined
     try {
+      if (acquireDeleteLease) {
+        const raw = await fs.readFile(resolved, 'utf-8')
+        const workflow = JSON.parse(raw) as CwcFile
+        const lease = await acquireDeleteLease(workflow.meta.id)
+        releaseDeleteLease = lease.release
+        if (lease.reason) return void res.status(409).json({ error: lease.reason })
+      }
       await fs.unlink(resolved)
+      onSaved?.()
       res.json({ deleted: true })
-    } catch {
-      res.status(404).json({ error: 'not found' })
+    } catch (err) {
+      if (isFsError(err, 'ENOENT')) return void res.status(404).json({ error: 'not found' })
+      if (err instanceof SyntaxError) return void res.status(409).json({ error: 'Workflow file is invalid and could not be checked for active runs.' })
+      res.status(500).json({ error: err instanceof Error ? err.message : 'delete failed' })
+    } finally {
+      releaseDeleteLease?.()
     }
   })
 
@@ -106,15 +182,6 @@ export function workflowsRouter(workflowsDir: string, recentsPath: string, onSav
     const resolvedOldPath = resolveWorkflowPath(oldPath)
     if (!resolvedOldPath) return void res.status(403).json({ error: 'Access restricted to workflows directory' })
 
-    const newSlug = slugify(newName) || 'untitled'
-    const dir = path.dirname(resolvedOldPath)
-    const newPath = path.join(dir, `${newSlug}.cwc`)
-
-    if (newPath === resolvedOldPath) return void res.json({ path: resolvedOldPath, renamed: false })
-    if (await fs.access(newPath).then(() => true).catch(() => false)) {
-      return void res.status(400).json({ error: 'A workflow with that name already exists' })
-    }
-
     let raw: string
     try {
       raw = await fs.readFile(resolvedOldPath, 'utf-8')
@@ -123,10 +190,24 @@ export function workflowsRouter(workflowsDir: string, recentsPath: string, onSav
     }
 
     const cwc: CwcFile = JSON.parse(raw)
+    if (cwc.meta.name === newName) return void res.json({ path: resolvedOldPath, renamed: false })
+
+    const newSlug = slugify(newName) || 'untitled'
+    const dir = path.dirname(resolvedOldPath)
+    const newPath = path.join(dir, `${newSlug}.cwc`)
+
+    if (newPath === resolvedOldPath) return void res.json({ path: resolvedOldPath, renamed: false })
+
     cwc.meta.name = newName
     cwc.meta.updated = new Date().toISOString()
-    await fs.writeFile(newPath, JSON.stringify(cwc, null, 2), 'utf-8')
+    try {
+      await fs.writeFile(newPath, JSON.stringify(cwc, null, 2), { encoding: 'utf-8', flag: 'wx' })
+    } catch (err) {
+      if (isFsError(err, 'EEXIST')) return void res.status(400).json({ error: 'A workflow with that name already exists' })
+      throw err
+    }
     await fs.unlink(resolvedOldPath)
+    onSaved?.()
 
     try {
       const recentsRaw = await fs.readFile(recentsPath, 'utf-8')

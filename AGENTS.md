@@ -14,6 +14,23 @@ Claude Workflow Composer (CWC) is a local-first, full-stack TypeScript app for f
 
 The trust model is local and filesystem-based. Be conservative around auth, CORS, filesystem writes, shell execution, exported agent files, workflow skills, and automation runs.
 
+## Current Product Roadmap
+
+The approved roadmap is maintained in:
+
+- `docs/specs/2026-07-14-cwc-product-roadmap-design.md`
+- `docs/plans/2026-07-14-cwc-product-roadmap-plan.md`
+
+Read both before starting roadmap work. The immediate next build is the complete Stage 1 vertical slice: server-owned managed-run manifests, manifest-authorized run operations, and safe Apply/Discard actions for completed isolated results, including the Runs UI. After that, proceed in this order:
+
+1. Deployment registry across user and project exports.
+2. Canonical `.cwc` parsing, migrations, import, duplicate, and portable sharing.
+3. Codex as an additional history source without changing Claude Code export/runtime.
+4. Optional Codex analysis/planning backend, independently selectable from history source.
+5. ChatGPT ingestion only from an explicit local data export.
+
+Keep history source, analysis backend, deployment target, and workflow runtime as independent concepts. Through the approved roadmap, Claude Code remains the deployment target and managed-run runtime. Do not jump ahead to provider abstraction before Apply/Discard, deployment tracking, and canonical parsing are complete.
+
 ## Commands
 
 Use these commands from the repository root.

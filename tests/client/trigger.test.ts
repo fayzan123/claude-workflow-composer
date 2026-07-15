@@ -1,19 +1,20 @@
 import { describe, it, expect } from 'vitest'
 import {
-  isAbsoluteTriggerPath,
   newTrigger,
   normalizeMaxRunsPerDay,
   normalizeTriggerForSave,
   validateTriggerForSave,
 } from '../../client/src/lib/trigger.ts'
+import { isAbsolutePath } from '../../client/src/lib/path.ts'
 
 describe('trigger helpers', () => {
   it('recognizes POSIX and Windows absolute paths', () => {
-    expect(isAbsoluteTriggerPath('/repo')).toBe(true)
-    expect(isAbsoluteTriggerPath('C:\\repo')).toBe(true)
-    expect(isAbsoluteTriggerPath('C:/repo')).toBe(true)
-    expect(isAbsoluteTriggerPath('relative/repo')).toBe(false)
-    expect(isAbsoluteTriggerPath('')).toBe(false)
+    expect(isAbsolutePath('/repo')).toBe(true)
+    expect(isAbsolutePath('C:\\repo')).toBe(true)
+    expect(isAbsolutePath('C:/repo')).toBe(true)
+    expect(isAbsolutePath('\\\\server\\share')).toBe(true)
+    expect(isAbsolutePath('relative/repo')).toBe(false)
+    expect(isAbsolutePath('')).toBe(false)
   })
 
   it('normalizes maxRunsPerDay to at least one', () => {

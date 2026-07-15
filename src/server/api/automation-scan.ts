@@ -203,9 +203,18 @@ export function automationScanRouter(opts: AutomationScanRouterOptions): Router 
 
   router.post('/:id/dismiss', async (req, res) => {
     if (hasPromotionWork()) return void res.status(409).json({ error: 'A workflow generation is already running.' })
-    const a = await opts.store.setStatus(req.params.id, 'dismissed')
+    const a = await opts.store.dismiss(req.params.id)
     if (!a) return void res.status(404).json({ error: 'not found' })
     res.json({ ok: true })
+  })
+
+  router.post('/:id/restore', async (req, res) => {
+    if (hasPromotionWork()) return void res.status(409).json({ error: 'A workflow generation is already running.' })
+    const current = opts.store.getLatest()?.automations.find(candidate => candidate.id === req.params.id)
+    if (!current) return void res.status(404).json({ error: 'not found' })
+    if (current.status !== 'dismissed') return void res.status(409).json({ error: 'Automation is not dismissed.' })
+    const automation = await opts.store.restore(current.id)
+    res.json({ ok: true, automation })
   })
 
   router.post('/:id/promote/cancel', async (req, res) => {

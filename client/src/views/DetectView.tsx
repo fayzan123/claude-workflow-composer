@@ -1,6 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { api } from '../lib/api.ts'
+import { mergeScanLogs } from '../lib/scan-log.ts'
+import { readScanModel, writeScanModel, type ScanModel } from '../lib/scan-preferences.ts'
+import { deriveScanUiState, detectResultsContent } from '../lib/scan-state.ts'
 import { toast } from '../lib/toast.ts'
 import './DetectView.css'
 
@@ -27,23 +30,6 @@ const STATUS_LABEL: Record<string, string> = {
   running: 'Scanning',
   done: 'Complete',
   error: 'Scan failed',
-}
-
-/** Merge log entries, deduped by ts+level+message, so GET-replay and live SSE can't drop or double a line regardless of arrival order. */
-function mergeLogs(prev: Log[], incoming: Log[]): Log[] {
-  if (incoming.length === 0) return prev
-  const key = (l: Log) => `${l.ts}|${l.level}|${l.message}`
-  const seen = new Set(prev.map(key))
-  const added = incoming.filter(l => !seen.has(key(l)))
-  if (added.length === 0) return prev
-  return [...prev, ...added].sort((a, b) => {
-    const at = Date.parse(a.ts)
-    const bt = Date.parse(b.ts)
-    if (!Number.isFinite(at) && !Number.isFinite(bt)) return 0
-    if (!Number.isFinite(at)) return 1
-    if (!Number.isFinite(bt)) return -1
-    return at - bt
-  })
 }
 
 function sameAutos(a: Auto[], b: Auto[]): boolean {
@@ -74,7 +60,8 @@ export function DetectView() {
   const [busyId, setBusyId] = useState<string | null>(null)
   const [generation, setGeneration] = useState<Generation | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
-  const [model, setModel] = useState<string>('sonnet')
+  const [scanError, setScanError] = useState<string | null>(null)
+  const [model, setModel] = useState<ScanModel>(() => readScanModel())
   const [cancelingId, setCancelingId] = useState<string | null>(null)
   const mountedRef = useRef(true)
   const [elapsed, setElapsed] = useState(0)
@@ -88,7 +75,10 @@ export function DetectView() {
   const running = status === 'running'
   const latestStep = activeGeneration?.step ?? (logs.length > 0 ? logs[logs.length - 1].message : null)
   const completedWorkflowRef = useRef<string | null>(null)
-  useEffect(() => () => { mountedRef.current = false }, [])
+  useEffect(() => {
+    mountedRef.current = true
+    return () => { mountedRef.current = false }
+  }, [])
 
   // Live elapsed timer while a workflow is generating — generation can take minutes, so a
   // visibly-ticking clock + current step reassures the user it's working, not hung.
@@ -110,24 +100,12 @@ export function DetectView() {
     setBusyId(null)
   }, [generation?.workflowId])
 
-  // Prominent toast when a history scan finishes (the small status pill is easy to miss).
-  const prevStatusRef = useRef(status)
-  useEffect(() => {
-    const prev = prevStatusRef.current
-    prevStatusRef.current = status
-    if (prev === 'running' && status === 'done') {
-      const n = autos.length
-      toast.success('History scan complete', n > 0 ? `${n} automation${n === 1 ? '' : 's'} found` : 'No strong patterns found this time')
-    } else if (prev === 'running' && status === 'error') {
-      toast.error('History scan failed', 'See the scan log for details.')
-    }
-  }, [status]) // eslint-disable-line react-hooks/exhaustive-deps
-
   async function refresh() {
     const r = await api.automationScan.latest()
     setStatus(r.status)
+    setScanError(r.error ?? null)
     setGeneration(r.generation ?? null)
-    setLogs(prev => mergeLogs(prev, r.log ?? []))
+    setLogs(prev => mergeScanLogs(prev, r.log ?? []))
     setAutos(r.automations.filter(a => a.status !== 'dismissed'))
     return r
   }
@@ -135,6 +113,7 @@ export function DetectView() {
   async function scan() {
     if (running || generationInProgress) return
     setActionError(null)
+    setScanError(null)
     setStatus('running'); setLogs([]); setAutos([])
     try {
       const res = await api.automationScan.start(model)
@@ -152,7 +131,7 @@ export function DetectView() {
   // mount: replay current state, subscribe to live log, optionally autostart
   useEffect(() => {
     const es = new EventSource('/api/automation-scan/stream')
-    es.onmessage = (m) => { try { const e = JSON.parse(m.data) as Log; setLogs(prev => mergeLogs(prev, [e])) } catch { /* ignore */ } }
+    es.onmessage = (m) => { try { const e = JSON.parse(m.data) as Log; setLogs(prev => mergeScanLogs(prev, [e])) } catch { /* ignore */ } }
     refresh().then(r => {
       const promotionActive = Boolean(r.generation && !r.generation.workflowId && !r.generation.error) || r.automations.some(a => a.status === 'promoting')
       if (params.get('autostart') === '1' && r.status !== 'running' && !promotionActive && !startedRef.current) {
@@ -167,6 +146,8 @@ export function DetectView() {
         const r = await api.automationScan.latest()
         const visibleAutos = r.automations.filter(a => a.status !== 'dismissed')
         setStatus(prev => prev === r.status ? prev : r.status)
+        setScanError(prev => prev === (r.error ?? null) ? prev : (r.error ?? null))
+        setLogs(prev => mergeScanLogs(prev, r.log ?? []))
         setGeneration(prev => {
           const next = r.generation ?? null
           if (!prev && !next) return prev
@@ -184,7 +165,10 @@ export function DetectView() {
   // page/results column to the bottom when generation streams new log lines.
   useEffect(() => {
     const el = logEndRef.current?.parentElement
-    if (el) el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' })
+    if (!el) return
+    const reduceMotion = typeof window.matchMedia === 'function'
+      && window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    el.scrollTo({ top: el.scrollHeight, behavior: reduceMotion ? 'auto' : 'smooth' })
   }, [logs])
 
   // Promote spawns Claude to generate the workflow (seconds). Guard against double-fire and
@@ -232,6 +216,9 @@ export function DetectView() {
   }
   async function dismiss(id: string) {
     if (generationInProgress) return
+    const automation = autos.find(candidate => candidate.id === id)
+    if (!automation) return
+    setActionError(null)
     try {
       const res = await api.automationScan.dismiss(id)
       if (!res.ok) {
@@ -244,12 +231,40 @@ export function DetectView() {
       setActionError('Dismiss failed — is the server still running?')
       return
     }
-    setAutos(prev => prev.filter(a => a.id !== id))
+    if (mountedRef.current) setAutos(prev => prev.filter(a => a.id !== id))
+    toast.info(
+      'Automation dismissed',
+      `"${automation.title}" was removed from this scan.`,
+      { label: 'Undo', onClick: () => { void restoreDismissed(automation) } },
+    )
+  }
+
+  async function restoreDismissed(automation: Auto) {
+    try {
+      const res = await api.automationScan.restore(automation.id)
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({})) as { error?: string }
+        throw new Error(body.error || 'Could not restore this automation.')
+      }
+      if (mountedRef.current) {
+        setActionError(null)
+        await refresh()
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Could not restore this automation.'
+      if (mountedRef.current) {
+        setActionError(message)
+        await refresh().catch(() => {})
+      }
+      toast.error('Undo failed', message)
+    }
   }
 
   const selectedModel = MODELS.find(m => m.key === model) ?? MODELS[1]
   const statusLabel = generationInProgress ? 'Generating workflow' : STATUS_LABEL[status] ?? status
   const statusClass = generationInProgress ? 'promoting' : status
+  const scanState = deriveScanUiState(status, autos)
+  const resultsContent = detectResultsContent(scanState)
 
   return (
     <div className="detect">
@@ -269,7 +284,7 @@ export function DetectView() {
             disabled={running || generationInProgress}
             title={generationInProgress ? 'A workflow is already being generated.' : undefined}
           >
-            {generationInProgress ? 'Generating...' : running ? 'Scanning...' : logs.length ? 'Scan again' : 'Scan history'}
+            {generationInProgress ? 'Generating...' : running ? 'Scanning...' : status === 'idle' ? 'Scan history' : 'Scan again'}
           </button>
         </div>
       </header>
@@ -281,7 +296,10 @@ export function DetectView() {
               key={m.key}
               type="button"
               className={`detect__model${model === m.key ? ' detect__model--on' : ''}`}
-              onClick={() => setModel(m.key)}
+              onClick={() => {
+                setModel(m.key)
+                writeScanModel(m.key)
+              }}
               disabled={running || generationInProgress}
               title={generationInProgress ? 'Model changes are disabled while a workflow is being generated.' : undefined}
               aria-pressed={model === m.key}
@@ -300,22 +318,15 @@ export function DetectView() {
       <div className="detect__body">
         <main className="detect__results" aria-label="Detected automations">
           <div className="detect__results-head">
-            <h2 className="detect__results-h">{autos.length > 0 ? `${autos.length} automation${autos.length === 1 ? '' : 's'} found` : 'Automation candidates'}</h2>
-            {running && <span className="detect__results-sub">Reading history and clustering repeat work</span>}
+            <h2 className="detect__results-h">{resultsContent.title}</h2>
+            {resultsContent.detail && <span className="detect__results-sub">{resultsContent.detail}</span>}
           </div>
           {actionError && <p className="detect__error">{actionError}</p>}
+          {status === 'error' && scanError && scanError !== actionError && <p className="detect__error">{scanError}</p>}
           {autos.length === 0 ? (
             <div className="detect__empty-state">
-              <p className="detect__empty-title">
-                {running ? 'Looking for repeatable work' : status === 'done' ? 'No strong patterns found' : 'Start with a history scan'}
-              </p>
-              <p className="detect__empty-copy">
-                {running
-                  ? 'Candidates will appear here as soon as the scan finishes.'
-                  : status === 'done'
-                    ? 'Try a deeper model later if your recent history is sparse or messy.'
-                    : 'CWC will inspect your local Claude Code history, cluster repeated work, and show the workflows worth generating.'}
-              </p>
+              <p className="detect__empty-title">{resultsContent.emptyTitle}</p>
+              <p className="detect__empty-copy">{resultsContent.emptyDescription}</p>
             </div>
           ) : (
             <div className="detect__cards">
@@ -323,6 +334,7 @@ export function DetectView() {
                 const failed = a.status === 'promotion_failed'
                 const cancelled = a.status === 'promotion_cancelled'
                 const promoted = a.status === 'promoted'
+                const generatedWorkflowId = generation?.id === a.id ? generation.workflowId : undefined
                 // A card that has reached a terminal state is never "busy", even if busyId /
                 // activePromotionId briefly linger after a cancel — otherwise the loading bar
                 // renders on top of the cancelled/failed message.
@@ -355,15 +367,35 @@ export function DetectView() {
                     </ol>
                   )}
                   <div className="detect__card-actions">
-                    <button
-                      className="detect__promote"
-                      type="button"
-                      onClick={() => promote(a.id)}
-                      disabled={generationInProgress}
-                      title={generationInProgress && !busy ? 'A workflow is already being generated.' : undefined}
-                    >
-                      {busy ? 'Generating...' : a.status === 'promoted' || failed || cancelled ? 'Generate again' : 'Generate workflow'}
-                    </button>
+                    {generatedWorkflowId ? (
+                      <>
+                        <button
+                          className="detect__promote"
+                          type="button"
+                          onClick={() => navigate(`/w/${generatedWorkflowId}/build`)}
+                        >
+                          Open workflow
+                        </button>
+                        <button
+                          className="detect__dismiss"
+                          type="button"
+                          onClick={() => promote(a.id)}
+                          disabled={generationInProgress}
+                        >
+                          Generate again
+                        </button>
+                      </>
+                    ) : (
+                      <button
+                        className="detect__promote"
+                        type="button"
+                        onClick={() => promote(a.id)}
+                        disabled={generationInProgress}
+                        title={generationInProgress && !busy ? 'A workflow is already being generated.' : undefined}
+                      >
+                        {busy ? 'Generating...' : promoted || failed || cancelled ? 'Generate again' : 'Generate workflow'}
+                      </button>
+                    )}
                     {busy ? (
                       <button className="detect__dismiss detect__cancel" type="button" onClick={() => cancelPromote(a.id)} disabled={cancelingId === a.id}>
                         {cancelingId === a.id ? 'Cancelling...' : 'Cancel'}

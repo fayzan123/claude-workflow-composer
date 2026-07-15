@@ -437,6 +437,7 @@
 .detect__card-actions {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: var(--space-xs);
   margin-top: var(--space-lg);
 }
@@ -682,6 +683,7 @@
 
 @media (prefers-reduced-motion: reduce) {
   .detect__status--running::before,
+  .detect__status--promoting::before,
   .detect__progress-bar {
     animation: none;
   }

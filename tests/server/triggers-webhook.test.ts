@@ -5,6 +5,7 @@ import * as os from 'node:os'
 import * as path from 'node:path'
 import * as http from 'node:http'
 import type { AddressInfo } from 'node:net'
+import { execFileSync } from 'node:child_process'
 import express from 'express'
 import { triggersRouter } from '../../src/server/api/triggers.js'
 import { runsRouter } from '../../src/server/api/runs.js'
@@ -237,6 +238,61 @@ describe('POST /api/triggers/:token', () => {
     expect(completed!.message).toContain('Trigger payload:')
     expect(completed!.message).toContain('"hello"')
     expect(completed!.message).toContain('"world"')
+  })
+
+  it('fans one webhook delivery out to every configured target', async () => {
+    const targetA = path.join(workflowsDir, 'target-a')
+    const targetB = path.join(workflowsDir, 'target-b')
+    await fs.mkdir(targetA)
+    await fs.mkdir(targetB)
+    const t = makeTrigger({ cwd: targetA, targets: [targetB] })
+    await writeWorkflow(t)
+    await sharedState.arm(t)
+
+    const res = await fetch(`${base}/api/triggers/${TOKEN}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: '{}',
+    })
+
+    expect(res.status).toBe(202)
+    const body = await res.json() as { runId: string; runs: Array<{ cwd: string; runId: string }>; skipped: unknown[] }
+    expect(body.runId).toBe(body.runs[0].runId)
+    expect(body.runs.map(run => run.cwd)).toEqual([targetA, targetB])
+    expect(new Set(body.runs.map(run => run.runId)).size).toBe(2)
+    expect(body.skipped).toEqual([])
+    await Promise.all(body.runs.map(run => waitForStatus(run.runId, 'complete')))
+    const startedCwds = await Promise.all(body.runs.map(async run => (await getEvents(run.runId))[0].cwd))
+    expect(startedCwds).toEqual([targetA, targetB])
+  })
+
+  it('reports a skipped target without hiding successful webhook fan-out runs', async () => {
+    const gitTarget = path.join(workflowsDir, 'git-target')
+    const invalidTarget = path.join(workflowsDir, 'not-a-repo')
+    await fs.mkdir(gitTarget)
+    await fs.mkdir(invalidTarget)
+    execFileSync('git', ['-C', gitTarget, 'init', '-b', 'main'])
+    execFileSync('git', ['-C', gitTarget, 'config', 'user.email', 't@t'])
+    execFileSync('git', ['-C', gitTarget, 'config', 'user.name', 't'])
+    await fs.writeFile(path.join(gitTarget, 'README.md'), 'base\n')
+    execFileSync('git', ['-C', gitTarget, 'add', '-A'])
+    execFileSync('git', ['-C', gitTarget, 'commit', '-m', 'init'])
+    const t = makeTrigger({ cwd: gitTarget, targets: [invalidTarget], isolation: 'worktree' })
+    await writeWorkflow(t)
+    await sharedState.arm(t)
+
+    const res = await fetch(`${base}/api/triggers/${TOKEN}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: '{}',
+    })
+
+    expect(res.status).toBe(202)
+    const body = await res.json() as { runs: Array<{ cwd: string; runId: string }>; skipped: Array<{ cwd: string; reason: string }> }
+    expect(body.runs).toHaveLength(1)
+    expect(body.runs[0].cwd).toBe(gitTarget)
+    expect(body.skipped).toEqual([{ cwd: invalidTarget, reason: 'not a git repo' }])
+    await waitForStatus(body.runs[0].runId, 'complete')
   })
 
   it('truncates payload > 8KB with marker', async () => {

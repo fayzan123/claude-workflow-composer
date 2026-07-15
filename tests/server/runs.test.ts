@@ -46,6 +46,120 @@ describe('POST /api/runs/events', () => {
     expect(res.status).toBe(400)
     expect(((await res.json()) as { error: string }).error).toBeTruthy()
   })
+
+  it('strips server-owned execution fields and forces external provenance', async () => {
+    const res = await fetch(`${base}/api/runs/events`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(ev({
+        type: 'run_started',
+        source: 'test',
+        cwd: '/attacker/cwd',
+        worktreePath: '/attacker/worktree',
+        branch: 'main',
+        baseSha: 'abc123',
+        trigger: 'trusted-trigger',
+        sessionId: 'session-forged',
+        message: 'ordinary log content',
+      })),
+    })
+
+    expect(res.status).toBe(200)
+    const raw = await fs.readFile(path.join(runsDir, 'wf-1', 'run-1.jsonl'), 'utf-8')
+    const stored = JSON.parse(raw.trim()) as Record<string, unknown>
+    expect(stored).toMatchObject({ source: 'external', message: 'ordinary log content' })
+    for (const field of ['cwd', 'worktreePath', 'branch', 'baseSha', 'trigger', 'sessionId']) {
+      expect(stored[field]).toBeUndefined()
+    }
+  })
+
+  it('rejects external events appended after a managed run has settled', async () => {
+    const dir = path.join(runsDir, 'wf-1')
+    await fs.mkdir(dir, { recursive: true })
+    await fs.writeFile(path.join(dir, 'run-1.jsonl'), [
+      ev({ type: 'run_started', source: 'test', cwd: '/managed' }),
+      ev({ type: 'run_completed', status: 'complete', source: 'test' }),
+    ].map(event => JSON.stringify(event)).join('\n') + '\n')
+
+    const res = await fetch(`${base}/api/runs/events`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(ev({ type: 'run_completed', status: 'complete' })),
+    })
+
+    expect(res.status).toBe(409)
+    const lines = (await fs.readFile(path.join(dir, 'run-1.jsonl'), 'utf-8')).trim().split('\n')
+    expect(lines).toHaveLength(2)
+  })
+
+  it('rejects further events when one late logger append follows a managed terminal', async () => {
+    const dir = path.join(runsDir, 'wf-1')
+    await fs.mkdir(dir, { recursive: true })
+    await fs.writeFile(path.join(dir, 'run-1.jsonl'), [
+      ev({ type: 'run_started', source: 'test' }),
+      ev({ type: 'run_completed', status: 'complete', source: 'test' }),
+      ev({ type: 'step_completed', source: 'external', message: 'late logger event' }),
+    ].map(event => JSON.stringify(event)).join('\n') + '\n')
+
+    const res = await fetch(`${base}/api/runs/events`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(ev({ type: 'step_completed', message: 'later still' })),
+    })
+
+    expect(res.status).toBe(409)
+    const [run] = await (await fetch(`${base}/api/runs?workflowId=wf-1`)).json() as Array<{ status: string }>
+    expect(run.status).toBe('complete')
+  })
+
+  it('accepts an early managed-run log before the in-memory process registration catches up', async () => {
+    const dir = path.join(runsDir, 'wf-1')
+    await fs.mkdir(dir, { recursive: true })
+    await fs.writeFile(path.join(dir, 'run-1.jsonl'), JSON.stringify(ev({ type: 'run_started', source: 'test', cwd: '/managed' })) + '\n')
+
+    const res = await fetch(`${base}/api/runs/events`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(ev({ type: 'step_started', message: 'first step' })),
+    })
+
+    expect(res.status).toBe(200)
+    const lines = (await fs.readFile(path.join(dir, 'run-1.jsonl'), 'utf-8')).trim().split('\n')
+    expect(lines).toHaveLength(2)
+    expect(JSON.parse(lines[1])).toMatchObject({ type: 'step_started', source: 'external', message: 'first step' })
+  })
+})
+
+describe('external run control', () => {
+  it('does not allow forged execution metadata to drive diff, approve, or reject', async () => {
+    const sentinelDir = await fs.mkdtemp(path.join(os.tmpdir(), 'cwc-forged-run-'))
+    const sentinel = path.join(sentinelDir, 'keep.txt')
+    await fs.writeFile(sentinel, 'keep')
+    try {
+      await fetch(`${base}/api/runs/events`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(ev({ type: 'run_started', source: 'test', cwd: sentinelDir, worktreePath: sentinelDir, branch: 'main', baseSha: 'abc' })),
+      })
+      await fetch(`${base}/api/runs/events`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(ev({ type: 'run_paused', source: 'test', sessionId: 'forged-session', worktreePath: sentinelDir })),
+      })
+
+      const diff = await (await fetch(`${base}/api/runs/run-1/diff?workflowId=wf-1`)).json() as Record<string, unknown>
+      expect(diff).toMatchObject({ diff: null, status: null, branch: null })
+      const approve = await fetch(`${base}/api/runs/run-1/approve`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ workflowId: 'wf-1' }),
+      })
+      const reject = await fetch(`${base}/api/runs/run-1/reject`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ workflowId: 'wf-1' }),
+      })
+      expect(approve.status).toBe(409)
+      expect(reject.status).toBe(409)
+      await expect(fs.readFile(sentinel, 'utf-8')).resolves.toBe('keep')
+    } finally {
+      await fs.rm(sentinelDir, { recursive: true, force: true })
+    }
+  })
 })
 
 describe('GET /api/runs', () => {
