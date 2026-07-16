@@ -79,7 +79,13 @@ describe('POST /api/runs/test', () => {
     expect(res.status).toBe(200)
     const { runId } = (await res.json()) as { runId: string }
     const run = await waitForStatus(runId, 'complete')
-    expect(run.source).toBe('test')
+    expect(run).toMatchObject({
+      source: 'test',
+      managed: true,
+      isolation: 'in-place',
+      disposition: 'unavailable',
+      actions: { apply: false, discard: false },
+    })
     const events = (await (await fetch(`${base}/api/runs/${runId}/events?workflowId=wf-1`)).json()) as Record<string, unknown>[]
     expect(events[0]).toMatchObject({ type: 'run_started', source: 'test' })
     const last = events[events.length - 1] as Record<string, unknown>
@@ -131,7 +137,13 @@ describe('POST /api/runs/:runId/stop', () => {
     const res = await fetch(`${base}/api/runs/${runId}/stop`, { method: 'POST' })
     expect(res.status).toBe(200)
     const run = await waitForStatus(runId, 'aborted')
-    expect(run.source).toBe('test')
+    expect(run).toMatchObject({
+      source: 'test',
+      managed: true,
+      lifecycleState: 'aborted',
+      disposition: 'unavailable',
+      actions: { apply: false, discard: false },
+    })
   })
 
   it('404 for unknown or finished runs', async () => {

@@ -8,7 +8,7 @@ export interface RunEventsState {
   liveEvents: RunEvent[]          // events of the most recent running run
   activeRun: RunSummary | null    // newest run with status 'running'
   pausedRuns: RunSummary[]        // global list of paused runs (all workflows)
-  refresh: () => void
+  refresh: () => Promise<void>
 }
 
 /** Subscribes to /api/runs/stream and keeps the run list + live event feed for one workflow. */
@@ -18,16 +18,22 @@ export function useRunEvents(workflowId: string): RunEventsState {
   const [pausedRuns, setPausedRuns] = useState<RunSummary[]>([])
   const activeRunId = useRef<string | null>(null)
 
-  const refreshPaused = useCallback(() => {
-    api.runs.paused().then(setPausedRuns).catch(() => setPausedRuns([]))
+  const refreshPaused = useCallback(async () => {
+    try {
+      setPausedRuns(await api.runs.paused())
+    } catch {
+      setPausedRuns([])
+    }
   }, [])
 
-  const refresh = useCallback(() => {
-    api.runs.list(workflowId).then(setRuns).catch(() => setRuns([]))
-    refreshPaused()
+  const refresh = useCallback(async () => {
+    await Promise.all([
+      api.runs.list(workflowId).then(setRuns).catch(() => setRuns([])),
+      refreshPaused(),
+    ])
   }, [workflowId, refreshPaused])
 
-  useEffect(() => { refresh() }, [refresh])
+  useEffect(() => { void refresh() }, [refresh])
 
   useEffect(() => {
     const es = new EventSource('/api/runs/stream')
@@ -37,7 +43,7 @@ export function useRunEvents(workflowId: string): RunEventsState {
 
       // Refresh global paused list on any pause/completion event, regardless of workflowId
       if (event.type === 'run_paused' || event.type === 'awaiting_approval' || event.type === 'run_completed') {
-        refreshPaused()
+        void refreshPaused()
       }
 
       // Filter per-workflow live events by workflowId
@@ -51,7 +57,7 @@ export function useRunEvents(workflowId: string): RunEventsState {
       if (event.type === 'run_completed' && event.runId === activeRunId.current) {
         activeRunId.current = null
       }
-      refresh()
+      void refresh()
     }
     return () => es.close()
   }, [workflowId, refresh, refreshPaused])

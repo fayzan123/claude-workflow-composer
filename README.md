@@ -121,6 +121,15 @@ The orchestrator skill delegates every implementation step to sub-agents via the
 
 You can also use **Test run** from CWC after exporting. Test runs spawn Claude Code headlessly with `--permission-mode bypassPermissions`, use a chosen working directory, and can run in a git worktree or in-place.
 
+Completed isolated runs stay reviewable in **Runs**. CWC checkpoints tracked and untracked output onto the run's `cwc/<workflow-skill>/<runId>` branch, removes the temporary worktree, and offers two deliberate result actions:
+
+- **Apply result** — fast-forwards the original checkout only when it is still the same repository, completely clean (including untracked files), and still at the recorded base commit. CWC never stashes, resets, rebases, cherry-picks, creates a merge commit, or resolves conflicts.
+- **Discard** — after an inline confirmation, deletes only the exact CWC result branch recorded by the run. A renamed, moved, foreign, or checked-out branch is preserved.
+
+Each managed run has a server-owned `<runId>.manifest.json` beside its JSONL timeline. The manifest records repository/base/worktree/result authority and the Apply/Discard disposition. Exported workflow logging can append timeline events, but `POST /api/runs/events` cannot create or change a manifest and event-only legacy runs never receive Git actions.
+
+The result endpoints are `GET /api/runs/:runId/diff`, `POST /api/runs/:runId/apply`, and `POST /api/runs/:runId/discard`; each requires the matching `workflowId`, and Discard additionally requires `confirmed: true`. Preflight conflicts return `409` with an actionable reason and leave both the destination and result branch unchanged.
+
 ### Automate
 
 Open a workflow's **Automate** mode to add schedules and webhooks:
@@ -138,7 +147,7 @@ Add a **gate node** (drag from the "Gate" section of the sidebar) at any point i
 3. Waits — the reviewer reads the diff, writes an optional note, and clicks **Approve** or **Reject**.
 4. On approval, the run resumes in the same Claude Code session from the gate point.
 
-The Home dashboard has an **Automations** widget that globally pauses or resumes scheduled/webhook runs without deleting or disarming triggers. Runs mode shows live/history timelines, approval inbox items, diffs, a stop button for active CWC-managed runs, and notification settings (macOS banners and/or a webhook URL).
+The Home dashboard has an **Automations** widget that globally pauses or resumes scheduled/webhook runs without deleting or disarming triggers. Runs mode shows live/history timelines, approval inbox items, diffs, Apply/Discard state for completed isolated results, a stop button for active CWC-managed runs, and notification settings (macOS banners and/or a webhook URL).
 
 ### Detect
 
@@ -167,10 +176,10 @@ Click **Generate workflow** on a candidate to promote it into a real `.cwc` work
 - **Claude Code detection** — warns on startup if `~/.claude/` is missing
 - **Test run** — launch an exported workflow headlessly from the UI (`--permission-mode bypassPermissions`, user-chosen working directory, worktree or in-place isolation) and stop it mid-run
 - **Live run view** — the active node pulses on the canvas, completed nodes get a check, and events stream into a timeline panel
-- **Run history** — runs of exported workflows with run logging enabled persist to `~/.cwc/runs/` with status, duration, source, and cost
+- **Run history** — JSONL timelines and server-owned managed-run manifests persist under `~/.cwc/runs/` with status, duration, source, cost, and isolated-result disposition
 - **Automate mode** — attach cron schedules or webhook URLs to a workflow, choose targets/isolation, add preconditions/setup commands, and arm trusted triggers
 - **Approval gates** — insert a gate node into any workflow; when reached the run pauses and posts a diff of its working branch, a reviewer approves or rejects from the inbox (or terminal), the run resumes on the same session
-- **Isolated runs** — Test Run (and scheduler-fired runs) create a git worktree on a `cwc/<runId>` branch so the main checkout is always untouched; the worktree is removed after the run completes
+- **Isolated runs** — Test Run (and scheduler-fired runs) create a git worktree on a CWC-owned branch so the main checkout stays untouched during execution; completed results can be reviewed, safely fast-forwarded, or explicitly discarded
 - **Notifications** — macOS banner + optional webhook on run complete, gate pause, and approval request; configured from Runs mode
 - **Global pause** — one Home dashboard toggle suspends all scheduled and webhook automation runs without disarming triggers
 - **Detect automations** — scans local Claude Code transcripts, clusters repeated work, streams progress, suggests automations, and promotes a candidate into a `.cwc` workflow with matching skills/agents reused when possible
@@ -222,8 +231,9 @@ Server modules:
   security.ts               API token cookie, auth middleware, CORS rules
   launcher.ts               CLI/server launch and port-collision handling
   run-store.ts              JSONL run persistence and SSE fan-out
+  run-manifest.ts           Versioned managed-run authority and serialized transitions
   workflow-runner.ts        Headless Claude Code process spawning
-  run-isolation.ts          Git worktree creation, cleanup, and diff helpers
+  run-isolation.ts          Git worktrees, verified diffs, Apply/Discard preflight and mutation
   run-launcher.ts           Test/scheduled/webhook run lifecycle
   automation-state.ts       Trigger arm/pause/fire bookkeeping
   automation-scheduler.ts   Cron trigger evaluation
@@ -237,7 +247,7 @@ Storage:
   ~/.cwc/
     recents.json              Recent file paths (max 10)
     workflows/                Saved .cwc workflow files
-    runs/<workflowId>/        Run event logs (one .jsonl per run)
+    runs/<workflowId>/        <runId>.jsonl timelines + <runId>.manifest.json managed authority
     worktrees/                Git worktrees for isolated runs (auto-cleaned)
     automation-state.json     Global pause flag + per-trigger arm state
     automation-scan.json      Latest history scan, suggestions, promotion state, and logs

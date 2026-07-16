@@ -8,12 +8,14 @@ import { workflowSkillSlug } from '../../slugify.js'
 import type { AutomationState } from '../automation-state.js'
 import { fireWorkflow } from '../run-launcher.js'
 import type { RunStore } from '../run-store.js'
+import type { RunManifestStore } from '../run-manifest.js'
 import { launchTriggerTargets } from '../trigger-targets.js'
 
 export interface TriggersRouterOptions {
   workflowsDir: string
   state: AutomationState
   store: RunStore
+  manifests?: RunManifestStore
   worktreesRoot: string
   skillsDir: string
   claudeBinPath?: string
@@ -73,7 +75,7 @@ export function triggersRouter(opts: TriggersRouterOptions): Router {
       workflowId: cwc.meta.id, workflowSlug,
       cwd, isolation: trigger.isolation, baseRef: trigger.baseRef,
       precondition: trigger.precondition, setupCommand: trigger.setupCommand,
-      trigger: trigger.id, payload, store: opts.store, worktreesRoot: opts.worktreesRoot, skillsDir: opts.skillsDir, binPath: opts.claudeBinPath, launchGroupId,
+      trigger: trigger.id, payload, store: opts.store, manifests: opts.manifests ?? opts.store.manifests, worktreesRoot: opts.worktreesRoot, skillsDir: opts.skillsDir, binPath: opts.claudeBinPath, launchGroupId,
     }))
     const runs = launched.flatMap(({ cwd, outcome }) => outcome.fired ? [{ cwd, runId: outcome.runId }] : [])
     const skipped = launched.flatMap(({ cwd, outcome }) => outcome.fired ? [] : [{ cwd, reason: outcome.reason }])

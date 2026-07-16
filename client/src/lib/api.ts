@@ -114,11 +114,15 @@ export const api = {
     recent: (limit?: number) =>
       req<RunSummary[]>('GET', `/runs/recent${limit ? `?limit=${limit}` : ''}`),
     diff: (workflowId: string, runId: string) =>
-      req<{ diff: string | null; status: string | null; branch: string | null }>('GET', `/runs/${encodeURIComponent(runId)}/diff?workflowId=${encodeURIComponent(workflowId)}`),
+      req<{ diff: string | null; status: string | null; branch: string | null; error?: string }>('GET', `/runs/${encodeURIComponent(runId)}/diff?workflowId=${encodeURIComponent(workflowId)}`),
     approve: (workflowId: string, runId: string, note?: string) =>
       reqWithError<{ resumed: boolean }>('POST', `/runs/${encodeURIComponent(runId)}/approve`, { workflowId, note }),
     reject: (workflowId: string, runId: string, note?: string) =>
       reqWithError<{ rejected: boolean }>('POST', `/runs/${encodeURIComponent(runId)}/reject`, { workflowId, note }),
+    apply: (workflowId: string, runId: string) =>
+      reqWithError<{ applied: true; disposition: 'applied'; appliedSha: string }>('POST', `/runs/${encodeURIComponent(runId)}/apply`, { workflowId }),
+    discard: (workflowId: string, runId: string) =>
+      reqWithError<{ discarded: true; disposition: 'discarded'; resultSha: string }>('POST', `/runs/${encodeURIComponent(runId)}/discard`, { workflowId, confirmed: true }),
     start: (workflowId: string, workflowSlug: string, cwd: string, isolation?: 'worktree' | 'in-place') =>
       reqWithError<{ runId: string }>('POST', '/runs/test', { workflowId, workflowSlug, cwd, isolation }),
     stop: (runId: string) =>

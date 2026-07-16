@@ -173,6 +173,57 @@ describe('RunStore', () => {
 
     await expect(store.appendExternal(ev({ type: 'step_started', source: 'external' }))).resolves.toBe(true)
   })
+
+  it('derives result disposition and action availability from the server-owned manifest', async () => {
+    const baseSha = 'a'.repeat(40)
+    const resultSha = 'b'.repeat(40)
+    await store.manifests.create({
+      runId: 'run-1',
+      workflowId: 'wf-1',
+      workflowSkillSlug: 'cwc-x',
+      triggerId: 'manual',
+      requestedIsolation: 'worktree',
+      originalCwd: '/repo',
+      requestedBaseRef: 'HEAD',
+    })
+    await store.manifests.transition('wf-1', 'run-1', manifest => ({
+      ...manifest,
+      lifecycleState: 'completed',
+      completionStatus: 'complete',
+      repositoryIdentity: '/repo/.git',
+      baseSha,
+      branch: 'cwc/cwc-x/run-1',
+      resultSha,
+      disposition: 'ready',
+    }))
+    await store.append(ev({ type: 'run_started', source: 'test' }))
+    await store.append(ev({ type: 'run_completed', source: 'test', status: 'complete' }))
+
+    const [run] = await store.listRuns('wf-1')
+
+    expect(run).toMatchObject({
+      managed: true,
+      lifecycleState: 'completed',
+      isolation: 'worktree',
+      disposition: 'ready',
+      resultSha,
+      actions: { diff: true, approve: false, reject: false, apply: true, discard: true },
+    })
+  })
+
+  it('keeps legacy event-only runs visible without privileged actions', async () => {
+    await store.append(ev({ type: 'run_started', source: 'test' }))
+    await store.append(ev({ type: 'run_completed', source: 'test', status: 'complete' }))
+
+    const [run] = await store.listRuns('wf-1')
+
+    expect(run).toMatchObject({
+      status: 'complete',
+      managed: false,
+      disposition: 'unavailable',
+      actions: { diff: false, approve: false, reject: false, apply: false, discard: false },
+    })
+  })
 })
 
 describe('paused runs', () => {

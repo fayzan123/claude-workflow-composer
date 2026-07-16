@@ -28,6 +28,11 @@ export interface RunEvent {
 
 // runId/workflowId become path segments under ~/.cwc/runs/ — keep them path-safe.
 const SAFE_ID = /^[A-Za-z0-9._-]+$/
+const MAX_ID_LENGTH = 200
+
+function isSafePathId(value: string): boolean {
+  return value.length <= MAX_ID_LENGTH && value !== '.' && value !== '..' && SAFE_ID.test(value)
+}
 
 export type ValidationOutcome = { ok: true; event: RunEvent } | { ok: false; error: string }
 
@@ -38,8 +43,8 @@ export function validateRunEvent(raw: unknown): ValidationOutcome {
     if (typeof e[k] !== 'string' || (e[k] as string).length === 0) return { ok: false, error: `missing or invalid ${k}` }
   }
   if (!Number.isFinite(Date.parse(e.ts as string))) return { ok: false, error: 'invalid ts' }
-  if (!SAFE_ID.test(e.runId as string)) return { ok: false, error: 'runId contains unsafe characters' }
-  if (!SAFE_ID.test(e.workflowId as string)) return { ok: false, error: 'workflowId contains unsafe characters' }
+  if (!isSafePathId(e.runId as string)) return { ok: false, error: 'runId contains unsafe characters' }
+  if (!isSafePathId(e.workflowId as string)) return { ok: false, error: 'workflowId contains unsafe characters' }
   if (!RUN_EVENT_TYPES.includes(e.type as RunEventType)) return { ok: false, error: 'unknown event type' }
   if (e.type === 'run_completed' && !RUN_STATUSES.includes(e.status as RunStatus)) {
     return { ok: false, error: 'run_completed requires status: complete | escalated | aborted | error' }

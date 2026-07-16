@@ -22,6 +22,7 @@ import type { StreamingRunner } from './streaming-analyzer.js'
 import { agentsGenerateRouter } from './api/agents-generate.js'
 import { runsRouter } from './api/runs.js'
 import { createRunStore } from './run-store.js'
+import { createRunManifestStore, type RunManifestStore } from './run-manifest.js'
 import { triggersRouter } from './api/triggers.js'
 import { automationsRouter } from './api/automations.js'
 import { createAutomationState } from './automation-state.js'
@@ -58,6 +59,7 @@ export interface AppOptions {
   claudeProbe?: ClaudeProbe       // injectable `claude --version` probe for scan diagnostics
   cwcVersion?: string             // reported in scan diagnostics; default read from package.json
   runStore?: RunStore             // test injection; default is a filesystem-backed store under runsDir
+  runManifestStore?: RunManifestStore // test injection; default is a filesystem-backed store under runsDir
 }
 
 /** Best-effort package version for diagnostics; works from both src/ (tsx) and dist/ layouts. */
@@ -110,7 +112,8 @@ export function createApp(opts: AppOptions): express.Express {
   const statePath = opts.automationStatePath ?? path.join(os.homedir(), '.cwc', 'automation-state.json')
   const configPath = opts.configPath ?? path.join(os.homedir(), '.cwc', 'config.json')
 
-  const runStore = opts.runStore ?? createRunStore(runsDir)
+  const manifestStore = opts.runManifestStore ?? opts.runStore?.manifests ?? createRunManifestStore(runsDir)
+  const runStore = opts.runStore ?? createRunStore(runsDir, manifestStore)
   const autoState = createAutomationState(statePath)
 
   const scanPath = opts.automationScanPath ?? path.join(os.homedir(), '.cwc', 'automation-scan.json')
@@ -120,17 +123,17 @@ export function createApp(opts: AppOptions): express.Express {
 
   // Sweep orphan worktrees on real server start only (paused/running runs keep theirs).
   // Gated on enableScheduler so test apps with default paths never touch ~/.cwc/worktrees.
-  if (opts.enableScheduler) void sweepOrphanWorktrees(runStore, runsDir, worktreesRoot)
+  if (opts.enableScheduler) void sweepOrphanWorktrees(runStore, runsDir, worktreesRoot, manifestStore)
 
   const isWorkflowBusy = async (workflowId: string, triggerId: string) => {
     if (runStore.hasActiveTestRun(workflowId)) return 'running' as const
-    const runs = await runStore.listRuns(workflowId)
+    const runs = await runStore.listRuns(workflowId, manifestStore)
     if (runs.some(r => r.status === 'paused' && r.trigger === triggerId)) return 'paused-same-trigger' as const
     return false as const
   }
 
-  app.use('/api/runs', runsRouter({ store: runStore, claudeBinPath: opts.claudeBinPath, worktreesRoot, runsDirPath: runsDir, skillsDir }))
-  app.use('/api/triggers', triggersRouter({ workflowsDir: wfDir, state: autoState, store: runStore, worktreesRoot, skillsDir, claudeBinPath: opts.claudeBinPath, isWorkflowBusy }))
+  app.use('/api/runs', runsRouter({ store: runStore, manifests: manifestStore, claudeBinPath: opts.claudeBinPath, worktreesRoot, runsDirPath: runsDir, skillsDir }))
+  app.use('/api/triggers', triggersRouter({ workflowsDir: wfDir, state: autoState, store: runStore, manifests: manifestStore, worktreesRoot, skillsDir, claudeBinPath: opts.claudeBinPath, isWorkflowBusy }))
 
   let config = loadConfig(configPath)
   app.use('/api/automations', automationsRouter({ state: autoState, configPath, workflowsDir: wfDir, onConfigChanged: (c) => { config = c } }))
@@ -141,7 +144,7 @@ export function createApp(opts: AppOptions): express.Express {
     scheduler = createScheduler({
       workflowsDir: wfDir, state: autoState, isWorkflowBusy,
       fire: makeSchedulerFire({
-        store: runStore, worktreesRoot, skillsDir, claudeBinPath: opts.claudeBinPath,
+        store: runStore, manifests: manifestStore, worktreesRoot, skillsDir, claudeBinPath: opts.claudeBinPath,
         onSkip: (id, reason) => autoState.recordSkip(id, reason, new Date()),
       }),
     })
@@ -186,6 +189,7 @@ export function createApp(opts: AppOptions): express.Express {
 
 export interface SchedulerFireDeps {
   store: RunStore
+  manifests?: RunManifestStore
   worktreesRoot: string
   skillsDir?: string
   claudeBinPath?: string
@@ -198,7 +202,7 @@ export function makeSchedulerFire(deps: SchedulerFireDeps) {
     fireWorkflow({
       workflowId: a.workflowId, workflowSlug: a.workflowSlug, cwd, isolation: a.trigger.isolation,
       baseRef: a.trigger.baseRef, precondition: a.trigger.precondition, setupCommand: a.trigger.setupCommand,
-      trigger: a.trigger.id, store: deps.store, worktreesRoot: deps.worktreesRoot, skillsDir: deps.skillsDir, binPath: deps.claudeBinPath, launchGroupId: a.launchGroupId,
+      trigger: a.trigger.id, store: deps.store, manifests: deps.manifests ?? deps.store.manifests, worktreesRoot: deps.worktreesRoot, skillsDir: deps.skillsDir, binPath: deps.claudeBinPath, launchGroupId: a.launchGroupId,
     }))
   return async (workflowId: string, workflowSlug: string, t: CwcTrigger): Promise<void> => {
     const launchGroupId = randomUUID()

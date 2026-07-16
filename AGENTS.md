@@ -21,7 +21,7 @@ The approved roadmap is maintained in:
 - `docs/specs/2026-07-14-cwc-product-roadmap-design.md`
 - `docs/plans/2026-07-14-cwc-product-roadmap-plan.md`
 
-Read both before starting roadmap work. The immediate next build is the complete Stage 1 vertical slice: server-owned managed-run manifests, manifest-authorized run operations, and safe Apply/Discard actions for completed isolated results, including the Runs UI. After that, proceed in this order:
+Read both before starting roadmap work. Stage 1 is implemented: managed runs have server-owned manifests, privileged run operations use manifest authority, and completed isolated results can be safely applied or discarded from Runs. Proceed next in this order:
 
 1. Deployment registry across user and project exports.
 2. Canonical `.cwc` parsing, migrations, import, duplicate, and portable sharing.
@@ -78,8 +78,9 @@ Important server modules:
 
 - `security.ts` installs the UI token cookie, requires API tokens in packaged mode, and restricts CORS.
 - `run-store.ts` persists JSONL run events and summaries under `~/.cwc/runs/<workflowId>/`.
+- `run-manifest.ts` atomically persists versioned managed-run authority and serializes lifecycle/result transitions per run.
 - `workflow-runner.ts` spawns `claude -p "/<slug>" --permission-mode bypassPermissions` for Test Runs.
-- `run-isolation.ts` manages git worktrees for isolated runs.
+- `run-isolation.ts` manages git worktrees plus verified diff, fast-forward Apply, and exact-branch Discard operations.
 - `run-launcher.ts` coordinates isolation setup, process spawn, finish classification, and orphan worktree cleanup.
 - `automation-state.ts`, `automation-scheduler.ts`, and `trigger-targets.ts` manage cron/webhook trigger state and firing.
 - `notifier.ts` sends macOS notifications and optional webhooks.
@@ -166,6 +167,8 @@ Runs are side-effectful. Preserve the distinction between a workflow recipe and 
 - Approval gates depend on run logging, the CWC inbox, resumable sessions, and reviewer approve/reject actions.
 - Shell preconditions skip firing on non-zero exit; setup commands run after the run starts and fail the run on non-zero exit.
 - Logging from exported orchestrators is best-effort and must not block workflow completion.
+- JSONL events are observational only. Diff, approve/reject, cleanup, Apply, and Discard require a valid matching server-owned manifest.
+- Apply requires the original clean checkout at the recorded base and uses only Git fast-forward behavior. Discard deletes only the verified CWC result ref after explicit confirmation.
 - Do not treat `modelInvocation: 'auto'` as equivalent to a CWC-managed run. Auto-invoked skills run outside the isolated-run harness.
 
 ## Storage Layout
@@ -174,7 +177,7 @@ Runs are side-effectful. Preserve the distinction between a workflow recipe and 
 ~/.cwc/
   recents.json
   workflows/
-  runs/<workflowId>/
+  runs/<workflowId>/        # <runId>.jsonl + managed <runId>.manifest.json
   worktrees/
   automation-state.json
   automation-scan.json
@@ -232,3 +235,4 @@ Do not introduce broad palette, typography, radius, elevation, or motion changes
 - Running automation tests against real `~/.cwc` or `~/.claude` paths.
 - Removing legacy generation without checking `CWC_LEGACY_GEN=1` and its tests.
 - Assuming README architecture snippets are newer than the source tree. Inspect source before relying on docs.
+- Reconstructing Git authority from run events or exposing Apply/Discard for legacy, in-place, paused, or unpreserved results.

@@ -1,12 +1,25 @@
 // src/server/run-launcher.ts
-import { exec, execFile } from 'node:child_process'
+import { exec } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import * as fsp from 'node:fs/promises'
 import * as path from 'node:path'
 import type { RunStore } from './run-store.js'
-import type { RunEvent } from '../run-events.js'
+import type { RunEvent, RunStatus } from '../run-events.js'
 import { runWorkflowSkill, type WorkflowRunResult } from './workflow-runner.js'
-import { checkpointWorktree, isGitRepo, resolveBaseSha, createWorktree, removeWorktree, type WorktreeInfo } from './run-isolation.js'
+import {
+  checkpointWorktree,
+  createWorktree,
+  discardResultBranch,
+  getRepositoryIdentity,
+  inspectManagedWorktree,
+  isGitRepo,
+  removeVerifiedWorktree,
+  resolveBaseSha,
+  verifyManagedResult,
+  type ManagedResultAuthority,
+  type WorktreeInfo,
+} from './run-isolation.js'
+import type { RunManifest, RunManifestStore } from './run-manifest.js'
 import { killProcessTree } from './process-tree.js'
 
 export interface FireOptions {
@@ -16,6 +29,7 @@ export interface FireOptions {
   isolation: 'worktree' | 'in-place'
   trigger: string                 // trigger id or 'manual'
   store: RunStore
+  manifests?: RunManifestStore    // defaults to the filesystem store owned by RunStore
   worktreesRoot: string
   skillsDir?: string
   baseRef?: string                // default 'HEAD'
@@ -54,17 +68,80 @@ export function runShellCommand(command: string, cwd: string, timeoutMs: number)
   })
 }
 
+function terminalState(status: WorkflowRunResult['status']): 'completed' | 'failed' | 'aborted' {
+  if (status === 'complete') return 'completed'
+  return status === 'aborted' ? 'aborted' : 'failed'
+}
+
+function completionStatus(status: WorkflowRunResult['status']): RunStatus {
+  return status
+}
+
+function resultAuthority(manifest: RunManifest): ManagedResultAuthority | null {
+  if (!manifest.repositoryIdentity || !manifest.baseSha || !manifest.branch || !manifest.resultSha) return null
+  return {
+    destinationCwd: manifest.originalCwd,
+    repositoryIdentity: manifest.repositoryIdentity,
+    baseSha: manifest.baseSha,
+    branch: manifest.branch,
+    resultSha: manifest.resultSha,
+  }
+}
+
+async function transitionFailure(
+  manifests: RunManifestStore,
+  workflowId: string,
+  runId: string,
+  reason: string,
+  status: RunStatus = 'error',
+): Promise<void> {
+  await manifests.transition(workflowId, runId, manifest => ({
+    ...manifest,
+    lifecycleState: status === 'aborted' ? 'aborted' : 'failed',
+    completionStatus: status,
+    disposition: 'unavailable',
+    failureReason: reason,
+    actionError: null,
+  }))
+}
+
 export async function fireWorkflow(opts: FireOptions): Promise<FireOutcome> {
   const now = () => new Date().toISOString()
   const runId = opts.runId ?? `run-${randomUUID().slice(0, 13)}`
+  const manifests = opts.manifests ?? opts.store.manifests
+  const requestedBaseRef = opts.baseRef?.trim() || 'HEAD'
   if (!opts.store.registerRun(runId, opts.workflowId, () => { /* launch placeholder */ }, opts.launchGroupId)) {
     return { fired: false, reason: 'workflow already active' }
   }
-  const skip = (reason: string): FireOutcome => {
+
+  try {
+    await manifests.create({
+      runId,
+      workflowId: opts.workflowId,
+      workflowSkillSlug: opts.workflowSlug,
+      triggerId: opts.trigger,
+      requestedIsolation: opts.isolation,
+      originalCwd: opts.cwd,
+      requestedBaseRef,
+    })
+  } catch (err) {
+    opts.store.releaseRun(runId)
+    return { fired: false, reason: `run manifest: ${err instanceof Error ? err.message : String(err)}` }
+  }
+
+  const skip = async (reason: string, lifecycleState: 'precondition_failed' | 'failed' = 'failed'): Promise<FireOutcome> => {
+    await manifests.transition(opts.workflowId, runId, manifest => ({
+      ...manifest,
+      lifecycleState,
+      completionStatus: 'error',
+      failureReason: reason,
+      disposition: 'unavailable',
+    })).catch(() => {})
     opts.store.releaseRun(runId)
     return { fired: false, reason }
   }
 
+  let wt: WorktreeInfo | null = null
   try {
     // The skill may live in the user scope OR the target project's .claude/skills —
     // project-scoped exports are first-class, and `claude` resolves them from the run cwd.
@@ -73,152 +150,336 @@ export async function fireWorkflow(opts: FireOptions): Promise<FireOutcome> {
         path.join(opts.skillsDir, opts.workflowSlug, 'SKILL.md'),
         path.join(opts.cwd, '.claude', 'skills', opts.workflowSlug, 'SKILL.md'),
       ]
-      const found = await Promise.all(candidates.map(p => fsp.access(p).then(() => true, () => false)))
-      if (!found.includes(true)) return skip('skill not exported')
+      const found = await Promise.all(candidates.map(candidate => fsp.access(candidate).then(() => true, () => false)))
+      if (!found.includes(true)) return await skip('skill not exported')
     }
 
     if (opts.precondition) {
-      const pre = await runShellCommand(opts.precondition, opts.cwd, 60_000)
-      if (!pre.ok) return skip('precondition')
+      await manifests.transition(opts.workflowId, runId, manifest => ({ ...manifest, lifecycleState: 'checking_precondition' }))
+      const precondition = await runShellCommand(opts.precondition, opts.cwd, 60_000)
+      if (!precondition.ok) return await skip('precondition', 'precondition_failed')
     }
 
-    // Isolation + baseSha (baseSha recorded for ANY git cwd — Addendum 6)
-    let wt: WorktreeInfo | null = null
-    let baseSha: string | undefined
+    await manifests.transition(opts.workflowId, runId, manifest => ({ ...manifest, lifecycleState: 'preparing' }))
     const git = await isGitRepo(opts.cwd)
+    let baseSha: string | undefined
+    let repositoryIdentity: string | undefined
     if (opts.isolation === 'worktree') {
-      if (!git) return skip('not a git repo')
+      if (!git) return await skip('not a git repo')
       try {
-        wt = await createWorktree(opts.cwd, opts.workflowSlug, runId, opts.baseRef?.trim() || 'HEAD', opts.worktreesRoot)
+        repositoryIdentity = await getRepositoryIdentity(opts.cwd)
+        wt = await createWorktree(opts.cwd, opts.workflowSlug, runId, requestedBaseRef, opts.worktreesRoot)
         baseSha = wt.baseSha
+        await manifests.transition(opts.workflowId, runId, manifest => ({
+          ...manifest,
+          lifecycleState: 'worktree_created',
+          repositoryIdentity,
+          baseSha,
+          worktreePath: wt!.worktreePath,
+          branch: wt!.branch,
+        }))
       } catch (err) {
-        return skip(`worktree: ${err instanceof Error ? err.message : String(err)}`)
+        return await skip(`worktree: ${err instanceof Error ? err.message : String(err)}`)
       }
     } else if (git) {
+      repositoryIdentity = await getRepositoryIdentity(opts.cwd)
       baseSha = await resolveBaseSha(opts.cwd, 'HEAD').catch(() => undefined)
+      await manifests.transition(opts.workflowId, runId, manifest => ({
+        ...manifest,
+        repositoryIdentity,
+        ...(baseSha ? { baseSha } : {}),
+      }))
     }
     const runCwd = wt?.worktreePath ?? opts.cwd
 
     const started: RunEvent = {
-      runId, workflowId: opts.workflowId, workflowSlug: opts.workflowSlug,
-      type: 'run_started', ts: now(), source: 'test', trigger: opts.trigger,
-      cwd: opts.cwd, baseSha,
+      runId,
+      workflowId: opts.workflowId,
+      workflowSlug: opts.workflowSlug,
+      type: 'run_started',
+      ts: now(),
+      source: 'test',
+      trigger: opts.trigger,
+      cwd: opts.cwd,
+      baseSha,
       ...(wt ? { worktreePath: wt.worktreePath, branch: wt.branch } : {}),
       message: opts.trigger === 'manual' ? 'Test run started from CWC' : `Fired by trigger ${opts.trigger}`,
     }
-
-    const emit = (e: RunEvent) => opts.store.append(e).catch(() => { /* teardown race */ })
+    const emit = (event: RunEvent) => opts.store.append(event).catch(() => { /* teardown race */ })
 
     if (opts.setupCommand) {
+      await manifests.transition(opts.workflowId, runId, manifest => ({ ...manifest, lifecycleState: 'running_setup' }))
       const setup = await runShellCommand(opts.setupCommand, runCwd, 600_000)
       if (!setup.ok) {
         await emit(started)
-        let keepBranch = false
-        if (wt) {
-          try {
-            keepBranch = await checkpointWorktree(wt.worktreePath, runId)
-          } catch (err) {
-            await emit({
-              runId,
-              workflowId: opts.workflowId,
-              workflowSlug: opts.workflowSlug,
-              type: 'run_completed',
-              ts: now(),
-              status: 'error',
-              source: 'test',
-              message: `The setup command failed, and CWC could not preserve its changes. The worktree was retained at ${wt.worktreePath}: ${err instanceof Error ? err.message : String(err)}`,
-            })
-            opts.store.releaseRun(runId)
-            return { fired: true, runId, settled: Promise.resolve() }
-          }
-        }
-        await emit({ runId, workflowId: opts.workflowId, workflowSlug: opts.workflowSlug, type: 'run_completed', ts: now(), status: 'error', source: 'test', message: `setupCommand failed: ${setup.output.slice(0, 2000)}` })
-        if (wt) await removeWorktree(opts.cwd, wt.worktreePath, wt.branch, { keepBranch })
-        opts.store.releaseRun(runId)
+        await classifyAndFinish({
+          ...opts,
+          runId,
+          wt,
+          result: { status: 'error', message: `setupCommand failed: ${setup.output.slice(0, 2000)}` },
+        })
         return { fired: true, runId, settled: Promise.resolve() }
       }
     }
 
     await emit(started)
+    await manifests.transition(opts.workflowId, runId, manifest => ({ ...manifest, lifecycleState: 'spawning' }))
     const prompt = `/${opts.workflowSlug}\nUse run id ${runId} when logging run events.` + (opts.payload ? `\nTrigger payload:\n${opts.payload}` : '')
     const { stop, done } = runWorkflowSkill({ slug: opts.workflowSlug, runId, cwd: runCwd, binPath: opts.binPath, promptOverride: prompt, env: opts.env })
     opts.store.registerRun(runId, opts.workflowId, stop)
+    await manifests.transition(opts.workflowId, runId, manifest => ({ ...manifest, lifecycleState: 'running' }))
 
     const settled = done.then(result => classifyAndFinish({ ...opts, runId, wt, result }))
     return { fired: true, runId, settled }
   } catch (err) {
+    const reason = `launch failed: ${err instanceof Error ? err.message : String(err)}`
+    await transitionFailure(manifests, opts.workflowId, runId, reason).catch(() => {})
     opts.store.releaseRun(runId)
     throw err
   }
 }
 
-/** On server start: remove worktrees whose runs are finished (or unknown); paused/running runs keep theirs. */
-export async function sweepOrphanWorktrees(store: RunStore, runsDirPath: string, worktreesRoot: string): Promise<void> {
-  let entries: string[] = []
-  try { entries = await fsp.readdir(worktreesRoot) } catch { return }
-  const live = new Set<string>()
-  let wfs: string[] = []
-  try { wfs = await fsp.readdir(runsDirPath) } catch { /* none */ }
-  for (const wf of wfs) {
-    for (const run of await store.listRuns(wf)) {
-      if (run.status === 'paused' || run.status === 'running') live.add(run.runId)
-    }
-  }
-  for (const runId of entries) {
-    if (!runId.startsWith('run-')) continue   // only CWC-created run dirs — never delete other content under worktreesRoot
-    if (live.has(runId)) continue
-    const wtPath = path.join(worktreesRoot, runId)
-    // Resolve the owning repo through verified worktree linkage before cleanup.
-    await new Promise<void>(resolve => {
-      execFile('git', ['-C', wtPath, 'rev-parse', '--path-format=absolute', '--git-common-dir'], (err, stdout) => {
-        const finish = () => void fsp.rm(wtPath, { recursive: true, force: true }).catch(() => {}).then(() => resolve())
-        // Without verified Git linkage there is nowhere safe to checkpoint the work.
-        // Retain the directory for manual recovery instead of treating it as disposable.
-        if (err) return resolve()
-        const repo = path.dirname(stdout.toString().trim())   // <repo>/.git → <repo>
-        void checkpointWorktree(wtPath, runId).then(() => {
-          execFile('git', ['-C', repo, 'worktree', 'remove', '--force', wtPath], () => finish())
-        }).catch(() => resolve())
-      })
-    })
+/**
+ * On server start, only a valid manifest can authorize orphan cleanup. Unknown,
+ * legacy, malformed, active, paused, and checkpoint-failed directories are retained.
+ */
+export async function sweepOrphanWorktrees(
+  store: RunStore,
+  _runsDirPath: string,
+  worktreesRoot: string,
+  manifestStore: RunManifestStore = store.manifests,
+): Promise<void> {
+  const expectedRoot = path.resolve(worktreesRoot)
+  for (const initial of await manifestStore.listAll()) {
+    if (!initial.worktreePath || !initial.branch || !initial.repositoryIdentity || !initial.baseSha) continue
+    if (path.resolve(initial.worktreePath) !== path.join(expectedRoot, initial.runId)) continue
+    if (!['checkpointing', 'cleaning', 'completed', 'failed', 'aborted', 'rejecting'].includes(initial.lifecycleState)) continue
+
+    await manifestStore.withRun(initial.workflowId, initial.runId, async transaction => {
+      let manifest = transaction.current()
+      if (!manifest.worktreePath || !manifest.branch || !manifest.repositoryIdentity || !manifest.baseSha) return
+      const worktreeExists = await fsp.access(manifest.worktreePath).then(() => true, () => false)
+
+      if (manifest.lifecycleState === 'checkpointing') {
+        if (!worktreeExists) return
+        try {
+          await checkpointWorktree(manifest.worktreePath, manifest.runId)
+          const inspected = await inspectManagedWorktree(
+            manifest.originalCwd,
+            manifest.repositoryIdentity,
+            manifest.worktreePath,
+            manifest.branch,
+          )
+          if (!inspected.ok) {
+            await transaction.transition(current => ({ ...current, lifecycleState: 'failed', completionStatus: 'error', disposition: 'unavailable', failureReason: inspected.message }))
+            return
+          }
+          manifest = await transaction.transition(current => ({ ...current, lifecycleState: 'cleaning', resultSha: inspected.resultSha }))
+        } catch (err) {
+          await transaction.transition(current => ({
+            ...current,
+            lifecycleState: 'failed',
+            completionStatus: 'error',
+            disposition: 'unavailable',
+            failureReason: `Orphan checkpoint failed; the worktree was retained: ${err instanceof Error ? err.message : String(err)}`,
+          }))
+          return
+        }
+      }
+
+      if (!manifest.resultSha || !manifest.repositoryIdentity || !manifest.worktreePath || !manifest.branch) return
+      const authority = resultAuthority(manifest)
+      if (!authority) return
+
+      if (manifest.lifecycleState === 'rejecting') {
+        if (worktreeExists) {
+          const removed = await removeVerifiedWorktree(
+            manifest.originalCwd,
+            manifest.repositoryIdentity,
+            manifest.worktreePath,
+            manifest.branch,
+            manifest.resultSha,
+          )
+          if (!removed.ok) {
+            await transaction.transition(current => ({ ...current, lifecycleState: 'paused', disposition: 'unavailable', failureReason: removed.message }))
+            return
+          }
+        }
+        const discarded = await discardResultBranch(authority)
+        if (discarded.ok || discarded.code === 'branch_missing') {
+          await transaction.transition(current => ({ ...current, lifecycleState: 'rejected', completionStatus: 'aborted', disposition: 'discarded', failureReason: 'Rejected by reviewer' }))
+        } else {
+          await transaction.transition(current => ({ ...current, lifecycleState: 'failed', completionStatus: 'error', disposition: 'ready', failureReason: discarded.message }))
+        }
+        return
+      }
+
+      if (manifest.lifecycleState === 'cleaning') {
+        const status = manifest.completionStatus ?? 'error'
+        const preserveResult = status === 'complete' || manifest.resultSha !== manifest.baseSha
+        if (worktreeExists) {
+          const removed = await removeVerifiedWorktree(
+            manifest.originalCwd,
+            manifest.repositoryIdentity,
+            manifest.worktreePath,
+            manifest.branch,
+            manifest.resultSha,
+          )
+          if (!removed.ok) {
+            await transaction.transition(current => ({ ...current, lifecycleState: 'failed', completionStatus: 'error', disposition: 'unavailable', failureReason: removed.message }))
+            return
+          }
+        }
+        if (preserveResult) {
+          const verified = await verifyManagedResult(authority)
+          if (!verified.ok) {
+            await transaction.transition(current => ({ ...current, lifecycleState: 'failed', completionStatus: 'error', disposition: 'unavailable', failureReason: verified.message }))
+            return
+          }
+        } else {
+          const discarded = await discardResultBranch(authority)
+          if (!discarded.ok && discarded.code !== 'branch_missing') {
+            await transaction.transition(current => ({ ...current, lifecycleState: 'failed', completionStatus: 'error', disposition: 'ready', failureReason: discarded.message }))
+            return
+          }
+        }
+        await transaction.transition(current => {
+          const next = {
+            ...current,
+            lifecycleState: status === 'complete' ? 'completed' as const : status === 'aborted' ? 'aborted' as const : 'failed' as const,
+            disposition: preserveResult ? 'ready' as const : 'unavailable' as const,
+          }
+          if (!preserveResult) delete next.resultSha
+          return next
+        })
+        return
+      }
+
+      if (worktreeExists) {
+        const removed = await removeVerifiedWorktree(
+          manifest.originalCwd,
+          manifest.repositoryIdentity,
+          manifest.worktreePath,
+          manifest.branch,
+          manifest.resultSha,
+        )
+        if (!removed.ok) return
+      }
+      if (manifest.disposition === 'unavailable') {
+        // A prior cleanup verification failure may become recoverable after restart.
+        const verified = await verifyManagedResult(authority)
+        if (verified.ok) await transaction.transition(current => ({ ...current, disposition: 'ready', failureReason: undefined }))
+      }
+    }).catch(() => { /* malformed/racing authority is retained */ })
   }
 }
 
 /** Addendum 8 precedence. Also used by the approve (resume) path. */
 export async function classifyAndFinish(args: FireOptions & { runId: string; wt: WorktreeInfo | null; result: WorkflowRunResult }): Promise<void> {
   const { store, runId, workflowId, workflowSlug, wt, result } = args
+  const manifests = args.manifests ?? store.manifests
   const now = () => new Date().toISOString()
-  const emit = (e: RunEvent) => store.append(e).catch(() => { /* teardown race */ })
+  const emit = (event: RunEvent) => store.append(event).catch(() => { /* teardown race */ })
 
   try {
     if (result.status === 'complete') {
       const events = await store.getEvents(workflowId, runId)
       const last = events?.[events.length - 1]
       if (last?.type === 'awaiting_approval') {
+        await manifests.transition(workflowId, runId, manifest => ({
+          ...manifest,
+          lifecycleState: 'paused',
+          ...(result.sessionId ? { sessionId: result.sessionId } : {}),
+          disposition: 'unavailable',
+        }))
         if (result.sessionId) {
-          await emit({ runId, workflowId, workflowSlug, type: 'run_paused', ts: now(), sessionId: result.sessionId, source: 'test', ...(wt ? { worktreePath: wt.worktreePath } : {}) })
+          await emit({
+            runId,
+            workflowId,
+            workflowSlug,
+            type: 'run_paused',
+            ts: now(),
+            sessionId: result.sessionId,
+            source: 'test',
+            ...(wt ? { worktreePath: wt.worktreePath } : {}),
+          })
         }
-        return   // paused either way; worktree intentionally kept
+        return
       }
     }
 
     if (wt) {
+      await manifests.transition(workflowId, runId, manifest => ({
+        ...manifest,
+        lifecycleState: 'checkpointing',
+        completionStatus: completionStatus(result.status),
+        ...(result.sessionId ? { sessionId: result.sessionId } : {}),
+        disposition: 'unavailable',
+      }))
       try {
         await checkpointWorktree(wt.worktreePath, runId)
       } catch (err) {
-        await emit({
-          runId,
-          workflowId,
-          workflowSlug,
-          type: 'run_completed',
-          ts: now(),
-          status: 'error',
-          source: 'test',
-          message: `The run finished, but CWC could not preserve its work on the run branch. The worktree was retained at ${wt.worktreePath}. Resolve the Git error before removing it: ${err instanceof Error ? err.message : String(err)}`,
-          sessionId: result.sessionId,
-        })
+        const message = `The run finished, but CWC could not preserve its work on the run branch. The worktree was retained at ${wt.worktreePath}. Resolve the Git error before removing it: ${err instanceof Error ? err.message : String(err)}`
+        await transitionFailure(manifests, workflowId, runId, message)
+        await emit({ runId, workflowId, workflowSlug, type: 'run_completed', ts: now(), status: 'error', source: 'test', message, sessionId: result.sessionId })
         return
       }
+
+      const manifest = await manifests.read(workflowId, runId)
+      if (!manifest?.repositoryIdentity || !manifest.branch || !manifest.worktreePath) {
+        const message = 'The run checkpointed, but its manifest no longer contains complete worktree authority. The worktree was retained for manual recovery.'
+        await transitionFailure(manifests, workflowId, runId, message)
+        await emit({ runId, workflowId, workflowSlug, type: 'run_completed', ts: now(), status: 'error', source: 'test', message })
+        return
+      }
+      const inspection = await inspectManagedWorktree(args.cwd, manifest.repositoryIdentity, manifest.worktreePath, manifest.branch)
+      if (!inspection.ok) {
+        await transitionFailure(manifests, workflowId, runId, inspection.message)
+        await emit({ runId, workflowId, workflowSlug, type: 'run_completed', ts: now(), status: 'error', source: 'test', message: inspection.message })
+        return
+      }
+      await manifests.transition(workflowId, runId, current => ({ ...current, lifecycleState: 'cleaning', resultSha: inspection.resultSha }))
+      const removed = await removeVerifiedWorktree(args.cwd, manifest.repositoryIdentity, manifest.worktreePath, manifest.branch, inspection.resultSha)
+      if (!removed.ok) {
+        await transitionFailure(manifests, workflowId, runId, removed.message)
+        await emit({ runId, workflowId, workflowSlug, type: 'run_completed', ts: now(), status: 'error', source: 'test', message: removed.message })
+        return
+      }
+
+      const preserveResult = result.status === 'complete' || inspection.resultSha !== wt.baseSha
+      if (!preserveResult) {
+        const current = await manifests.read(workflowId, runId)
+        const authority = current ? resultAuthority(current) : null
+        if (authority) {
+          const discarded = await discardResultBranch(authority)
+          if (!discarded.ok) {
+            await transitionFailure(manifests, workflowId, runId, discarded.message)
+            await emit({ runId, workflowId, workflowSlug, type: 'run_completed', ts: now(), status: 'error', source: 'test', message: discarded.message })
+            return
+          }
+        }
+      }
+      await manifests.transition(workflowId, runId, current => {
+        const next = {
+          ...current,
+          lifecycleState: terminalState(result.status),
+          completionStatus: completionStatus(result.status),
+          disposition: preserveResult ? 'ready' as const : 'unavailable' as const,
+          failureReason: result.status === 'complete' ? undefined : result.message,
+          actionError: null,
+        }
+        if (!preserveResult) delete next.resultSha
+        return next
+      })
+    } else {
+      await manifests.transition(workflowId, runId, manifest => ({
+        ...manifest,
+        lifecycleState: terminalState(result.status),
+        completionStatus: completionStatus(result.status),
+        disposition: 'unavailable',
+        failureReason: result.status === 'complete' ? undefined : result.message,
+        actionError: null,
+      }))
     }
 
     if (result.status === 'complete') {
@@ -226,7 +487,10 @@ export async function classifyAndFinish(args: FireOptions & { runId: string; wt:
     } else {
       await emit({ runId, workflowId, workflowSlug, type: 'run_completed', ts: now(), status: result.status, source: 'test', message: result.message })
     }
-    if (wt) await removeWorktree(args.cwd, wt.worktreePath, wt.branch, { keepBranch: true })   // only reject deletes the branch
+  } catch (err) {
+    const message = `CWC could not finish the managed run lifecycle safely: ${err instanceof Error ? err.message : String(err)}`
+    await transitionFailure(manifests, workflowId, runId, message).catch(() => {})
+    await emit({ runId, workflowId, workflowSlug, type: 'run_completed', ts: now(), status: 'error', source: 'test', message })
   } finally {
     store.releaseRun(runId)
   }

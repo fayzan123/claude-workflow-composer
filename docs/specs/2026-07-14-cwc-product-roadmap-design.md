@@ -65,6 +65,8 @@ export and run screens state that its concrete deployment/runtime is Claude Code
 
 ## Stage 1: Apply Or Discard Isolated Results
 
+**Implementation status (2026-07-15):** Complete end-to-end and awaiting review. Later roadmap stages remain unstarted.
+
 ### Problem
 
 Run JSONL events currently serve both as a timeline and as the closest thing to run authority.

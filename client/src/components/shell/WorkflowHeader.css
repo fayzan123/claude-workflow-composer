@@ -189,3 +189,29 @@
 .workflow-header__leave-btn--cancel:hover {
   background: var(--color-surface-hover);
 }
+
+@media (max-width: 760px) {
+  .workflow-header {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      'identity status'
+      'modes modes';
+    column-gap: var(--space-sm);
+    row-gap: var(--space-xs);
+    padding: 6px var(--space-md) 8px;
+  }
+
+  .workflow-header__left {
+    grid-area: identity;
+  }
+
+  .workflow-header > .mode-switcher {
+    grid-area: modes;
+    justify-self: center;
+  }
+
+  .workflow-header__status {
+    grid-area: status;
+    min-width: 0;
+  }
+}

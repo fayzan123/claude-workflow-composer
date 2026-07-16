@@ -2,6 +2,16 @@
 import * as fs from 'node:fs/promises'
 import * as path from 'node:path'
 import type { RunEvent, RunStatus } from '../run-events.js'
+import {
+  createRunManifestStore,
+  runActionAvailability,
+  type ManagedRunState,
+  type RunActionAvailability,
+  type RunActionError,
+  type RunManifest,
+  type RunManifestStore,
+  type RunResultDisposition,
+} from './run-manifest.js'
 
 const STALE_AFTER_MS = 15 * 60_000
 
@@ -22,13 +32,22 @@ export interface RunSummary {
   cwd?: string
   branch?: string
   trigger?: string
+  managed: boolean
+  lifecycleState?: ManagedRunState
+  isolation?: 'worktree' | 'in-place'
+  disposition: RunResultDisposition
+  resultSha?: string
+  appliedSha?: string
+  actions: RunActionAvailability
+  actionError: RunActionError | null
 }
 
 export interface RunStore {
+  readonly manifests: RunManifestStore
   append(event: RunEvent): Promise<void>
   appendExternal(event: RunEvent): Promise<boolean>
   getEvents(workflowId: string, runId: string): Promise<RunEvent[] | null>
-  listRuns(workflowId: string): Promise<RunSummary[]>
+  listRuns(workflowId: string, manifestStore?: RunManifestStore): Promise<RunSummary[]>
   onEvent(listener: (e: RunEvent) => void): () => void
   registerRun(runId: string, workflowId: string, stop: () => void, launchGroupId?: string): boolean
   reserveWorkflow(workflowId: string, reservationId: string): boolean
@@ -39,7 +58,9 @@ export interface RunStore {
   isActive(runId: string): boolean
 }
 
-export function createRunStore(runsDir: string): RunStore {
+const NO_ACTIONS: RunActionAvailability = { diff: false, approve: false, reject: false, apply: false, discard: false }
+
+export function createRunStore(runsDir: string, defaultManifestStore: RunManifestStore = createRunManifestStore(runsDir)): RunStore {
   const listeners = new Set<(e: RunEvent) => void>()
   const activeRuns = new Map<string, { workflowId: string; launchGroupId: string; stop: () => void; stopRequested: boolean }>()
   const workflowReservations = new Map<string, string>()
@@ -120,10 +141,33 @@ export function createRunStore(runsDir: string): RunStore {
       cwd: first.cwd,
       branch: first.branch,
       trigger: first.trigger,
+      managed: false,
+      disposition: 'unavailable',
+      actions: { ...NO_ACTIONS },
+      actionError: null,
+    }
+  }
+
+  function applyManifest(summary: RunSummary, manifest: RunManifest): void {
+    summary.managed = true
+    summary.lifecycleState = manifest.lifecycleState
+    summary.isolation = manifest.requestedIsolation
+    summary.disposition = manifest.disposition
+    summary.actions = runActionAvailability(manifest)
+    summary.actionError = manifest.actionError
+    summary.cwd = manifest.originalCwd
+    summary.branch = manifest.branch
+    summary.trigger = manifest.triggerId
+    if (manifest.resultSha) summary.resultSha = manifest.resultSha
+    if (manifest.appliedSha) summary.appliedSha = manifest.appliedSha
+    if (manifest.lifecycleState === 'paused') summary.status = 'paused'
+    if (['completed', 'failed', 'aborted', 'rejected'].includes(manifest.lifecycleState) && manifest.completionStatus) {
+      summary.status = manifest.completionStatus
     }
   }
 
   return {
+    manifests: defaultManifestStore,
     append(event: RunEvent): Promise<void> {
       return serializeAppend(event.workflowId, event.runId, () => writeEvent(event))
     },
@@ -138,7 +182,7 @@ export function createRunStore(runsDir: string): RunStore {
 
     getEvents: readEvents,
 
-    async listRuns(workflowId: string): Promise<RunSummary[]> {
+    async listRuns(workflowId: string, manifestStore = defaultManifestStore): Promise<RunSummary[]> {
       let files: string[]
       try {
         files = (await fs.readdir(path.join(runsDir, workflowId))).filter(f => f.endsWith('.jsonl'))
@@ -151,6 +195,12 @@ export function createRunStore(runsDir: string): RunStore {
         const events = await readEvents(workflowId, runId)
         if (events && events.length > 0) {
           const summary = summarize(events)
+          try {
+            const manifest = await manifestStore.read(workflowId, runId)
+            if (manifest) applyManifest(summary, manifest)
+          } catch {
+            // Corrupt server-owned data grants no authority; keep the JSONL run visible.
+          }
           // A run still in the active registry is mid-flight in this process. Its child
           // can write `awaiting_approval` to disk (status → paused) a beat before the
           // parent runs classifyAndFinish → releaseRun. Report it as 'running' until it's

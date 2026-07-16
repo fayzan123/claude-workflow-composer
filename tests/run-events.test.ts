@@ -45,6 +45,9 @@ describe('validateRunEvent', () => {
   it('rejects runId/workflowId with path-unsafe characters', () => {
     expect(validateRunEvent({ ...base, runId: '../escape' }).ok).toBe(false)
     expect(validateRunEvent({ ...base, workflowId: 'a/b' }).ok).toBe(false)
+    expect(validateRunEvent({ ...base, runId: '.' }).ok).toBe(false)
+    expect(validateRunEvent({ ...base, workflowId: '..' }).ok).toBe(false)
+    expect(validateRunEvent({ ...base, workflowId: 'w'.repeat(201) }).ok).toBe(false)
   })
 
   it('rejects run_completed without a valid status', () => {

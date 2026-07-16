@@ -4,7 +4,19 @@ import * as fs from 'node:fs/promises'
 import * as os from 'node:os'
 import * as path from 'node:path'
 import { execFileSync } from 'node:child_process'
-import { checkpointWorktree, isGitRepo, resolveBaseSha, createWorktree, removeWorktree, getDiff } from '../../src/server/run-isolation.js'
+import {
+  applyResultFastForward,
+  checkpointWorktree,
+  createWorktree,
+  discardResultBranch,
+  getDiff,
+  getRepositoryIdentity,
+  isGitRepo,
+  removeVerifiedWorktree,
+  removeWorktree,
+  resolveBaseSha,
+  type ManagedResultAuthority,
+} from '../../src/server/run-isolation.js'
 
 let repo: string
 let wtRoot: string
@@ -104,5 +116,144 @@ describe('getDiff', () => {
     expect(d.diff).toContain('-one')
     expect(d.diff).toContain('+two')
     expect(d.status).toContain('a.txt')
+  })
+})
+
+async function readyResult(runId: string): Promise<ManagedResultAuthority> {
+  const info = await createWorktree(repo, 'flow', runId, 'HEAD', wtRoot)
+  await fs.writeFile(path.join(info.worktreePath, 'a.txt'), `${runId}\n`)
+  execFileSync('git', ['-C', info.worktreePath, 'commit', '-am', `result ${runId}`])
+  const resultSha = execFileSync('git', ['-C', info.worktreePath, 'rev-parse', 'HEAD'], { encoding: 'utf-8' }).trim()
+  await removeWorktree(repo, info.worktreePath, info.branch, { keepBranch: true })
+  return {
+    destinationCwd: repo,
+    repositoryIdentity: await getRepositoryIdentity(repo),
+    baseSha: info.baseSha,
+    branch: info.branch,
+    resultSha,
+  }
+}
+
+describe('Apply isolated result', () => {
+  it('fast-forwards a clean destination from the exact base to the verified result', async () => {
+    const authority = await readyResult('run-apply')
+
+    const result = await applyResultFastForward(authority)
+
+    expect(result).toEqual({ ok: true, appliedSha: authority.resultSha })
+    expect(git('rev-parse', 'HEAD')).toBe(authority.resultSha)
+    expect(git('log', '-1', '--format=%s')).toBe('result run-apply')
+  })
+
+  it('rejects staged, unstaged, and untracked destination changes without moving HEAD', async () => {
+    const authority = await readyResult('run-dirty-destination')
+    await fs.writeFile(path.join(repo, 'a.txt'), 'staged destination work\n')
+    git('add', 'a.txt')
+    await fs.writeFile(path.join(repo, 'a.txt'), 'unstaged destination work\n')
+    await fs.writeFile(path.join(repo, 'untracked.txt'), 'do not touch')
+    const before = git('rev-parse', 'HEAD')
+
+    const result = await applyResultFastForward(authority)
+
+    expect(result).toMatchObject({ ok: false, code: 'destination_dirty' })
+    expect(git('rev-parse', 'HEAD')).toBe(before)
+    await expect(fs.readFile(path.join(repo, 'a.txt'), 'utf-8')).resolves.toBe('unstaged destination work\n')
+    await expect(fs.readFile(path.join(repo, 'untracked.txt'), 'utf-8')).resolves.toBe('do not touch')
+    expect(git('status', '--porcelain')).toContain('MM a.txt')
+    expect(git('status', '--porcelain')).toContain('?? untracked.txt')
+    expect(git('branch', '--list', authority.branch)).toContain(authority.branch)
+  })
+
+  it('rejects a destination whose HEAD moved after launch', async () => {
+    const authority = await readyResult('run-moved-head')
+    await fs.writeFile(path.join(repo, 'main.txt'), 'new main work')
+    git('add', '-A')
+    git('commit', '-m', 'main moved')
+    const moved = git('rev-parse', 'HEAD')
+
+    expect(await applyResultFastForward(authority)).toMatchObject({ ok: false, code: 'destination_moved' })
+    expect(git('rev-parse', 'HEAD')).toBe(moved)
+    expect(git('branch', '--list', authority.branch)).toContain(authority.branch)
+  })
+
+  it('rejects a destination that no longer matches the recorded repository identity', async () => {
+    const authority = await readyResult('run-wrong-repository')
+    const wrongIdentity = process.platform === 'win32' ? 'c:\\not-the-repository\\.git' : '/not-the-repository/.git'
+
+    expect(await applyResultFastForward({ ...authority, repositoryIdentity: wrongIdentity })).toMatchObject({ ok: false, code: 'repository_changed' })
+    expect(await discardResultBranch({ ...authority, repositoryIdentity: wrongIdentity })).toMatchObject({ ok: false, code: 'repository_changed' })
+    expect(git('rev-parse', 'HEAD')).toBe(authority.baseSha)
+    expect(git('branch', '--list', authority.branch)).toContain(authority.branch)
+  })
+
+  it('rejects a missing result object and a moved result branch', async () => {
+    const authority = await readyResult('run-missing-result')
+    const missing = { ...authority, resultSha: 'f'.repeat(40) }
+    expect(await applyResultFastForward(missing)).toMatchObject({ ok: false, code: 'result_missing' })
+
+    git('branch', '-f', authority.branch, authority.baseSha)
+    expect(await applyResultFastForward(authority)).toMatchObject({ ok: false, code: 'branch_moved' })
+    expect(git('rev-parse', 'HEAD')).toBe(authority.baseSha)
+  })
+
+  it('rejects a result that does not descend from the recorded base', async () => {
+    const authority = await readyResult('run-non-descendant')
+    const tree = git('rev-parse', `${authority.baseSha}^{tree}`)
+    const orphan = git('commit-tree', tree, '-m', 'orphan result')
+    git('update-ref', `refs/heads/${authority.branch}`, orphan)
+
+    const result = await applyResultFastForward({ ...authority, resultSha: orphan })
+
+    expect(result).toMatchObject({ ok: false, code: 'non_descendant' })
+    expect(git('rev-parse', 'HEAD')).toBe(authority.baseSha)
+  })
+})
+
+describe('Discard isolated result', () => {
+  it('deletes only the exact verified result branch and leaves the destination untouched', async () => {
+    const authority = await readyResult('run-discard')
+    const before = git('rev-parse', 'HEAD')
+
+    const result = await discardResultBranch(authority)
+
+    expect(result).toEqual({ ok: true, discardedSha: authority.resultSha })
+    expect(git('branch', '--list', authority.branch)).toBe('')
+    expect(git('rev-parse', 'HEAD')).toBe(before)
+    await expect(fs.readFile(path.join(repo, 'a.txt'), 'utf-8')).resolves.toBe('one\n')
+  })
+
+  it('preserves a branch that moved or is checked out', async () => {
+    const moved = await readyResult('run-discard-moved')
+    git('branch', '-f', moved.branch, moved.baseSha)
+    expect(await discardResultBranch(moved)).toMatchObject({ ok: false, code: 'branch_moved' })
+    expect(git('branch', '--list', moved.branch)).toContain(moved.branch)
+
+    const checkedOut = await readyResult('run-discard-current')
+    git('switch', checkedOut.branch)
+    expect(await discardResultBranch(checkedOut)).toMatchObject({ ok: false, code: 'branch_checked_out' })
+    expect(git('branch', '--show-current')).toBe(checkedOut.branch)
+    git('switch', 'main')
+  })
+})
+
+describe('verified worktree cleanup', () => {
+  it('retains a worktree that gained uncommitted output after checkpointing', async () => {
+    const info = await createWorktree(repo, 'flow', 'run-late-output', 'HEAD', wtRoot)
+    await fs.writeFile(path.join(info.worktreePath, 'a.txt'), 'checkpointed\n')
+    execFileSync('git', ['-C', info.worktreePath, 'commit', '-am', 'checkpointed result'])
+    const resultSha = execFileSync('git', ['-C', info.worktreePath, 'rev-parse', 'HEAD'], { encoding: 'utf-8' }).trim()
+    await fs.writeFile(path.join(info.worktreePath, 'late.txt'), 'do not delete\n')
+
+    const removed = await removeVerifiedWorktree(
+      repo,
+      await getRepositoryIdentity(repo),
+      info.worktreePath,
+      info.branch,
+      resultSha,
+    )
+
+    expect(removed).toMatchObject({ ok: false, code: 'worktree_dirty' })
+    await expect(fs.readFile(path.join(info.worktreePath, 'late.txt'), 'utf-8')).resolves.toBe('do not delete\n')
+    expect(git('branch', '--list', info.branch)).toContain(info.branch)
   })
 })

@@ -8,6 +8,7 @@ import { execFileSync } from 'node:child_process'
 import type { AddressInfo } from 'node:net'
 import { createApp } from '../../src/server/index.js'
 import { createRunStore } from '../../src/server/run-store.js'
+import { getRepositoryIdentity } from '../../src/server/run-isolation.js'
 import { makeBin } from '../helpers/make-bin.js'
 
 let binDir: string
@@ -163,7 +164,12 @@ describe('gate endpoints', () => {
     // GET /api/runs?workflowId
     const runs = (await (await fetch(`${base}/api/runs?workflowId=wf-1`)).json()) as Record<string, unknown>[]
     const run = runs.find(r => r.runId === runId)
-    expect(run?.status).toBe('paused')
+    expect(run).toMatchObject({
+      status: 'paused',
+      managed: true,
+      disposition: 'unavailable',
+      actions: { approve: true, reject: true, apply: false, discard: false },
+    })
   })
 
   it('2. GET /api/runs/:runId/diff returns committed change from gate fixture', async () => {
@@ -208,7 +214,12 @@ describe('gate endpoints', () => {
     expect(approveRes.status).toBe(200)
     expect((await approveRes.json())).toMatchObject({ resumed: true })
 
-    await waitForStatus('wf-1', runId, 'complete')
+    const completed = await waitForStatus('wf-1', runId, 'complete')
+    expect(completed).toMatchObject({
+      managed: true,
+      disposition: 'ready',
+      actions: { apply: true, discard: true, approve: false, reject: false },
+    })
 
     // branch kept
     const branches = execFileSync('git', ['-C', repo, 'branch', '--list', `cwc/cwc-x/${runId}`], { encoding: 'utf-8' })
@@ -367,6 +378,7 @@ describe('gate endpoints', () => {
     const events = (await (await fetch(`${base}/api/runs/${runId}/events?workflowId=wf-1`)).json()) as Record<string, unknown>[]
     const started = events.find(e => e.type === 'run_started') as Record<string, unknown>
     const worktreePath = started.worktreePath as string
+    await fs.writeFile(path.join(worktreePath, 'pending-review.txt'), 'checkpoint before rejection\n')
 
     const rejectRes = await fetch(`${base}/api/runs/${runId}/reject`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -375,6 +387,15 @@ describe('gate endpoints', () => {
     expect(rejectRes.status).toBe(200)
     expect((await rejectRes.json())).toMatchObject({ rejected: true })
     await waitForStatus('wf-1', runId, 'aborted')
+    const [rejectedSummary] = (await (await fetch(`${base}/api/runs?workflowId=wf-1`)).json()) as Record<string, unknown>[]
+    expect(rejectedSummary).toMatchObject({
+      managed: true,
+      lifecycleState: 'rejected',
+      disposition: 'discarded',
+      actions: { diff: false, approve: false, reject: false, apply: false, discard: false },
+    })
+    const preservedSha = rejectedSummary.resultSha as string
+    expect(execFileSync('git', ['-C', repo, 'show', `${preservedSha}:pending-review.txt`], { encoding: 'utf-8' })).toBe('checkpoint before rejection\n')
 
     // worktree gone
     await expect(fs.access(worktreePath)).rejects.toThrow()
@@ -433,12 +454,29 @@ describe('gate endpoints', () => {
       execFileSync('git', ['-C', diffRepo, 'worktree', 'add', wt, branch])
       await fs.writeFile(path.join(wt, 'a.txt'), 'two\n')
       execFileSync('git', ['-C', wt, 'commit', '-am', 'change'])
+      const resultSha = execFileSync('git', ['-C', wt, 'rev-parse', 'HEAD'], { encoding: 'utf-8' }).trim()
       execFileSync('git', ['-C', diffRepo, 'worktree', 'remove', '--force', wt])
 
       // Pre-populate run events using a store pointed at runsDir (same dir the app uses).
       const store = createRunStore(runsDir)
       await store.append({ runId: 'run-done', workflowId: 'wf1', workflowSlug: 'flow', type: 'run_started', ts: new Date().toISOString(), source: 'test', cwd: diffRepo, baseSha, worktreePath: wt, branch })
       await store.append({ runId: 'run-done', workflowId: 'wf1', workflowSlug: 'flow', type: 'run_completed', ts: new Date().toISOString(), status: 'complete', source: 'test' })
+      await store.manifests.create({
+        runId: 'run-done', workflowId: 'wf1', workflowSkillSlug: 'flow', triggerId: 'manual',
+        requestedIsolation: 'worktree', originalCwd: diffRepo, requestedBaseRef: 'HEAD',
+      })
+      const repositoryIdentity = await getRepositoryIdentity(diffRepo)
+      await store.manifests.transition('wf1', 'run-done', manifest => ({
+        ...manifest,
+        lifecycleState: 'completed',
+        completionStatus: 'complete',
+        repositoryIdentity,
+        baseSha,
+        worktreePath: wt,
+        branch,
+        resultSha,
+        disposition: 'ready',
+      }))
 
       startApp(okBin)
       const res = await fetch(`${base}/api/runs/run-done/diff?workflowId=wf1`)
