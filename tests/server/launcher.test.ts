@@ -29,23 +29,29 @@ function freePort(): Promise<number> {
     })
   })
 }
-function rawListener(port: number): Promise<net.Server> {
-  return new Promise((resolve) => {
+function rawListener(): Promise<number> {
+  return new Promise((resolve, reject) => {
     const s = net.createServer()
     const conns = new Set<net.Socket>()
+    s.once('error', reject)
     s.on('connection', (c) => { conns.add(c); c.on('close', () => conns.delete(c)) })
-    openSockets.push({ close: (cb: () => void) => { conns.forEach((c) => c.destroy()); s.close(cb) } } as unknown as net.Server)
-    s.listen(port, '127.0.0.1', () => resolve(s))
+    s.listen(0, '127.0.0.1', () => {
+      openSockets.push({ close: (cb: () => void) => { conns.forEach((c) => c.destroy()); s.close(cb) } } as unknown as net.Server)
+      resolve((s.address() as net.AddressInfo).port)
+    })
   })
 }
-function healthListener(port: number, body = '{"status":"ok"}'): Promise<http.Server> {
-  return new Promise((resolve) => {
+function healthListener(body = '{"status":"ok"}'): Promise<number> {
+  return new Promise((resolve, reject) => {
     const s = http.createServer((req, res) => {
       if (req.url === '/api/health') { res.writeHead(200, { 'Content-Type': 'application/json' }); res.end(body) }
       else { res.writeHead(404); res.end() }
     })
-    openSockets.push(s)
-    s.listen(port, '127.0.0.1', () => resolve(s))
+    s.once('error', reject)
+    s.listen(0, '127.0.0.1', () => {
+      openSockets.push(s)
+      resolve((s.address() as net.AddressInfo).port)
+    })
   })
 }
 
@@ -53,35 +59,30 @@ describe('port probes', () => {
   it('portInUse: false when free, true when a socket listens', async () => {
     const port = await freePort()
     expect(await portInUse(port)).toBe(false)
-    await rawListener(port)
-    expect(await portInUse(port)).toBe(true)
+    const listeningPort = await rawListener()
+    expect(await portInUse(listeningPort)).toBe(true)
   })
 
   it('serverResponding: true only for a CWC-style /api/health responder', async () => {
     const free = await freePort()
     expect(await serverResponding(free)).toBe(false)
-    const rawPort = await freePort()
-    await rawListener(rawPort)
+    const rawPort = await rawListener()
     expect(await serverResponding(rawPort)).toBe(false)
-    const okPort = await freePort()
-    await healthListener(okPort)
+    const okPort = await healthListener()
     expect(await serverResponding(okPort)).toBe(true)
   })
 
   it('probePortState: free / foreign / cwc', async () => {
     const free = await freePort()
     expect(await probePortState(free)).toBe('free')
-    const foreign = await freePort()
-    await rawListener(foreign)
+    const foreign = await rawListener()
     expect(await probePortState(foreign)).toBe('foreign')
-    const cwc = await freePort()
-    await healthListener(cwc)
+    const cwc = await healthListener()
     expect(await probePortState(cwc)).toBe('cwc')
   })
 
   it('waitForServer: resolves true when healthy, false after timeout when free', async () => {
-    const okPort = await freePort()
-    await healthListener(okPort)
+    const okPort = await healthListener()
     expect(await waitForServer(okPort, 2000)).toBe(true)
     const free = await freePort()
     expect(await waitForServer(free, 600)).toBe(false)

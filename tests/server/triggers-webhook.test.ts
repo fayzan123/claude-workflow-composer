@@ -71,6 +71,16 @@ async function getEvents(runId: string): Promise<Array<Record<string, unknown>>>
   return res.json() as Promise<Array<Record<string, unknown>>>
 }
 
+async function waitForEvent(runId: string, type: string, ms = 5000): Promise<Record<string, unknown>> {
+  const deadline = Date.now() + ms
+  while (Date.now() < deadline) {
+    const event = (await getEvents(runId)).find(candidate => candidate.type === type)
+    if (event) return event
+    await new Promise(r => setTimeout(r, 100))
+  }
+  throw new Error(`run ${runId} never recorded event ${type}`)
+}
+
 beforeAll(async () => {
   binDir = await fs.mkdtemp(path.join(os.tmpdir(), 'cwc-whtrig-bin-'))
   // The echo bin reads stdin (the prompt), and emits a run_completed with the full prompt as message
@@ -212,10 +222,9 @@ describe('POST /api/triggers/:token', () => {
     expect(res.status).toBe(202)
     const { runId } = await res.json() as { runId: string }
     await waitForStatus(runId, 'complete')
-    const events = await getEvents(runId)
-    const completed = events.find(e => e.type === 'run_completed') as Record<string, unknown> | undefined
-    expect(completed!.message).toContain('/cwc-old-webhook-flow')
-    expect(completed!.message).not.toContain('/cwc-renamed-webhook-flow')
+    const completed = await waitForEvent(runId, 'run_completed')
+    expect(completed.message).toContain('/cwc-old-webhook-flow')
+    expect(completed.message).not.toContain('/cwc-renamed-webhook-flow')
   })
 
   it('returns 202 and fires for an armed token; prompt contains "Trigger payload:" with JSON body', async () => {
@@ -231,13 +240,11 @@ describe('POST /api/triggers/:token', () => {
     const { runId } = await res.json() as { runId: string }
     expect(runId).toBeTruthy()
     await waitForStatus(runId, 'complete')
-    const events = await getEvents(runId)
-    const completed = events.find(e => e.type === 'run_completed') as Record<string, unknown> | undefined
-    expect(completed).toBeTruthy()
+    const completed = await waitForEvent(runId, 'run_completed')
     // The echo bin emits the full prompt as the result message
-    expect(completed!.message).toContain('Trigger payload:')
-    expect(completed!.message).toContain('"hello"')
-    expect(completed!.message).toContain('"world"')
+    expect(completed.message).toContain('Trigger payload:')
+    expect(completed.message).toContain('"hello"')
+    expect(completed.message).toContain('"world"')
   })
 
   it('fans one webhook delivery out to every configured target', async () => {
@@ -310,9 +317,8 @@ describe('POST /api/triggers/:token', () => {
     expect(res.status).toBe(202)
     const { runId } = await res.json() as { runId: string }
     await waitForStatus(runId, 'complete')
-    const events = await getEvents(runId)
-    const completed = events.find(e => e.type === 'run_completed') as Record<string, unknown> | undefined
-    expect(completed!.message).toContain('…[truncated]')
+    const completed = await waitForEvent(runId, 'run_completed')
+    expect(completed.message).toContain('…[truncated]')
   })
 
   it('non-JSON body → no payload section in prompt', async () => {
@@ -327,8 +333,7 @@ describe('POST /api/triggers/:token', () => {
     expect(res.status).toBe(202)
     const { runId } = await res.json() as { runId: string }
     await waitForStatus(runId, 'complete')
-    const events = await getEvents(runId)
-    const completed = events.find(e => e.type === 'run_completed') as Record<string, unknown> | undefined
-    expect(completed!.message).not.toContain('Trigger payload:')
+    const completed = await waitForEvent(runId, 'run_completed')
+    expect(completed.message).not.toContain('Trigger payload:')
   })
 })
