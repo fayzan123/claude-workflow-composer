@@ -82,7 +82,10 @@ async function lastEvents(runId: string) {
 }
 
 async function waitForManifestState(runId: string, lifecycleState: string): Promise<void> {
-  const deadline = Date.now() + 5_000
+  // Reaching a state can involve git worktree creation plus a cold node process
+  // spawn for setup commands; Windows CI runners regularly need well over 5s.
+  // Polling returns immediately on match, so a large budget costs nothing green.
+  const deadline = Date.now() + 30_000
   while (Date.now() < deadline) {
     if ((await store.manifests.read('wf-1', runId))?.lifecycleState === lifecycleState) return
     await new Promise(resolve => setTimeout(resolve, 10))
