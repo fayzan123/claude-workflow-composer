@@ -8,7 +8,7 @@ export const TERMS: Record<string, string> = {
   rule: 'An owned instruction CWC adds to CLAUDE.md or AGENTS.md only after you choose the target.',
   agent: 'One Claude worker in a workflow, with a specific job, tools, and optional skills.',
   skill: 'Reusable Markdown instructions Claude can run directly or load into a workflow agent.',
-  loop: 'A skill with a schedule or observed verification cycle that CWC can run and monitor.',
+  loop: 'A skill plus a trigger and verifiable stop condition — the same trigger/action/stop shape as Claude Code\'s /loop, with CWC adding isolation, run history, and gates.',
   workflow: 'A canvas of specialised agents and handoffs for work that needs multiple roles or approval gates.',
   gate: 'A checkpoint that pauses the run for your approval before it continues.',
   run: 'One execution of a skill, loop, or workflow. You can watch managed runs live in CWC.',

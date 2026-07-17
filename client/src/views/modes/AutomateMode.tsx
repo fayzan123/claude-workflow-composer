@@ -7,7 +7,7 @@ import { Cron } from 'croner'
 import type { CwcTrigger } from '../../types.ts'
 import type { ModeProps } from '../modeProps.ts'
 import { isAbsolutePath } from '../../lib/path.ts'
-import { artifactNoun, artifactTierAfterTriggerChange, artifactTierOf, hasExplicitLoopStop } from '../../lib/artifact.ts'
+import { artifactNoun, artifactTierAfterTriggerChange, artifactTierOf, deployedArtifactSlug, hasExplicitLoopStop } from '../../lib/artifact.ts'
 import { ArtifactBadge } from '../../components/common/ArtifactBadge.tsx'
 import './AutomateMode.css'
 
@@ -152,6 +152,14 @@ export function AutomateMode({ workflow, dispatch }: ModeProps) {
           </div>
           {verificationCommand ? <code>{verificationCommand}</code> : <span>{verificationStep}</span>}
         </section>
+      )}
+
+      {tier === 'loop' && workflow.meta.exportedWorkflowSlug && (
+        <p className="automate-mode__native-hint">
+          This exported skill also works with Claude Code&apos;s own loop command —{' '}
+          <code>/loop 30m /{deployedArtifactSlug(workflow)}</code> in any session. Arming a CWC
+          schedule below runs the same skill with worktree isolation, run history, and approval gates.
+        </p>
       )}
 
       {triggers.length === 0 ? (
