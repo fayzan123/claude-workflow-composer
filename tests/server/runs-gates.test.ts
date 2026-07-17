@@ -248,12 +248,21 @@ describe('gate endpoints', () => {
     const { runId } = (await res.json()) as { runId: string }
     await waitForStatus('wf-1', runId, 'complete')
 
-    const approveRes = await fetch(`${base}/api/runs/${runId}/approve`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ workflowId: 'wf-1' }),
-    })
-    expect(approveRes.status).toBe(409)
-    const body = (await approveRes.json()) as { error: string }
+    // The JSONL-derived status turns complete a beat before the process registry
+    // deregisters the run; until then approve correctly answers "still finishing".
+    // Retry as that message instructs so slow runners reach the manifest's answer.
+    let body: { error: string } = { error: '' }
+    const deadline = Date.now() + 8_000
+    while (Date.now() < deadline) {
+      const approveRes = await fetch(`${base}/api/runs/${runId}/approve`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ workflowId: 'wf-1' }),
+      })
+      expect(approveRes.status).toBe(409)
+      body = (await approveRes.json()) as { error: string }
+      if (!body.error.includes('still finishing')) break
+      await new Promise(r => setTimeout(r, 100))
+    }
     expect(body.error).toContain('not paused')
   })
 
