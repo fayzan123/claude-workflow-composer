@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/fayzan123/claude-workflow-composer/actions/workflows/ci.yml/badge.svg)](https://github.com/fayzan123/claude-workflow-composer/actions/workflows/ci.yml)
 
-**Find the work you keep repeating in Claude Code — and turn it into runnable workflows.** CWC scans your local Claude Code history, surfaces the tasks you do by hand again and again, and generates a multi-agent workflow you can run, schedule, and monitor. When you want to build one by hand, there's a visual canvas for that too.
+**Find the work you keep repeating in Claude Code — and turn it into the smallest useful automation.** CWC scans your local Claude Code history, surfaces the tasks you do by hand again and again, and recommends a rule, skill, managed loop, or multi-agent workflow. Runnable artifacts can be edited, exported, tested, scheduled, and monitored locally.
 
 ![Claude Workflow Composer demo](demo.gif)
 
@@ -10,19 +10,19 @@
 
 ## Start here: scan your history
 
-Run `npx claude-cwc`, then click **Scan my history** on the dashboard. CWC reads your Claude Code sessions, clusters the work you repeat, and offers the strongest candidates as one-click workflows. The visual canvas (below) is there when you want to compose or refine one yourself.
+Run `npx claude-cwc`, then click **Scan my history** on the dashboard. CWC reads your Claude Code sessions, clusters the work you repeat, and recommends the lightest artifact that fits each candidate. Review or override that recommendation before CWC generates anything. The visual canvas is reserved for work that genuinely needs a multi-agent workflow.
 
 ## The Problem
 
-Building multi-agent workflows in Claude Code today means:
+Turning repeated Claude Code work into a reliable automation usually means choosing and maintaining several different primitives:
 
 1. Hand-writing agent `.md` files with YAML frontmatter
 2. Manually authoring orchestrator skills with `disable-model-invocation: true` and sequenced handoff prose
-3. No visual representation of the pipeline before running it
-4. No way to share a complete, working workflow with someone else
-5. No way to discover what good pipelines look like
+3. Deciding whether the work needs a durable instruction, one skill, a recurring loop, or a multi-agent graph
+4. No visual representation of a pipeline before running it
+5. No unified way to test, schedule, observe, and share the result
 
-The authoring experience is entirely text-based. You can't see what you're building until you run it.
+CWC makes that sizing decision explicit while keeping the filesystem output inspectable.
 
 ---
 
@@ -34,7 +34,7 @@ npx claude-cwc
 
 Opens a browser at `http://localhost:3579`. The local server binds to loopback and protects API calls with a per-run local token.
 
-Use **Detect automations** from the Home dashboard to scan your local Claude Code history, find repeated work, and generate a ready-to-edit workflow from the strongest candidates.
+Use **Detect automations** from the Home dashboard to scan your local Claude Code history, find repeated work, review rule suggestions, and generate ready-to-edit skills, loops, or workflows from the strongest candidates.
 
 On first run, CWC may offer to install an optional Claude Code skill at `~/.claude/skills/cwc-generate-workflow/SKILL.md`. That skill lets you ask Claude Code to generate a `.cwc` workflow from plain English. Remove it with:
 
@@ -74,20 +74,25 @@ npm run build && npm start
 ## How It Works
 
 ```
-Drag agents onto a canvas
-  → Connect them with handoff arrows (author trigger conditions)
-  → Edit each agent's system prompt, tools, skills, and completion criteria
-  → Add schedules/webhooks in Automate mode when the workflow should run itself
+Scan local Claude Code history
+  → Classify each repetition as Rule, Skill, Loop, or Workflow
+  → Review the recommendation and choose a different tier when needed
+  → Edit a skill directly, or refine a multi-agent workflow on the canvas
+  → Add schedules/webhooks in Automate mode when the artifact should run itself
   → Preview every file that will be written before exporting
-  → Export → writes agent .md files + orchestrator SKILL.md to ~/.claude/ or project .claude/
-  → Invoke the workflow as /cwc-<workflow-slug> in Claude Code
+  → Export to ~/.claude/ or a project's .claude/
+  → Run directly in Claude Code or through CWC's managed-run harness
 ```
 
 The exporter writes directly to `~/.claude/` (user-scoped) or `.claude/` inside any project directory (project-scoped, version-controllable). Conflict detection ensures it never touches files it doesn't own.
 
-### Build
+### Build and edit
 
-Drag an **existing agent** from the sidebar (`~/.claude/agents/` or project `.claude/agents/`) onto the canvas to create a **reference node** — it points to that agent file by slug rather than duplicating it. Drag **New Agent** to create a **bespoke node** — the exporter generates a new agent file for it. Drag **Approval Gate** to add a human checkpoint.
+Skill and loop artifacts open in a focused editor for their name, description, and Markdown body, with loop status and a direct link to Automate settings alongside it. They are stored as `.cwc` files for the same autosave, export, and managed-run behavior as workflows, but do not pretend to be agent graphs.
+
+Choose **Open as workflow** to graduate a skill or loop explicitly. The current edited body is authoritative: a numbered checklist seeds focused phases, while an unstructured body becomes one phase without resurrecting removed detection steps. Safe operational constraints remain available across phases, and external actions stay behind their approval boundaries. A workflow can be converted back to a skill only when it contains one bespoke agent and no real handoff; an optional terminal edge is safe to discard. Both conversions are explicit, undoable editor actions, and the next export previews the resulting file changes.
+
+For workflow artifacts, drag an **existing agent** from the sidebar (`~/.claude/agents/` or project `.claude/agents/`) onto the canvas to create a **reference node** — it points to that agent file by slug rather than duplicating it. Drag **New Agent** to create a **bespoke node** — the exporter generates a new agent file for it. Drag **Approval Gate** to add a human checkpoint.
 
 Connect nodes by dragging between handles. Each connection becomes a **handoff** with a trigger description and optional context artifacts (files, text, JSON) passed between agents. Mark any node as a **terminal** (`Complete`, `Escalated`, or `Aborted`) to define workflow end states.
 
@@ -99,49 +104,53 @@ Use **Generate agent** or **Generate skill** in the sidebar to draft reusable Cl
 
 ### Export
 
-Click **Export** in the workflow header. Choose a target directory (`~/.claude/` or any project's `.claude/`). Review a **preview** of every file that will be written. Confirm to write.
+Click **Export** in the artifact header. Choose a target directory (`~/.claude/` or any project's `.claude/`). Review a **preview** of every file that will be written or removed. Confirm to apply it.
 
 The exporter:
 
-- **Bespoke nodes** → writes an agent `.md` file with frontmatter (name, description, color, model, tools), system prompt, completion criteria, skill references, and an ownership comment.
+- **Plain skill / loop** → writes exactly one `.claude/skills/<slug>/SKILL.md`, with no `cwc-` prefix, orchestrator prose, or agent files. A loop's trigger remains in its `.cwc` metadata and is armed separately in CWC.
+- **Workflow skill** → generates an orchestrator at `.claude/skills/cwc-<workflow-slug>/SKILL.md` and writes agent files for its bespoke nodes. By default the skill includes `disable-model-invocation: true`; the export modal can opt an artifact into autonomous Claude invocation outside CWC's isolated-run harness. The orchestrator body is produced by BFS-traversing the graph into natural-language steps.
+- **Bespoke workflow nodes** → writes an agent `.md` file with frontmatter (name, description, color, model, tools), system prompt, completion criteria, skill references, and an ownership comment.
 - **Reference nodes** → writes nothing — the `exportedSlug` is set to the existing agent's slug so the orchestrator routes to it directly.
-- **Workflow skill** → generates an orchestrator skill at `.claude/skills/cwc-<workflow-slug>/SKILL.md`. By default it includes `disable-model-invocation: true`; the export modal can opt a single workflow into autonomous Claude invocation outside CWC's isolated-run harness. The orchestrator body is produced by BFS-traversing the node/edge graph into natural-language steps.
-- **Rename handling** → if a node was renamed, the old owned file is deleted and the new one is written.
-- **Conflict detection** → every file carries an ownership HTML comment. Before overwriting or deleting, the exporter verifies ownership — it never touches files created by other workflows or by hand.
+- **Rename and conversion handling** → stages the complete new deployment, retains exact rollback bytes for replaced and removed paths, and publishes the new `.cwc` deployment identity inside the same transaction. A recipe conflict or later write failure restores the entire prior deployment.
+- **Conflict detection** → every managed file carries an ownership HTML comment. Before overwriting or deleting, the exporter verifies ownership — it never touches files created by other artifacts or by hand.
 
 ### Run
 
-From any Claude Code session, invoke the workflow by its skill name:
+From any Claude Code session, invoke the exported artifact by its skill name:
 
 ```
-/cwc-workflow-name
+/plain-skill-name        # skill or loop
+/cwc-workflow-name       # multi-agent workflow
 ```
 
-The orchestrator skill delegates every implementation step to sub-agents via the Agent tool. Each step references an agent by name; Claude Code resolves it to the agent's `.md` file and loads its system prompt, tools, and completion criteria.
+Plain skills run their instructions directly. A workflow orchestrator delegates its implementation steps to sub-agents via the Agent tool; Claude Code resolves each agent name to its `.md` file and loads its prompt, tools, and completion criteria.
 
-You can also use **Test run** from CWC after exporting. Test runs spawn Claude Code headlessly with `--permission-mode bypassPermissions`, use a chosen working directory, and can run in a git worktree or in-place.
+You can also use **Test run** from CWC after exporting a skill, loop, or workflow. Test runs spawn Claude Code headlessly with `--permission-mode bypassPermissions`, use a chosen working directory, and can run in a git worktree or in-place. Rules are guidance-file edits, not runnable artifacts.
 
-Completed isolated runs stay reviewable in **Runs**. CWC checkpoints tracked and untracked output onto the run's `cwc/<workflow-skill>/<runId>` branch, removes the temporary worktree, and offers two deliberate result actions:
+At launch, CWC binds the exact verified skill and every plain filesystem-backed dispatched agent into a private, namespaced plugin for that run. This carries untracked or dirty project exports and reference agents into isolated worktrees without changing their bytes. Exported skills carry a `cwc:bespoke-agents` declaration so reference agents remain externally owned while missing, replaced, shadowed, or malformed dependencies fail closed. Namespaced plugin-agent dispatches are refused by managed runs until CWC can resolve and snapshot their exact installed bytes; they never fall through to mutable code under `bypassPermissions`. Dispatching exports created before this metadata was introduced must be re-exported once. Later exports or deletes cannot change an active run halfway through. Approval gates retain and revalidate the same binding across server restarts; a missing or changed binding is never replaced with the current deployment during resume.
+
+Completed isolated runs stay reviewable in **Runs** regardless of artifact tier. CWC checkpoints tracked and untracked output onto the run's `cwc/<artifact-skill>/<runId>` branch, removes the temporary worktree, and offers two deliberate result actions:
 
 - **Apply result** — fast-forwards the original checkout only when it is still the same repository, completely clean (including untracked files), and still at the recorded base commit. CWC never stashes, resets, rebases, cherry-picks, creates a merge commit, or resolves conflicts.
 - **Discard** — after an inline confirmation, deletes only the exact CWC result branch recorded by the run. A renamed, moved, foreign, or checked-out branch is preserved.
 
-Each managed run has a server-owned `<runId>.manifest.json` beside its JSONL timeline. The manifest records repository/base/worktree/result authority and the Apply/Discard disposition. Exported workflow logging can append timeline events, but `POST /api/runs/events` cannot create or change a manifest and event-only legacy runs never receive Git actions.
+Each managed run has a server-owned `<runId>.manifest.json` beside its JSONL timeline. The manifest records repository/base/worktree/result authority, immutable runtime-binding authority, and the Apply/Discard disposition. Exported artifact logging can append timeline events, but `POST /api/runs/events` cannot create or change a manifest and event-only legacy runs never receive Git actions.
 
 The result endpoints are `GET /api/runs/:runId/diff`, `POST /api/runs/:runId/apply`, and `POST /api/runs/:runId/discard`; each requires the matching `workflowId`, and Discard additionally requires `confirmed: true`. Preflight conflicts return `409` with an actionable reason and leave both the destination and result branch unchanged.
 
 ### Automate
 
-Open a workflow's **Automate** mode to add schedules and webhooks:
+Open a runnable artifact's **Automate** mode to add schedules and webhooks. Generated loop schedules start disabled and are never armed without an explicit user action:
 
 - **Cron** — use the schedule builder or enter a custom cron expression (e.g. `0 9 * * 1-5` for weekdays at 9 am).
-- **Webhook** — CWC generates an inbound local URL (`POST http://localhost:3579/api/triggers/<token>`) to fire the workflow.
+- **Webhook** — CWC generates an inbound local URL (`POST http://localhost:3579/api/triggers/<token>`) to fire the artifact.
 - **Working directory / targets** — choose where the automation runs, including optional additional repos for fan-out.
 - **Isolation** — use a git worktree for an isolated branch, or run in-place when you explicitly want the current checkout.
 - **Precondition** — a shell command that must succeed before CWC starts the run.
 - **Setup command** — a shell command CWC runs after the run starts, before Claude begins.
 
-Add a **gate node** (drag from the "Gate" section of the sidebar) at any point in the workflow. When the run reaches a gate it:
+Workflow artifacts can add a **gate node** (drag from the "Gate" section of the sidebar) at any point. When the run reaches a gate it:
 1. Commits all changes to a `cwc/<runId>` branch and pauses.
 2. Posts a diff of the working branch to the approval inbox in Runs mode and on the Home dashboard.
 3. Waits — the reviewer reads the diff, writes an optional note, and clicks **Approve** or **Reject**.
@@ -153,36 +162,49 @@ The Home dashboard has an **Automations** widget that globally pauses or resumes
 
 Click **Detect automations** on the Home dashboard to scan your local Claude Code history for repeated work. CWC parses local transcript files, builds compact digests, asks Claude to cluster recurring tasks, and shows candidates with evidence, confidence, observed steps, and a suggested trigger.
 
-Click **Generate workflow** on a candidate to promote it into a real `.cwc` workflow. CWC looks for matching local skills and existing agents, asks Claude to compose the workflow, validates the generated graph, seeds disabled schedule triggers when appropriate, and opens the workflow for review.
+Each candidate receives a deterministic recommendation:
+
+- **Rule** — a repeated instruction with no meaningful tool activity. CWC shows the suggested line and only adds it after you explicitly choose user-level `~/.claude/CLAUDE.md` or an evidence project's `AGENTS.md`. Owned marker blocks make the rule removable without rewriting surrounding guidance.
+- **Skill** — a linear, single-role procedure. CWC generates one readable skill with a deterministic checklist fallback if generation fails.
+- **Loop** — a skill with an observed schedule or verify/retry pattern. CWC preserves observed verification, seeds any generated trigger disabled, and defaults automation isolation to a worktree.
+- **Workflow** — work with genuine independent branches or role changes, or any risky external action such as publishing or communicating. This conservative safety rule keeps gate-capable work on the canvas.
+
+When history shows a mutating MCP/connector tool, CWC keeps its exact observed name on one
+approval-gated bespoke agent. It does not broaden every phase's tool access or silently attach the
+capability to a reference agent with a different immutable tool policy.
+
+The promotion dialog marks the recommendation and lets you choose another tier. The selected tier is recorded with the candidate; CWC never silently escalates a smaller artifact into a workflow. Rules are applied immediately to the chosen guidance file, while skills, loops, and workflows are saved as `.cwc` artifacts and opened for review.
 
 ### Delete
 
-`POST /api/export/delete` scans every exported file, checks its ownership comment, and only removes files owned by the current workflow. Reference nodes have nothing to delete — they didn't write any files.
+`POST /api/export/delete` scans exported files, checks their ownership comments, and only removes files owned by the current artifact. Reference nodes have nothing to delete — they didn't write any files.
 
 ---
 
 ## Features
 
 - **Visual canvas** — React Flow with background grid, minimap, zoom controls, and drag-to-connect
+- **Right-sized generation** — deterministic Rule / Skill / Loop / Workflow recommendations with an explicit tier override before generation
+- **Focused skill editor** — edit one skill's identity and Markdown without canvas overhead; graduate it to a workflow or safely demote a one-node workflow
 - **Theme toggle** — switch between light and dark mode from the Home dashboard or workflow header
 - **Left sidebar** — My Agents (searchable, draggable from user/project `.claude/agents/`), Skills (searchable, draggable onto selected nodes), and Discover links for community assets
 - **Generate agent / skill** — draft new reusable Claude Code assets from plain English, refine the spec, then save to `~/.claude/`
 - **Right panels** — Node Editor (name, description, criteria, tools, skills, system prompt, terminal type) and Edge Editor (trigger, label, context artifacts)
 - **Export modal** — target selection, full file preview, warning display before writing anything
 - **Auto-save** — 500ms debounced save to `~/.cwc/workflows/`, no manual saving needed
-- **Saved workflows** — home screen lists `.cwc` files from `~/.cwc/workflows/`; opened paths are also tracked in `~/.cwc/recents.json`
+- **Saved artifacts** — home screen lists `.cwc` skills, loops, and workflows from `~/.cwc/workflows/`; opened paths are also tracked in `~/.cwc/recents.json`
 - **Markdown preview** — click any agent or skill card to view its source file
 - **Open in editor** — view any agent or skill file in your system editor
 - **Claude Code detection** — warns on startup if `~/.claude/` is missing
-- **Test run** — launch an exported workflow headlessly from the UI (`--permission-mode bypassPermissions`, user-chosen working directory, worktree or in-place isolation) and stop it mid-run
+- **Test run** — launch an exported skill, loop, or workflow headlessly from the UI (`--permission-mode bypassPermissions`, user-chosen working directory, worktree or in-place isolation) and stop it mid-run
 - **Live run view** — the active node pulses on the canvas, completed nodes get a check, and events stream into a timeline panel
 - **Run history** — JSONL timelines and server-owned managed-run manifests persist under `~/.cwc/runs/` with status, duration, source, cost, and isolated-result disposition
-- **Automate mode** — attach cron schedules or webhook URLs to a workflow, choose targets/isolation, add preconditions/setup commands, and arm trusted triggers
+- **Automate mode** — attach cron schedules or webhook URLs to a runnable artifact, choose targets/isolation, add preconditions/setup commands, and arm trusted triggers
 - **Approval gates** — insert a gate node into any workflow; when reached the run pauses and posts a diff of its working branch, a reviewer approves or rejects from the inbox (or terminal), the run resumes on the same session
 - **Isolated runs** — Test Run (and scheduler-fired runs) create a git worktree on a CWC-owned branch so the main checkout stays untouched during execution; completed results can be reviewed, safely fast-forwarded, or explicitly discarded
 - **Notifications** — macOS banner + optional webhook on run complete, gate pause, and approval request; configured from Runs mode
 - **Global pause** — one Home dashboard toggle suspends all scheduled and webhook automation runs without disarming triggers
-- **Detect automations** — scans local Claude Code transcripts, clusters repeated work, streams progress, suggests automations, and promotes a candidate into a `.cwc` workflow with matching skills/agents reused when possible
+- **Detect automations** — scans local Claude Code transcripts, clusters repeated work, streams progress, classifies candidates by artifact tier, and supports explicit rule application or `.cwc` generation
 
 ---
 
@@ -194,7 +216,7 @@ Client (React + React Flow)             Server (Express :3579)
 │ HomeDashboard                 │ ────► │ /api/workflows              │
 │ DetectView + DetectHero       │ ◄───► │ /api/automation-scan (+SSE) │
 │ WorkflowView + WorkflowHeader │ ────► │ /api/recents                │
-│ BuildMode                     │ ────► │ /api/agents                 │
+│ BuildMode / SkillBuildMode    │ ────► │ /api/agents                 │
 │   Sidebar                     │ ────► │ /api/skills                 │
 │   Canvas (React Flow)         │ ────► │ /api/agents/generate        │
 │   StepDrawer                  │ ────► │ /api/skills/generate        │
@@ -225,20 +247,24 @@ Core library:
                             Ownership-comment detection
   export/skill-resolver.ts  User/plugin skill lookup
   detection/*               Claude Code transcript parsing, digesting, analysis
-  generation/*              Native automation-to-workflow planning and compilation
+  generation/classifier.ts  Deterministic artifact-tier selection
+  generation/generate.ts    Tier-aware skill/loop/workflow generation
+  generation/*              Skill generation and workflow planning/compilation
 
 Server modules:
   security.ts               API token cookie, auth middleware, CORS rules
   launcher.ts               CLI/server launch and port-collision handling
   run-store.ts              JSONL run persistence and SSE fan-out
   run-manifest.ts           Versioned managed-run authority and serialized transitions
+  run-skill-binding.ts      Immutable per-run skill/agent plugin snapshots
   workflow-runner.ts        Headless Claude Code process spawning
   run-isolation.ts          Git worktrees, verified diffs, Apply/Discard preflight and mutation
   run-launcher.ts           Test/scheduled/webhook run lifecycle
   automation-state.ts       Trigger arm/pause/fire bookkeeping
   automation-scheduler.ts   Cron trigger evaluation
   trigger-targets.ts        Target repo fan-out resolution
-  scan-store.ts             Detection scan/promotion state
+  scan-store.ts             Detection scan, classification, rule, and generation state
+  rule-files.ts             Owned CLAUDE.md/AGENTS.md rule-block edits
   streaming-analyzer.ts     Streaming Claude analysis runner
   notifier.ts               macOS and webhook notifications
   config.ts                 Notification config persistence
@@ -246,9 +272,9 @@ Server modules:
 Storage:
   ~/.cwc/
     recents.json              Recent file paths (max 10)
-    workflows/                Saved .cwc workflow files
+    workflows/                Saved .cwc skill, loop, and workflow artifacts
     runs/<workflowId>/        <runId>.jsonl timelines + <runId>.manifest.json managed authority
-    worktrees/                Git worktrees for isolated runs (auto-cleaned)
+    worktrees/                Git worktrees plus .skill-bindings/ for active/paused run plugins
     automation-state.json     Global pause flag + per-trigger arm state
     automation-scan.json      Latest history scan, suggestions, promotion state, and logs
     config.json               Notification settings (macos, webhookUrl)
@@ -265,19 +291,23 @@ Storage:
 
 | Concept                | Description                                                                                                  |
 | ---------------------- | ------------------------------------------------------------------------------------------------------------ |
-| **CwcFile**            | JSON file format (`.cwc`) representing a full workflow: metadata, nodes, edges                               |
+| **Artifact tier**      | The right-sized result for a repetition: Rule, Skill, Loop, or Workflow                                      |
+| **CwcFile**            | Versioned JSON container (`.cwc`) for runnable skills, loops, and workflows: metadata, nodes, and edges       |
+| **Rule**               | An explicitly applied, ownership-marked instruction in user `CLAUDE.md` or an evidence project's `AGENTS.md` |
+| **Plain skill**        | A single procedural skill exported at `.claude/skills/<slug>/SKILL.md`, with no agent dispatch               |
+| **Loop**               | A plain skill with recurrence and/or an observed verification condition, runnable through CWC's managed harness |
 | **Bespoke node**       | A node whose agent definition is authored in the UI — exporter writes a new `.md` file                       |
 | **Reference node**     | A node with an `agentRef` slug pointing to an existing agent on disk — exporter writes nothing               |
 | **Handoff**            | A directed edge with a trigger description and optional context artifacts                                    |
 | **Terminal edge**      | An edge with no target node — marks a workflow end state (complete/escalated/aborted)                        |
-| **Ownership comment**  | HTML comment appended to every exported file: `<!-- cwc:node:<id>:workflow:<id> -->`                         |
+| **Ownership comment**  | Managed agents use `cwc:node` markers and managed skills use `cwc:workflow` markers for safe writes/deletes  |
 | **Orchestrator skill** | The workflow skill generated at `.claude/skills/cwc-<workflow-slug>/SKILL.md` — a Claude Code skill that delegates via Agent tool |
 | **Conflict detection** | Reads the ownership comment from a file on disk to determine if this workflow can safely overwrite/delete it |
 | **Gate node**          | A `nodeType: 'gate'` node that pauses a run at a checkpoint, diffs the branch, and waits for approval       |
-| **Trigger**            | A cron or webhook definition stored in workflow metadata; the scheduler/webhook router fires armed, enabled triggers |
+| **Trigger**            | A cron or webhook definition stored in artifact metadata; the scheduler/webhook router fires armed, enabled triggers |
 | **Isolation**          | Worktree mode creates a `cwc/<runId>` branch so the main checkout is never modified by an automated run     |
-| **Model invocation**   | Per-workflow export option. Off keeps `disable-model-invocation: true`; auto omits it so Claude may invoke the workflow outside CWC's run harness |
-| **Detection scan**     | Local Claude Code history analysis that clusters repeated tasks and can promote a candidate into a `.cwc` workflow |
+| **Model invocation**   | Per-artifact export option. Off keeps `disable-model-invocation: true`; auto omits it so Claude may invoke the skill outside CWC's run harness |
+| **Detection scan**     | Local Claude Code history analysis that clusters repeated tasks and recommends an artifact tier              |
 
 ---
 
@@ -311,8 +341,8 @@ The Vitest suite covers:
 
 - **BFS traversal**: linear chains, back-edges, fan-out, multi-root, terminal edges
 - **Prose generation**: start triggers, bold wrapping, context artifacts, Oxford comma, back-edge ordering
-- **File writer**: frontmatter, skills block, ownership comments, workflow skill generation
-- **Exporter**: full integration with real temp filesystem, rename cleanup, skill resolution, re-export, hard conflict failures for foreign or hand-authored files
+- **File writer**: frontmatter, skills block, ownership comments, plain and orchestrator skill generation
+- **Exporter**: temp-filesystem integration for both artifact kinds, rename/conversion cleanup, skill resolution, preview parity, and hard conflicts for foreign or hand-authored files
 - **Validation**: empty workflows, missing names, duplicate slugs, disconnected nodes
 - **Graph layout**: horizontal spacing, fan-out vertical spacing, back-edge stability
 - **HTTP endpoints**: all API routes tested with real server instances
@@ -328,7 +358,7 @@ The Vitest suite covers:
 - **Automation state**: arm/disarm, paused flag persistence, trigger hashing
 - **Gate endpoints**: approve (resume), reject, 409 on wrong state, diff response
 - **Notifier**: macOS toast, webhook POST, event filtering
-- **Automation detection**: transcript parsing, digest building, analysis parsing, streamed scan logs, model allowlist, promote/cancel workflow generation, and trigger seeding
+- **Automation detection**: transcript parsing, shape derivation, tier classification, streamed scan logs, tier override, rule application, artifact generation/cancellation, and trigger seeding
 - **Help copy and theme preference**: glossary terms, control hints, light/dark theme parsing, and dashboard event helpers
 
 ---
@@ -337,7 +367,7 @@ The Vitest suite covers:
 
 PRs welcome. The codebase is TypeScript end-to-end (client + server + core library). Run `npm test` and `npm run typecheck` before submitting.
 
-If you build a workflow you're proud of, share the `.cwc` file — that's how the community library grows.
+If you build an artifact you're proud of, share the `.cwc` file — that's how the community library grows.
 
 ---
 

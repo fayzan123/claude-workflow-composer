@@ -43,6 +43,19 @@ describe('buildDigests', () => {
     expect(allRefs).toEqual(['r0', 'r1'])     // only the 2 non-trivial units
   })
 
+  it('keeps prompt-only units only when the normalized instruction repeats at least three times', () => {
+    const digests = buildDigests([
+      unit({ sessionId: 'a', promptText: 'Always use pnpm.', tools: [], commands: [] }),
+      unit({ sessionId: 'b', promptText: 'always use pnpm', tools: [], commands: [] }),
+      unit({ sessionId: 'c', promptText: 'ALWAYS USE PNPM!', tools: [], commands: [] }),
+      unit({ sessionId: 'd', promptText: 'one-off thought', tools: [], commands: [] }),
+    ])
+
+    expect(digests.flatMap(d => d.lines)).toHaveLength(3)
+    expect(digests[0].lines.every(line => line.text.includes('(none)'))).toBe(true)
+    expect(digests[0].lines.some(line => line.text.includes('one-off thought'))).toBe(false)
+  })
+
   it('formats a digest line with date, prompt, tools and salient labels', () => {
     const [d] = buildDigests([unit({ promptText: 'fix flaky test', tools: ['Edit', 'Bash'], commands: ['npm test', 'git push'] })])
     expect(d.lines[0].text).toContain('[r0]')

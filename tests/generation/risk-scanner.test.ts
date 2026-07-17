@@ -33,6 +33,13 @@ describe('scanRisk', () => {
     expect(scanRisk(phase({ intent: 'verify', stepIndexes: [0] }), auto(['run tests', 'lint', 'typecheck']))).toBe(false)
   })
 
+  it('does NOT gate read-only Slack history, deployment logs, or release notes', () => {
+    expect(scanRisk(
+      phase({ intent: 'review the Slack message history and deployment logs', stepIndexes: [0] }),
+      auto(['read the release notes']),
+    )).toBe(false)
+  })
+
   it('unions the planner riskHint', () => {
     expect(scanRisk(phase({ intent: 'do the thing', stepIndexes: [0], riskHint: ['charge'] }), auto(['do the thing']))).toBe(true)
   })

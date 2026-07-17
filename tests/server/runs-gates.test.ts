@@ -196,6 +196,18 @@ describe('gate endpoints', () => {
     })
     const { runId } = (await res.json()) as { runId: string }
     await waitForStatus('wf-1', runId, 'paused')
+    const manifestPath = path.join(runsDir, 'wf-1', `${runId}.manifest.json`)
+    const pausedManifest = JSON.parse(await fs.readFile(manifestPath, 'utf-8')) as { runtimeBinding?: { id: string } }
+    expect(pausedManifest.runtimeBinding?.id).toMatch(/^[0-9a-f]{16}$/)
+    const bindingDir = path.join(wtRoot, '.skill-bindings', pausedManifest.runtimeBinding!.id)
+    await fs.access(path.join(bindingDir, 'binding.json'))
+
+    // The paused run is bound to its private plugin. A later deployment change
+    // must not affect the resumed session after a server restart.
+    await fs.writeFile(
+      path.join(homeDir, '.claude', 'skills', 'cwc-x', 'SKILL.md'),
+      '# replacement deployment\n<!-- cwc:workflow:wf-1 -->\n',
+    )
 
     // Switch to okBin for the resume (approve spawns okBin which completes instantly)
     server.close()
@@ -224,6 +236,7 @@ describe('gate endpoints', () => {
     // branch kept
     const branches = execFileSync('git', ['-C', repo, 'branch', '--list', `cwc/cwc-x/${runId}`], { encoding: 'utf-8' })
     expect(branches).toContain(runId)
+    await expect(fs.access(bindingDir)).rejects.toThrow()
   })
 
   it('4a. Approve on a non-paused run → 409', async () => {
@@ -260,6 +273,32 @@ describe('gate endpoints', () => {
     expect(approveRes.status).toBe(409)
     const body = (await approveRes.json()) as { error: string }
     expect(body.error).toContain('cannot resume')
+  })
+
+  it('4b2. Approve refuses a changed private binding and leaves the run paused', async () => {
+    startApp(gateBin)
+    const res = await fetch(`${base}/api/runs/test`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ workflowId: 'wf-1', workflowSlug: 'cwc-x', cwd: repo }),
+    })
+    const { runId } = (await res.json()) as { runId: string }
+    await waitForStatus('wf-1', runId, 'paused')
+    const manifest = JSON.parse(
+      await fs.readFile(path.join(runsDir, 'wf-1', `${runId}.manifest.json`), 'utf-8'),
+    ) as { runtimeBinding: { id: string } }
+    await fs.writeFile(
+      path.join(wtRoot, '.skill-bindings', manifest.runtimeBinding.id, 'skills', 'cwc-x', 'SKILL.md'),
+      'changed after pause',
+    )
+
+    const approveRes = await fetch(`${base}/api/runs/${runId}/approve`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ workflowId: 'wf-1' }),
+    })
+    expect(approveRes.status).toBe(409)
+    expect(await approveRes.json()).toMatchObject({ code: 'runtime_binding_invalid' })
+    const [summary] = (await (await fetch(`${base}/api/runs?workflowId=wf-1`)).json()) as Record<string, unknown>[]
+    expect(summary.lifecycleState).toBe('paused')
   })
 
   it('4c. Double-click Approve does not spawn a duplicate resume (second → 409)', async () => {
@@ -374,6 +413,11 @@ describe('gate endpoints', () => {
     })
     const { runId } = (await res.json()) as { runId: string }
     await waitForStatus('wf-1', runId, 'paused')
+    const pausedManifest = JSON.parse(
+      await fs.readFile(path.join(runsDir, 'wf-1', `${runId}.manifest.json`), 'utf-8'),
+    ) as { runtimeBinding: { id: string } }
+    const bindingDir = path.join(wtRoot, '.skill-bindings', pausedManifest.runtimeBinding.id)
+    await fs.access(bindingDir)
 
     const events = (await (await fetch(`${base}/api/runs/${runId}/events?workflowId=wf-1`)).json()) as Record<string, unknown>[]
     const started = events.find(e => e.type === 'run_started') as Record<string, unknown>
@@ -402,6 +446,7 @@ describe('gate endpoints', () => {
     // branch deleted
     const branches = execFileSync('git', ['-C', repo, 'branch', '--list', `cwc/cwc-x/${runId}`], { encoding: 'utf-8' }).trim()
     expect(branches).toBe('')
+    await expect(fs.access(bindingDir)).rejects.toThrow()
   })
 
   it('5b. POST /reject on no-session paused run also works', async () => {

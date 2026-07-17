@@ -11,7 +11,50 @@ export interface BfsStep {
   outgoingEdges: AnnotatedEdge[]
 }
 
+/** Prefer a stable topological traversal for acyclic workflows. A shortest-path
+ * BFS can visit an uneven branch's join before the longer sibling has reached it,
+ * which makes generated numbered prose describe the join too early. */
+function topologicalTraversal(nodes: CwcNode[], edges: CwcEdge[]): BfsStep[] | null {
+  const nodeMap = new Map(nodes.map(node => [node.id, node]))
+  const graphEdges = edges.filter(edge => edge.to !== null
+    && nodeMap.has(edge.from) && nodeMap.has(edge.to))
+  const outgoing = new Map<string, CwcEdge[]>()
+  const indegree = new Map(nodes.map(node => [node.id, 0]))
+  for (const edge of graphEdges) {
+    const list = outgoing.get(edge.from) ?? []
+    list.push(edge)
+    outgoing.set(edge.from, list)
+    indegree.set(edge.to!, (indegree.get(edge.to!) ?? 0) + 1)
+  }
+
+  const queue = nodes.filter(node => indegree.get(node.id) === 0).map(node => node.id)
+  const level = new Map(queue.map(id => [id, 0]))
+  const result: BfsStep[] = []
+  while (queue.length > 0) {
+    const id = queue.shift()!
+    const node = nodeMap.get(id)
+    if (!node) continue
+    const rawEdges = edges.filter(edge => edge.from === id)
+    result.push({
+      node,
+      level: level.get(id) ?? 0,
+      outgoingEdges: rawEdges.map(edge => ({ edge, isBackEdge: false })),
+    })
+    for (const edge of outgoing.get(id) ?? []) {
+      level.set(edge.to!, Math.max(level.get(edge.to!) ?? 0, (level.get(id) ?? 0) + 1))
+      const remaining = (indegree.get(edge.to!) ?? 0) - 1
+      indegree.set(edge.to!, remaining)
+      if (remaining === 0) queue.push(edge.to!)
+    }
+  }
+
+  return result.length === nodes.length ? result : null
+}
+
 export function bfsTraversal(nodes: CwcNode[], edges: CwcEdge[]): BfsStep[] {
+  const topological = topologicalTraversal(nodes, edges)
+  if (topological) return topological
+
   const nodeMap = new Map(nodes.map(n => [n.id, n]))
 
   // Build adjacency: from → edges

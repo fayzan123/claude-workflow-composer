@@ -63,4 +63,18 @@ describe('bfsTraversal', () => {
     const aStep = steps[0]
     expect(aStep.outgoingEdges.some(e => e.edge.to === null)).toBe(true)
   })
+
+  it('orders an acyclic join after every uneven branch predecessor', () => {
+    const nodes = [node('A'), node('B'), node('C'), node('D'), node('E'), node('J')]
+    const edges = [
+      edge('A', 'B'), edge('A', 'C'), edge('B', 'D'), edge('D', 'E'),
+      edge('C', 'J'), edge('E', 'J'),
+    ]
+    const steps = bfsTraversal(nodes, edges)
+    const order = steps.map(step => step.node.id)
+
+    expect(order.indexOf('J')).toBeGreaterThan(order.indexOf('C'))
+    expect(order.indexOf('J')).toBeGreaterThan(order.indexOf('E'))
+    expect(steps.find(step => step.node.id === 'E')?.outgoingEdges[0].isBackEdge).toBe(false)
+  })
 })

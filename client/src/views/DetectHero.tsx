@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { api } from '../lib/api.ts'
 import { deriveScanUiState, homeScanActionPath, homeScanContent } from '../lib/scan-state.ts'
+import { artifactTierLabel, type ArtifactTier } from '../lib/artifact.ts'
+import { ArtifactBadge } from '../components/common/ArtifactBadge.tsx'
 
 type Latest = Awaited<ReturnType<typeof api.automationScan.latest>>
 type Auto = Latest['automations'][number]
@@ -102,7 +104,7 @@ export function DetectHero() {
   }
 
   const running = status === 'running'
-  const activeGeneration = generation && !generation.workflowId && !generation.error ? generation : null
+  const activeGeneration = generation && !(generation.artifactId ?? generation.workflowId) && !generation.error ? generation : null
   const scanState = deriveScanUiState(status, autos)
   const content = homeScanContent(scanState)
   const candidates = topCandidates(autos, activeGeneration?.id, scanState.kind === 'low-confidence')
@@ -166,21 +168,26 @@ export function DetectHero() {
         <ul className="hd-hero__candidates" role="list">
           {candidates.map((a, i) => {
             const busy = a.id === activeGeneration?.id || a.status === 'promoting'
+            const tier = a.recommendedTier ?? 'workflow'
+            const activeTier = a.selectedTier ?? activeGeneration?.tier ?? tier
             return (
               <li
                 key={a.id}
                 className={`hd-hero__candidate${busy ? ' hd-hero__candidate--busy' : ''}`}
                 style={{ ['--i' as string]: i }}
               >
-                <span className="hd-hero__candidate-title">{a.title}</span>
+                <span className="hd-hero__candidate-heading">
+                  <span className="hd-hero__candidate-title">{a.title}</span>
+                  <ArtifactBadge tier={tier as ArtifactTier} />
+                </span>
                 <span className="hd-hero__candidate-meta">
                   {busy
-                    ? `Generating workflow · ${formatElapsed(elapsed)}`
+                    ? `Generating ${artifactTierLabel(activeTier as ArtifactTier).toLowerCase()} · ${formatElapsed(elapsed)}`
                     : `seen ${a.evidence.count}× · ${a.suggestedTrigger.label || 'manual'} · ${Math.round(a.confidence * 100)}% confidence`}
                 </span>
                 {busy && (
                   <>
-                    <div className="hd-hero__candidate-bar" role="progressbar" aria-label="Generating workflow">
+                    <div className="hd-hero__candidate-bar" role="progressbar" aria-label={`Generating ${artifactTierLabel(activeTier as ArtifactTier).toLowerCase()}`}>
                       <div className="hd-hero__candidate-bar-fill" />
                     </div>
                     <div className="hd-hero__candidate-actions">
@@ -212,7 +219,7 @@ export function DetectHero() {
               type="button"
               onClick={() => runAction(content.secondary!.kind)}
               disabled={generationInProgress || running}
-              title={generationInProgress ? 'A workflow is already being generated.' : undefined}
+              title={generationInProgress ? 'An artifact is already being generated.' : undefined}
             >
               {generationInProgress ? 'Generating...' : content.secondary.label}
             </button>
@@ -261,9 +268,9 @@ export function DetectHero() {
           type="button"
           onClick={() => runAction(content.primary.kind)}
           disabled={generationInProgress}
-          title={generationInProgress ? 'A workflow is already being generated.' : undefined}
+          title={generationInProgress ? 'An artifact is already being generated.' : undefined}
         >
-          {generationInProgress ? 'Generating workflow...' : content.primary.label}
+          {generationInProgress ? 'Generating artifact…' : content.primary.label}
         </button>
       </div>
       {running && (

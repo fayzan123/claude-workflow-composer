@@ -5,6 +5,11 @@ import { mergeScanLogs } from '../lib/scan-log.ts'
 import { readScanModel, writeScanModel, type ScanModel } from '../lib/scan-preferences.ts'
 import { deriveScanUiState, detectResultsContent } from '../lib/scan-state.ts'
 import { toast } from '../lib/toast.ts'
+import type { ArtifactTier } from '../lib/artifact.ts'
+import type { RuleTarget } from '../lib/api.ts'
+import { artifactTierLabel } from '../lib/artifact.ts'
+import { ArtifactBadge } from '../components/common/ArtifactBadge.tsx'
+import { PromotionDialog } from '../components/detect/PromotionDialog.tsx'
 import './DetectView.css'
 
 /** Seconds → m:ss for the live generation timer. */
@@ -18,6 +23,31 @@ type Latest = Awaited<ReturnType<typeof api.automationScan.latest>>
 type Auto = Latest['automations'][number]
 type Log = NonNullable<Latest['log']>[number]
 type Generation = NonNullable<Latest['generation']>
+
+function generationArtifactId(generation: Generation | null | undefined): string | undefined {
+  return generation?.artifactId ?? generation?.workflowId
+}
+
+function recommendedTier(automation: Auto): ArtifactTier {
+  return automation.recommendedTier ?? 'workflow'
+}
+
+function applicationTargets(automation: Auto): RuleTarget[] {
+  const applications = (automation as Auto & { ruleApplications?: unknown[] }).ruleApplications ?? []
+  return applications.flatMap((application): RuleTarget[] => {
+    const candidate = typeof application === 'object' && application !== null && 'target' in application
+      ? (application as { target?: unknown }).target
+      : application
+    if (typeof candidate !== 'object' || candidate === null || !('type' in candidate)) return []
+    const type = (candidate as { type?: unknown }).type
+    if (type === 'user-claude') return [{ type }]
+    const projectDir = (candidate as { projectDir?: unknown }).projectDir
+    if (type === 'project-agents' && typeof projectDir === 'string') {
+      return [{ type, projectDir }]
+    }
+    return []
+  })
+}
 
 const MODELS = [
   { key: 'haiku',  label: 'Haiku',  pro: 'Fastest and cheapest', con: 'May miss subtler patterns' },
@@ -46,6 +76,13 @@ function sameAutos(a: Auto[], b: Auto[]): boolean {
       && item.evidence.count === other.evidence.count
       && item.suggestedTrigger.label === other.suggestedTrigger.label
       && item.suggestedTrigger.cron === other.suggestedTrigger.cron
+      && item.recommendedTier === other.recommendedTier
+      && item.selectedTier === other.selectedTier
+      && item.generatedArtifactId === other.generatedArtifactId
+      && item.generatedArtifactTier === other.generatedArtifactTier
+      && item.ruleSuggestion === other.ruleSuggestion
+      && JSON.stringify((item as Auto & { ruleApplications?: unknown[] }).ruleApplications ?? [])
+        === JSON.stringify((other as Auto & { ruleApplications?: unknown[] }).ruleApplications ?? [])
   })
 }
 
@@ -65,7 +102,9 @@ export function DetectView() {
   const [cancelingId, setCancelingId] = useState<string | null>(null)
   const mountedRef = useRef(true)
   const [elapsed, setElapsed] = useState(0)
-  const activeGeneration = generation && !generation.workflowId && !generation.error ? generation : null
+  const [promotionAuto, setPromotionAuto] = useState<Auto | null>(null)
+  const [dialogBusy, setDialogBusy] = useState(false)
+  const activeGeneration = generation && !generationArtifactId(generation) && !generation.error ? generation : null
   // Only treat busyId as "still generating" until its automation reaches a terminal status —
   // otherwise a lingering busyId keeps the header lock-note up after a card already shows cancelled.
   const busyAuto = busyId ? autos.find(a => a.id === busyId) : undefined
@@ -74,7 +113,7 @@ export function DetectView() {
   const generationInProgress = activePromotionId !== null
   const running = status === 'running'
   const latestStep = activeGeneration?.step ?? (logs.length > 0 ? logs[logs.length - 1].message : null)
-  const completedWorkflowRef = useRef<string | null>(null)
+  const completedArtifactRef = useRef<string | null>(null)
   useEffect(() => {
     mountedRef.current = true
     return () => { mountedRef.current = false }
@@ -95,10 +134,11 @@ export function DetectView() {
   // Clear this view's busy state on completion. The completion *toast* is fired once,
   // app-wide, by useGenerationWatcher in the shell — firing it here too would double it.
   useEffect(() => {
-    if (!generation?.workflowId || completedWorkflowRef.current === generation.workflowId) return
-    completedWorkflowRef.current = generation.workflowId
+    const artifactId = generationArtifactId(generation)
+    if (!artifactId || completedArtifactRef.current === artifactId) return
+    completedArtifactRef.current = artifactId
     setBusyId(null)
-  }, [generation?.workflowId])
+  }, [generation?.artifactId, generation?.workflowId])
 
   async function refresh() {
     const r = await api.automationScan.latest()
@@ -133,7 +173,7 @@ export function DetectView() {
     const es = new EventSource('/api/automation-scan/stream')
     es.onmessage = (m) => { try { const e = JSON.parse(m.data) as Log; setLogs(prev => mergeScanLogs(prev, [e])) } catch { /* ignore */ } }
     refresh().then(r => {
-      const promotionActive = Boolean(r.generation && !r.generation.workflowId && !r.generation.error) || r.automations.some(a => a.status === 'promoting')
+      const promotionActive = Boolean(r.generation && !generationArtifactId(r.generation) && !r.generation.error) || r.automations.some(a => a.status === 'promoting')
       if (params.get('autostart') === '1' && r.status !== 'running' && !promotionActive && !startedRef.current) {
         startedRef.current = true
         scan()
@@ -151,7 +191,7 @@ export function DetectView() {
         setGeneration(prev => {
           const next = r.generation ?? null
           if (!prev && !next) return prev
-          if (prev?.id === next?.id && prev?.step === next?.step && prev?.startedAt === next?.startedAt && prev?.workflowId === next?.workflowId && prev?.error === next?.error) return prev
+          if (prev?.id === next?.id && prev?.step === next?.step && prev?.startedAt === next?.startedAt && prev?.artifactId === next?.artifactId && prev?.workflowId === next?.workflowId && prev?.tier === next?.tier && prev?.error === next?.error) return prev
           return next
         })
         setAutos(prev => sameAutos(prev, visibleAutos) ? prev : visibleAutos)
@@ -171,29 +211,78 @@ export function DetectView() {
     el.scrollTo({ top: el.scrollHeight, behavior: reduceMotion ? 'auto' : 'smooth' })
   }, [logs])
 
-  // Promote spawns Claude to generate the workflow (seconds). Guard against double-fire and
+  // Promotion spawns Claude for procedural tiers. Guard against double-fire and
   // give visible feedback; block dismiss on the same card while a promote is in flight.
-  async function promote(id: string) {
-    if (generationInProgress) return
+  async function promote(id: string, tier: Exclude<ArtifactTier, 'rule'>): Promise<boolean> {
+    if (generationInProgress) return false
     const title = autos.find(a => a.id === id)?.title
     setBusyId(id); setActionError(null)
-    setAutos(prev => prev.map(a => a.id === id ? { ...a, status: 'promoting', statusDetail: undefined } : a))
+    setAutos(prev => prev.map(a => a.id === id ? {
+      ...a,
+      status: 'promoting',
+      selectedTier: tier,
+      ...(a.generatedArtifactId && !a.generatedArtifactTier
+        ? { generatedArtifactTier: a.selectedTier && a.selectedTier !== 'rule' ? a.selectedTier : 'workflow' }
+        : {}),
+      statusDetail: undefined,
+    } : a))
     try {
-      const r = await api.automationScan.promote(id)
-      if (!mountedRef.current) return
+      const r = await api.automationScan.promote(id, tier)
+      if (!mountedRef.current) return false
       if (!r.ok) {
-        toast.error('Workflow generation failed', r.error || 'Could not start workflow generation.')
-        setActionError(r.error || 'Could not start workflow generation.')
+        toast.error(`${artifactTierLabel(tier)} generation failed`, r.error || 'Could not start generation.')
+        setActionError(r.error || 'Could not start generation.')
         setBusyId(null)
+        return false
       } else {
-        toast.success('Workflow generation started', title ? `"${title}" is running in the background` : 'You can leave this page')
+        toast.success(`${artifactTierLabel(tier)} generation started`, title ? `"${title}" is running in the background` : 'You can leave this page')
       }
       await refresh()
+      return true
     } catch {
       if (mountedRef.current) setActionError('Promote failed — is the server still running?')
       if (mountedRef.current) setBusyId(null)
       if (mountedRef.current) await refresh().catch(() => {})
+      return false
     } finally { /* busyId clears from persisted generation completion/cancel refresh */ }
+  }
+
+  async function confirmPromotion(tier: ArtifactTier, target?: RuleTarget) {
+    if (!promotionAuto) return
+    setDialogBusy(true)
+    if (tier === 'rule') {
+      if (!target) { setDialogBusy(false); return }
+      try {
+        const result = await api.automationScan.applyRule(promotionAuto.id, target)
+        setAutos(prev => prev.map(auto => auto.id === result.automation.id ? result.automation : auto))
+        setPromotionAuto(null)
+        toast.success('Rule added', result.filePath.replace(/^\/Users\/[^/]+/, '~').replace(/^\/home\/[^/]+/, '~'))
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Could not add the rule.'
+        setActionError(message)
+        toast.error('Rule not added', message)
+      } finally {
+        setDialogBusy(false)
+      }
+      return
+    }
+
+    const started = await promote(promotionAuto.id, tier)
+    if (started) setPromotionAuto(null)
+    setDialogBusy(false)
+  }
+
+  async function removeRule(id: string, target: RuleTarget) {
+    setActionError(null)
+    try {
+      const result = await api.automationScan.removeRule(id, target)
+      setAutos(prev => prev.map(auto => auto.id === result.automation.id ? result.automation : auto))
+      toast.success('Rule removed', result.filePath.replace(/^\/Users\/[^/]+/, '~').replace(/^\/home\/[^/]+/, '~'))
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Could not remove the rule.'
+      setActionError(message)
+      toast.error('Rule not removed', message)
+    }
   }
   async function cancelPromote(id: string) {
     setCancelingId(id)
@@ -202,7 +291,7 @@ export function DetectView() {
       const res = await api.automationScan.cancelPromote(id)
       if (!res.ok) {
         const body = await res.json().catch(() => ({})) as { error?: string }
-        setActionError(body.error || 'Could not cancel workflow generation.')
+        setActionError(body.error || 'Could not cancel generation.')
       }
       await refresh()
     } catch {
@@ -261,7 +350,10 @@ export function DetectView() {
   }
 
   const selectedModel = MODELS.find(m => m.key === model) ?? MODELS[1]
-  const statusLabel = generationInProgress ? 'Generating workflow' : STATUS_LABEL[status] ?? status
+  const activeTier = activeGeneration?.tier ?? (activePromotionId ? autos.find(a => a.id === activePromotionId)?.selectedTier : undefined)
+  const statusLabel = generationInProgress
+    ? `Generating ${artifactTierLabel((activeTier as ArtifactTier | undefined) ?? 'workflow').toLowerCase()}`
+    : STATUS_LABEL[status] ?? status
   const statusClass = generationInProgress ? 'promoting' : status
   const scanState = deriveScanUiState(status, autos)
   const resultsContent = detectResultsContent(scanState)
@@ -273,7 +365,7 @@ export function DetectView() {
         <div className="detect__heading">
           <span className="detect__eyebrow">History scan</span>
           <h1 className="detect__title">Detect automations</h1>
-          <p className="detect__subtitle">Find repeated Claude Code work and turn the strongest patterns into workflows.</p>
+          <p className="detect__subtitle">Find repeated Claude Code work and compile each pattern into the smallest useful artifact.</p>
         </div>
         <div className="detect__bar-actions">
           <span className={`detect__status detect__status--${statusClass}`}>{statusLabel}</span>
@@ -282,7 +374,7 @@ export function DetectView() {
             type="button"
             onClick={scan}
             disabled={running || generationInProgress}
-            title={generationInProgress ? 'A workflow is already being generated.' : undefined}
+            title={generationInProgress ? 'An artifact is already being generated.' : undefined}
           >
             {generationInProgress ? 'Generating...' : running ? 'Scanning...' : status === 'idle' ? 'Scan history' : 'Scan again'}
           </button>
@@ -301,7 +393,7 @@ export function DetectView() {
                 writeScanModel(m.key)
               }}
               disabled={running || generationInProgress}
-              title={generationInProgress ? 'Model changes are disabled while a workflow is being generated.' : undefined}
+              title={generationInProgress ? 'Model changes are disabled while an artifact is being generated.' : undefined}
               aria-pressed={model === m.key}
             >
               <span className="detect__model-name">{m.label}</span>
@@ -312,7 +404,7 @@ export function DetectView() {
       </div>
       {generationInProgress && (
         <p className="detect__lock-note" role="status">
-          A workflow is generating in the background. Scanning, model changes, and dismiss stay paused until it finishes — you can leave this page.
+          An artifact is generating in the background. Scanning, model changes, and dismiss stay paused until it finishes — you can leave this page.
         </p>
       )}
       <div className="detect__body">
@@ -334,7 +426,13 @@ export function DetectView() {
                 const failed = a.status === 'promotion_failed'
                 const cancelled = a.status === 'promotion_cancelled'
                 const promoted = a.status === 'promoted'
-                const generatedWorkflowId = generation?.id === a.id ? generation.workflowId : undefined
+                const tier = recommendedTier(a)
+                const selectedGenerationTier = a.selectedTier ?? (generation?.id === a.id ? generation.tier : undefined) ?? tier
+                const generatedArtifactId = a.generatedArtifactId ?? (generation?.id === a.id ? generationArtifactId(generation) : undefined)
+                const generatedArtifactTier = a.generatedArtifactTier
+                  ?? (generation?.id === a.id && generationArtifactId(generation) ? generation.tier : undefined)
+                  ?? (a.selectedTier && a.selectedTier !== 'rule' ? a.selectedTier : 'workflow')
+                const appliedRuleTargets = applicationTargets(a)
                 // A card that has reached a terminal state is never "busy", even if busyId /
                 // activePromotionId briefly linger after a cancel — otherwise the loading bar
                 // renders on top of the cancelled/failed message.
@@ -348,10 +446,13 @@ export function DetectView() {
                 >
                   <div className="detect__card-top">
                     <h3 className="detect__card-title">{a.title}</h3>
-                    {a.status === 'promoted' && <span className="detect__badge">Promoted</span>}
-                    {busy && <span className="detect__badge detect__badge--busy">Generating</span>}
-                    {cancelled && <span className="detect__badge detect__badge--muted">Cancelled</span>}
-                    {failed && <span className="detect__badge detect__badge--error">Failed</span>}
+                    <div className="detect__card-badges">
+                      <ArtifactBadge tier={tier} recommended />
+                      {a.status === 'promoted' && <span className="detect__badge">{appliedRuleTargets.length > 0 && !generatedArtifactId ? 'Applied' : 'Generated'}</span>}
+                      {busy && <span className="detect__badge detect__badge--busy">Generating</span>}
+                      {cancelled && <span className="detect__badge detect__badge--muted">Cancelled</span>}
+                      {failed && <span className="detect__badge detect__badge--error">Failed</span>}
+                    </div>
                   </div>
                   <div className="detect__card-meta">
                     <span>{a.evidence.count} sighting{a.evidence.count === 1 ? '' : 's'}</span>
@@ -367,19 +468,19 @@ export function DetectView() {
                     </ol>
                   )}
                   <div className="detect__card-actions">
-                    {generatedWorkflowId ? (
+                    {generatedArtifactId ? (
                       <>
                         <button
                           className="detect__promote"
                           type="button"
-                          onClick={() => navigate(`/w/${generatedWorkflowId}/build`)}
+                          onClick={() => navigate(`/w/${generatedArtifactId}/build`)}
                         >
-                          Open workflow
+                          Open {artifactTierLabel(generatedArtifactTier as ArtifactTier).toLowerCase()}
                         </button>
                         <button
                           className="detect__dismiss"
                           type="button"
-                          onClick={() => promote(a.id)}
+                          onClick={() => setPromotionAuto(a)}
                           disabled={generationInProgress}
                         >
                           Generate again
@@ -389,11 +490,15 @@ export function DetectView() {
                       <button
                         className="detect__promote"
                         type="button"
-                        onClick={() => promote(a.id)}
+                        onClick={() => setPromotionAuto(a)}
                         disabled={generationInProgress}
-                        title={generationInProgress && !busy ? 'A workflow is already being generated.' : undefined}
+                        title={generationInProgress && !busy ? 'An artifact is already being generated.' : undefined}
                       >
-                        {busy ? 'Generating...' : promoted || failed || cancelled ? 'Generate again' : 'Generate workflow'}
+                        {busy
+                          ? `Generating ${artifactTierLabel(selectedGenerationTier as ArtifactTier).toLowerCase()}…`
+                          : promoted || failed || cancelled
+                            ? appliedRuleTargets.length > 0 && !generatedArtifactId ? 'Add rule elsewhere…' : 'Generate again'
+                            : tier === 'rule' ? 'Add rule…' : `Generate ${artifactTierLabel(tier)}`}
                       </button>
                     )}
                     {busy ? (
@@ -405,23 +510,35 @@ export function DetectView() {
                         className="detect__dismiss"
                         type="button"
                         onClick={() => dismiss(a.id)}
-                        disabled={generationInProgress}
-                        title={generationInProgress ? 'Dismiss is disabled while a workflow is being generated.' : undefined}
+                        disabled={generationInProgress || appliedRuleTargets.length > 0}
+                        title={appliedRuleTargets.length > 0
+                          ? 'Remove every applied rule before dismissing this automation.'
+                          : generationInProgress ? 'Dismiss is disabled while an artifact is being generated.' : undefined}
                       >Dismiss</button>
                     )}
+                    {!busy && appliedRuleTargets.map((target) => (
+                      <button
+                        key={target.type === 'project-agents' ? `${target.type}:${target.projectDir}` : target.type}
+                        className="detect__dismiss detect__cancel"
+                        type="button"
+                        onClick={() => void removeRule(a.id, target)}
+                      >
+                        Remove rule
+                      </button>
+                    ))}
                   </div>
                   {cancelled && a.statusDetail && <p className="detect__card-failed detect__card-muted">{a.statusDetail}</p>}
                   {failed && a.statusDetail && <p className="detect__card-failed">{a.statusDetail}</p>}
                   {busy && (
                     <div className="detect__card-busy">
-                      <div className="detect__progress" role="progressbar" aria-label="Generating workflow">
+                      <div className="detect__progress" role="progressbar" aria-label={`Generating ${artifactTierLabel(selectedGenerationTier as ArtifactTier).toLowerCase()}`}>
                         <div className="detect__progress-bar" />
                       </div>
                       <div className="detect__busy-status">
                         <span className="detect__busy-step">{latestStep ?? 'Starting...'}</span>
                         <span className="detect__busy-elapsed" aria-label="Time elapsed">{formatElapsed(elapsed)}</span>
                       </div>
-                      <span className="detect__busy-hint">You can leave this page; the result will land in your workflows.</span>
+                      <span className="detect__busy-hint">You can leave this page; the result will land in your saved artifacts.</span>
                     </div>
                   )}
                 </article>
@@ -447,6 +564,12 @@ export function DetectView() {
           </section>
         </aside>
       </div>
+      <PromotionDialog
+        automation={promotionAuto}
+        busy={dialogBusy}
+        onClose={() => setPromotionAuto(null)}
+        onConfirm={(tier, target) => { void confirmPromotion(tier, target) }}
+      />
     </div>
   )
 }

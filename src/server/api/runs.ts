@@ -28,6 +28,12 @@ import {
   type RunManifest,
   type RunManifestStore,
 } from '../run-manifest.js'
+import { hasOwnedExportedSkill } from '../exported-skill.js'
+import {
+  cleanupRunSkillBinding,
+  openRunSkillBinding,
+  type RunSkillBinding,
+} from '../run-skill-binding.js'
 
 export interface RunsRouterOptions {
   store: RunStore
@@ -165,10 +171,13 @@ export function runsRouter(opts: RunsRouterOptions): Router {
       res.status(400).json({ error: `working directory does not exist: ${cwd}` })
       return
     }
-    const userSkill = path.join(opts.skillsDir, workflowSlug, 'SKILL.md')
-    const projectSkill = path.join(cwd, '.claude', 'skills', workflowSlug, 'SKILL.md')
-    if (!fs.existsSync(userSkill) && !fs.existsSync(projectSkill)) {
-      res.status(400).json({ error: `workflow not exported: no skill found for /${workflowSlug}. Export the workflow first (re-export if you renamed it).` })
+    if (!await hasOwnedExportedSkill({
+      artifactId: workflowId,
+      skillSlug: workflowSlug,
+      userSkillsDir: opts.skillsDir,
+      projectDir: cwd,
+    })) {
+      res.status(400).json({ error: `artifact not exported: no CWC-owned skill found for /${workflowSlug}. Export the artifact first (re-export if you renamed it).` })
       return
     }
     if (store.hasActiveTestRun(workflowId)) {
@@ -189,6 +198,7 @@ export function runsRouter(opts: RunsRouterOptions): Router {
       store,
       manifests,
       worktreesRoot: opts.worktreesRoot,
+      skillsDir: opts.skillsDir,
       binPath: opts.claudeBinPath,
     })
     if (!outcome.fired) {
@@ -297,11 +307,30 @@ export function runsRouter(opts: RunsRouterOptions): Router {
     }
 
     let manifest: RunManifest
+    let runtimeBinding: RunSkillBinding
     try {
-      manifest = await manifests.withRun(workflowId, runId, async transaction => {
+      const claimed = await manifests.withRun(workflowId, runId, async transaction => {
         const current = transaction.current()
         if (current.lifecycleState !== 'paused') throw new RunActionConflict('not_paused', 'run is not paused')
         if (!current.sessionId) throw new RunActionConflict('not_resumable', 'cannot resume this run from CWC because it has no managed resumable session')
+        if (!current.runtimeBinding) {
+          throw new RunActionConflict('runtime_binding_missing', 'This paused run has no immutable artifact binding and cannot be resumed safely. Reject it and start a new run.')
+        }
+        let binding: RunSkillBinding
+        try {
+          binding = await openRunSkillBinding({
+            root: opts.worktreesRoot,
+            workflowId,
+            runId,
+            skillSlug: current.workflowSkillSlug,
+            authority: current.runtimeBinding,
+          })
+        } catch (err) {
+          throw new RunActionConflict(
+            'runtime_binding_invalid',
+            `The paused run's immutable artifact binding is unavailable or changed: ${err instanceof Error ? err.message : String(err)}`,
+          )
+        }
         if (current.requestedIsolation === 'worktree') {
           if (!current.repositoryIdentity || !current.worktreePath || !current.branch || !current.baseSha) {
             throw new RunActionConflict('manifest_incomplete', 'the paused run manifest is missing worktree authority')
@@ -309,8 +338,11 @@ export function runsRouter(opts: RunsRouterOptions): Router {
           const inspected = await inspectManagedWorktree(current.originalCwd, current.repositoryIdentity, current.worktreePath, current.branch)
           if (!inspected.ok) throw new RunActionConflict(inspected.code, inspected.message)
         }
-        return transaction.transition(value => ({ ...value, lifecycleState: 'resuming', failureReason: undefined }))
+        const next = await transaction.transition(value => ({ ...value, lifecycleState: 'resuming', failureReason: undefined }))
+        return { manifest: next, binding }
       })
+      manifest = claimed.manifest
+      runtimeBinding = claimed.binding
     } catch (err) {
       store.releaseRun(runId)
       if (err instanceof RunActionConflict) return void res.status(409).json({ error: err.message, code: err.code })
@@ -346,6 +378,7 @@ export function runsRouter(opts: RunsRouterOptions): Router {
         binPath: opts.claudeBinPath,
         resume: manifest.sessionId,
         promptOverride: prompt,
+        pluginDir: runtimeBinding.pluginDir,
       })
     } catch {
       await manifests.transition(workflowId, runId, current => ({ ...current, lifecycleState: 'paused', failureReason: 'could not resume the workflow process' })).catch(() => {})
@@ -353,7 +386,14 @@ export function runsRouter(opts: RunsRouterOptions): Router {
     }
     const { stop, done } = resumed
     store.registerRun(runId, workflowId, stop)
-    await manifests.transition(workflowId, runId, current => ({ ...current, lifecycleState: 'running' }))
+    try {
+      await manifests.transition(workflowId, runId, current => ({ ...current, lifecycleState: 'running' }))
+    } catch {
+      stop()
+      await done.catch(() => undefined)
+      await manifests.transition(workflowId, runId, current => ({ ...current, lifecycleState: 'paused', failureReason: 'could not record the resumed process' })).catch(() => {})
+      return void await bail(500, 'could not record the resumed process')
+    }
     void done.then(result => classifyAndFinish({
       workflowId,
       workflowSlug: manifest.workflowSkillSlug,
@@ -366,6 +406,7 @@ export function runsRouter(opts: RunsRouterOptions): Router {
       runId,
       wt: worktree,
       result,
+      runtimeBinding,
     }))
     res.json({ resumed: true })
   })
@@ -448,10 +489,29 @@ export function runsRouter(opts: RunsRouterOptions): Router {
         source: 'test',
         message: `Rejected by reviewer${note ? `: ${note}` : ''}`,
       })
+      if (rejected.runtimeBinding) {
+        await cleanupRunSkillBinding({
+          root: opts.worktreesRoot,
+          workflowId,
+          runId,
+          skillSlug: rejected.workflowSkillSlug,
+          authority: rejected.runtimeBinding,
+        })
+      }
       res.json({ rejected: true })
     } catch (err) {
       sendActionError(res, err)
     } finally {
+      const final = await manifests.read(workflowId, runId).catch(() => null)
+      if (final?.runtimeBinding && isTerminalManifest(final)) {
+        await cleanupRunSkillBinding({
+          root: opts.worktreesRoot,
+          workflowId,
+          runId,
+          skillSlug: final.workflowSkillSlug,
+          authority: final.runtimeBinding,
+        })
+      }
       store.releaseRun(runId)
     }
   })

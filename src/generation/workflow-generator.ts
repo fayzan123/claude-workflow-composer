@@ -1,5 +1,5 @@
 // src/generation/workflow-generator.ts
-import type { CwcFile } from '../schema.js'
+import { CWC_FILE_VERSION, type CwcFile } from '../schema.js'
 import type { DetectedAutomation } from '../detection/types.js'
 import { extractJsonObject } from '../json-extract.js'
 
@@ -133,7 +133,8 @@ needs and nothing more: agents that run commands need "Bash"; agents that change
 and/or "Write"; a pure review/inspection agent needs only "Read". Respond with ONLY a
 JSON object — no prose, no markdown fences — matching exactly:
 {
-  "meta": { "id": string, "name": string, "description": string, "version": 1, "created": string, "updated": string },
+  "meta": { "id": string, "name": string, "description": string, "version": ${CWC_FILE_VERSION}, "created": string, "updated": string,
+    "artifactKind": "workflow", "artifactTier": "workflow" },
   "nodes": [ { "id": string, "position": {"x": number, "y": number}, "exportedSlug": null,
     "agentRef"?: string,
     "dispatchMode"?: "parallel"|"conditional",
@@ -157,6 +158,9 @@ export function parseWorkflowJson(text: string): CwcFile {
   if (!cwc.meta?.name || !Array.isArray(cwc.nodes) || !Array.isArray(cwc.edges)) {
     throw new Error('Generated workflow is missing meta/nodes/edges.')
   }
+  cwc.meta.version = CWC_FILE_VERSION
+  cwc.meta.artifactKind = 'workflow'
+  cwc.meta.artifactTier = 'workflow'
   const ids = new Set(cwc.nodes.map(n => n.id))
   for (const n of cwc.nodes) { n.exportedSlug = null }
   for (const e of cwc.edges) {

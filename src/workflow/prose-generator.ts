@@ -116,7 +116,85 @@ export function generateOrchestratorBody(
   const agentNames = nodes.map(n => n.agent.name)
   const nodeMap = new Map(nodes.map(n => [n.id, n]))
   const steps = bfsTraversal(nodes, edges)
+  const stepOrder = new Map(steps.map((step, index) => [step.node.id, index]))
   const lines: string[] = []
+  const graphEdges = edges.filter((edge): edge is CwcEdge & { to: string } => edge.to !== null)
+  const incomingByTarget = new Map<string, CwcEdge[]>()
+  const outgoingBySource = new Map<string, CwcEdge[]>()
+  for (const edge of graphEdges) {
+    const incoming = incomingByTarget.get(edge.to) ?? []
+    incoming.push(edge)
+    incomingByTarget.set(edge.to, incoming)
+    const outgoing = outgoingBySource.get(edge.from) ?? []
+    outgoing.push(edge)
+    outgoingBySource.set(edge.from, outgoing)
+  }
+  const entryIds = nodes.filter(node => !incomingByTarget.has(node.id)).map(node => node.id)
+
+  const canReach = (start: string, goal: string, stopId?: string): boolean => {
+    const queue = [start]
+    const visited = new Set<string>()
+    while (queue.length > 0) {
+      const current = queue.shift()!
+      if (current === goal) return true
+      if (visited.has(current)) continue
+      visited.add(current)
+      for (const edge of outgoingBySource.get(current) ?? []) {
+        if (edge.to !== stopId && !visited.has(edge.to!)) queue.push(edge.to!)
+      }
+    }
+    return false
+  }
+
+  // A join must wait for every branch that came from a real parallel fan-out.
+  // This handles both multiple entry branches and multi-step branches below a
+  // common fan-out node, while deliberately excluding conditional alternatives.
+  const formParallelCohort = (sourceIds: string[], stopId?: string): boolean => {
+    const uniqueSources = [...new Set(sourceIds)]
+    if (uniqueSources.length < 2) return false
+
+    const entriesForSources = uniqueSources.map(source =>
+      entryIds.filter(entry => canReach(entry, source, stopId)))
+    if (entriesForSources.every(matches => matches.length === 1)
+      && new Set(entriesForSources.map(matches => matches[0])).size === uniqueSources.length) return true
+
+    for (const candidate of nodes) {
+      if (candidate.id === stopId || candidate.dispatchMode === 'conditional') continue
+      const branches = (outgoingBySource.get(candidate.id) ?? []).map(edge => edge.to!)
+      if (branches.length < 2) continue
+      const branchesForSources = uniqueSources.map(source =>
+        branches.filter(branch => canReach(branch, source, stopId)))
+      if (branchesForSources.every(matches => matches.length === 1)
+        && new Set(branchesForSources.map(matches => matches[0])).size === uniqueSources.length) return true
+    }
+    return false
+  }
+
+  const mergedContext = (joinEdges: CwcEdge[]): CwcArtifact[] => {
+    const seen = new Set<string>()
+    const result: CwcArtifact[] = []
+    for (const artifact of joinEdges.flatMap(edge => edge.context ?? [])) {
+      const key = `${artifact.type}\0${artifact.name}\0${artifact.path ?? ''}`
+      if (seen.has(key)) continue
+      seen.add(key)
+      result.push(artifact)
+    }
+    return result
+  }
+
+  const lastSource = (group: CwcEdge[]): string | undefined => [...group]
+    .sort((a, b) => (stepOrder.get(a.from) ?? -1) - (stepOrder.get(b.from) ?? -1))
+    .at(-1)?.from
+
+  const joinConditionClause = (joinEdges: CwcEdge[]): string => {
+    const requirements = joinEdges.map(edge => {
+      const source = nodeMap.get(edge.from)?.agent.name ?? edge.from
+      const trigger = edge.trigger.replace(/\s+/g, ' ').trim()
+        || `${source} has completed its branch.`
+      return `from **${source}**: ${JSON.stringify(boldWrapAgentNames(trigger, agentNames))}`
+    })
+    return ` confirm every incoming handoff condition is satisfied (${requirements.join(' AND ')}). Only then,`
+  }
 
   lines.push(
     `I am the orchestrator for the **${workflowName}** workflow. I coordinate this pipeline exclusively through the Agent tool — I do not read, write, or edit files myself. All implementation work is delegated to subagents.`,
@@ -190,17 +268,41 @@ export function generateOrchestratorBody(
       if (!emitted.has(ae.edge.id)) {
         const target = nodeMap.get(ae.edge.to!)
         if (target) {
-          const raw = ae.edge.trigger.trim() || `Invoke **${target.agent.name}**.`
-          const trigger = boldWrapAgentNames(raw, agentNames)
-          const ctx = formatContextClause(ae.edge.context)
-          if (target.nodeType === 'gate') {
-            lines.push(`${stepNum++}. ${trigger} ${gateProse(target, opts.observability)}`)
-          } else if (step.node.nodeType === 'gate') {
-            const overrides = formatOverrideAnnotation(ae.edge.to!, nodeOverrides)
-            lines.push(`${stepNum++}. After this gate is approved, ${trigger} Use the Agent tool with \`subagent_type: "${nodeSlug(target)}"\` to invoke **${target.agent.name}**.${ctx}${overrides}`)
+          const joinEdges = incomingByTarget.get(target.id) ?? []
+          const isParallelJoin = joinEdges.length > 1
+            && formParallelCohort(joinEdges.map(edge => edge.from), target.id)
+          if (isParallelJoin) {
+            // Describe a join only after the last branch source has itself been
+            // described. This matters for uneven branch depths: emitting at the
+            // first short branch would place a wait before the long branch starts.
+            if (lastSource(joinEdges) === step.node.id) {
+              const sources = joinEdges
+                .map(edge => nodeMap.get(edge.from)?.agent.name)
+                .filter((name): name is string => Boolean(name))
+                .map(name => `**${name}**`)
+              const ctx = formatContextClause(mergedContext(joinEdges))
+              const conditions = joinConditionClause(joinEdges)
+              if (target.nodeType === 'gate') {
+                lines.push(`${stepNum++}. After ${oxfordJoin(sources)} have all completed,${conditions} ${gateProse(target, opts.observability)}${ctx}`)
+              } else {
+                const overrides = formatOverrideAnnotation(target.id, nodeOverrides)
+                lines.push(`${stepNum++}. After ${oxfordJoin(sources)} have all completed,${conditions} invoke **${target.agent.name}** once with the Agent tool using \`subagent_type: "${nodeSlug(target)}"\`.${ctx}${overrides}`)
+              }
+              for (const joinEdge of joinEdges) emitted.add(joinEdge.id)
+            }
           } else {
-            const overrides = formatOverrideAnnotation(ae.edge.to!, nodeOverrides)
-            lines.push(`${stepNum++}. ${trigger} Use the Agent tool with \`subagent_type: "${nodeSlug(target)}"\`.${ctx}${overrides}`)
+            const raw = ae.edge.trigger.trim() || `Invoke **${target.agent.name}**.`
+            const trigger = boldWrapAgentNames(raw, agentNames)
+            const ctx = formatContextClause(ae.edge.context)
+            if (target.nodeType === 'gate') {
+              lines.push(`${stepNum++}. ${trigger} ${gateProse(target, opts.observability)}`)
+            } else if (step.node.nodeType === 'gate') {
+              const overrides = formatOverrideAnnotation(ae.edge.to!, nodeOverrides)
+              lines.push(`${stepNum++}. After this gate is approved, ${trigger} Use the Agent tool with \`subagent_type: "${nodeSlug(target)}"\` to invoke **${target.agent.name}**.${ctx}${overrides}`)
+            } else {
+              const overrides = formatOverrideAnnotation(ae.edge.to!, nodeOverrides)
+              lines.push(`${stepNum++}. ${trigger} Use the Agent tool with \`subagent_type: "${nodeSlug(target)}"\`.${ctx}${overrides}`)
+            }
           }
         }
         emitted.add(ae.edge.id)
@@ -211,10 +313,30 @@ export function generateOrchestratorBody(
 
     for (const ae of terminalEdges) {
       if (!emitted.has(ae.edge.id)) {
-        const raw = ae.edge.trigger.trim() || `**${step.node.agent.name}** completes the workflow.`
-        const line = boldWrapAgentNames(raw, agentNames)
-        lines.push(`${stepNum++}. ${isGateStep ? `After this gate is approved, ${line}` : line}`)
-        emitted.add(ae.edge.id)
+        const terminalGroup = edges.filter(edge => edge.to === null
+          && edge.terminalType === ae.edge.terminalType)
+        const isParallelTerminal = terminalGroup.length > 1
+          && formParallelCohort(terminalGroup.map(edge => edge.from))
+        if (isParallelTerminal) {
+          if (lastSource(terminalGroup) === step.node.id) {
+            const sources = terminalGroup
+              .map(edge => nodeMap.get(edge.from)?.agent.name)
+              .filter((name): name is string => Boolean(name))
+              .map(name => `**${name}**`)
+            const outcome = ae.edge.terminalType === 'escalated'
+              ? 'finish the workflow with an escalated outcome.'
+              : ae.edge.terminalType === 'aborted'
+                ? 'finish the workflow with an aborted outcome.'
+                : 'complete the workflow.'
+            lines.push(`${stepNum++}. After ${oxfordJoin(sources)} have all completed, their parallel branches ${outcome}`)
+            for (const terminalEdge of terminalGroup) emitted.add(terminalEdge.id)
+          }
+        } else {
+          const raw = ae.edge.trigger.trim() || `**${step.node.agent.name}** completes the workflow.`
+          const line = boldWrapAgentNames(raw, agentNames)
+          lines.push(`${stepNum++}. ${isGateStep ? `After this gate is approved, ${line}` : line}`)
+          emitted.add(ae.edge.id)
+        }
       }
     }
 

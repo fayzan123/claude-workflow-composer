@@ -19,6 +19,27 @@ describe('matchArchetype', () => {
     expect(matchArchetype(undefined, 'send a slack notification').risky).toBe(true)
     expect(matchArchetype(undefined, 'run tests').risky).toBe(false)
   })
+
+  it('treats opening a pull request as a publish boundary', () => {
+    expect(matchArchetype(undefined, 'open the pull request').id).toBe('publish')
+    expect(matchArchetype(undefined, 'create a PR').risky).toBe(true)
+  })
+
+  it.each([
+    'update the PR description with the latest screenshots',
+    'summarize the PR for the team',
+  ])('does not treat a bare PR mention as a risky publish action: %s', (step) => {
+    expect(matchArchetype(undefined, step).risky).toBe(false)
+  })
+
+  it.each([
+    'review the Slack message history',
+    'inspect the deployment logs',
+    'read the release notes',
+    'review the pull request',
+  ])('keeps read-only product and deployment nouns non-risky: %s', (step) => {
+    expect(matchArchetype(undefined, step)).toMatchObject({ id: 'review', risky: false })
+  })
 })
 
 describe('prose templates', () => {

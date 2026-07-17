@@ -52,6 +52,11 @@ export interface RunManifestTransition {
   disposition: RunResultDisposition
 }
 
+export interface RunBindingAuthority {
+  id: string
+  hash: string
+}
+
 /**
  * Durable authority for a run started by the CWC harness. JSONL events remain an
  * observational timeline and are intentionally not represented as authority here.
@@ -73,6 +78,7 @@ export interface RunManifest {
   worktreePath?: string
   branch?: string
   sessionId?: string
+  runtimeBinding?: RunBindingAuthority
   resultSha?: string
   disposition: RunResultDisposition
   appliedSha?: string
@@ -123,6 +129,8 @@ export class RunManifestValidationError extends RunManifestError {}
 
 const SAFE_ID = /^[A-Za-z0-9._-]+$/
 const SHA = /^[0-9a-f]{40}(?:[0-9a-f]{24})?$/
+const CONTENT_HASH = /^[0-9a-f]{64}$/
+const BINDING_ID = /^[0-9a-f]{16}$/
 const MAX_ID_LENGTH = 200
 const MAX_SHORT_STRING = 1_024
 const MAX_PATH_LENGTH = 32_768
@@ -170,6 +178,16 @@ function optionalSha(value: unknown, field: string): string | undefined {
   if (value === undefined) return undefined
   if (typeof value !== 'string' || !SHA.test(value)) throw new RunManifestValidationError(`${field} must be a full Git commit SHA`)
   return value
+}
+
+function optionalRuntimeBinding(value: unknown): RunBindingAuthority | undefined {
+  if (value === undefined) return undefined
+  if (!isRecord(value)
+    || typeof value.id !== 'string' || !BINDING_ID.test(value.id)
+    || typeof value.hash !== 'string' || !CONTENT_HASH.test(value.hash)) {
+    throw new RunManifestValidationError('runtimeBinding is invalid')
+  }
+  return { id: value.id, hash: value.hash }
 }
 
 function enumValue<T extends string>(value: unknown, field: string, values: readonly T[]): T {
@@ -250,6 +268,7 @@ export function parseRunManifest(raw: unknown): RunManifest {
 
   const resultSha = optionalSha(raw.resultSha, 'resultSha')
   const appliedSha = optionalSha(raw.appliedSha, 'appliedSha')
+  const runtimeBinding = optionalRuntimeBinding(raw.runtimeBinding)
   if (disposition === 'applied' && (!appliedSha || appliedSha !== resultSha)) {
     throw new RunManifestValidationError('applied manifests require appliedSha to equal resultSha')
   }
@@ -271,6 +290,7 @@ export function parseRunManifest(raw: unknown): RunManifest {
     ...(optionalString(raw.worktreePath, 'worktreePath', MAX_PATH_LENGTH) ? { worktreePath: optionalString(raw.worktreePath, 'worktreePath', MAX_PATH_LENGTH) } : {}),
     ...(branch ? { branch } : {}),
     ...(optionalString(raw.sessionId, 'sessionId', MAX_PATH_LENGTH) ? { sessionId: optionalString(raw.sessionId, 'sessionId', MAX_PATH_LENGTH) } : {}),
+    ...(runtimeBinding ? { runtimeBinding } : {}),
     ...(resultSha ? { resultSha } : {}),
     disposition,
     ...(appliedSha ? { appliedSha } : {}),
@@ -297,6 +317,13 @@ function assertImmutableFields(before: RunManifest, after: RunManifest): void {
   ] as const) {
     if (after[field] !== before[field]) throw new RunManifestValidationError(`${field} cannot change after manifest creation`)
   }
+  if (before.runtimeBinding) {
+    if (!after.runtimeBinding
+      || after.runtimeBinding.id !== before.runtimeBinding.id
+      || after.runtimeBinding.hash !== before.runtimeBinding.hash) {
+      throw new RunManifestValidationError('runtimeBinding cannot change after it is recorded')
+    }
+  }
 }
 
 function defaultNow(): string {
@@ -313,7 +340,7 @@ export function runActionAvailability(manifest: RunManifest): RunActionAvailabil
     && Boolean(manifest.branch && manifest.resultSha && manifest.repositoryIdentity && manifest.baseSha)
   return {
     diff: hasGitAuthority && manifest.disposition !== 'discarded',
-    approve: manifest.lifecycleState === 'paused' && Boolean(manifest.sessionId),
+    approve: manifest.lifecycleState === 'paused' && Boolean(manifest.sessionId && manifest.runtimeBinding),
     reject: manifest.lifecycleState === 'paused',
     apply: manifest.lifecycleState === 'completed'
       && manifest.completionStatus === 'complete'

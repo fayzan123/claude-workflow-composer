@@ -5,6 +5,8 @@ import { extractJsonObject } from '../json-extract.js'
 import type { TaskUnit, DetectedAutomation, AutomationEvidence } from './types.js'
 import { buildDigests } from './digest-builder.js'
 import { buildAnalysisPrompt } from './analysis-prompt.js'
+import { deriveAutomationShape, deriveRuleSuggestion } from './automation-shape.js'
+import { classifyAutomation } from '../generation/classifier.js'
 
 interface RawAutomation {
   title?: string; description?: string; steps?: unknown; stepTokens?: unknown; refs?: unknown
@@ -17,8 +19,9 @@ function strArray(v: unknown): string[] {
   return Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : []
 }
 
-function deriveId(repos: string[], stepTokens: string[]): string {
-  const key = [...repos].sort().join('|') + '::' + [...stepTokens].sort().join('+')
+function deriveId(repos: string[], stepTokens: string[], fallback: string): string {
+  const groundedTokens = stepTokens.length > 0 ? [...stepTokens].sort().join('+') : fallback.toLowerCase()
+  const key = [...repos].sort().join('|') + '::' + groundedTokens
   return createHash('sha256').update(key).digest('hex').slice(0, 12)
 }
 
@@ -51,20 +54,41 @@ export function parseAutomations(resultText: string, refIndex: Map<string, TaskU
     const refs = [...new Set(strArray(a.refs))]
     const refUnits = refs.map(r => refIndex.get(r)).filter((u): u is TaskUnit => !!u)
     if (refUnits.length < MIN_EVIDENCE_OCCURRENCES) continue
+    const steps = strArray(a.steps).map(step => step.replace(/\s+/g, ' ').trim()).filter(Boolean)
+    if (steps.length < 1 || steps.length > 6) continue
     const stepTokens = strArray(a.stepTokens)
     const evidence = evidenceFrom(refUnits)
     const kind = a.suggestedTrigger?.kind === 'schedule' || a.suggestedTrigger?.kind === 'event' ? a.suggestedTrigger.kind : 'manual'
-    results.push({
-      id: deriveId(evidence.repos, stepTokens),
+    const suggestedTrigger = { kind, cron: a.suggestedTrigger?.cron || undefined, label: a.suggestedTrigger?.label ?? '' } as const
+    const title = String(a.title ?? '').trim() || 'Untitled automation'
+    const description = String(a.description ?? '').trim()
+    const groundedRule = deriveRuleSuggestion(refUnits)
+    const shape = deriveAutomationShape({ steps, evidence, suggestedTrigger }, refUnits)
+    const idFallback = shape.hasToolActivity
+      ? [title, ...steps, groundedRule ?? ''].join('|')
+      : groundedRule ?? [title, ...steps].join('|')
+    const automation: DetectedAutomation = {
+      id: deriveId(evidence.repos, stepTokens, idFallback),
       title: String(a.title ?? '').trim() || 'Untitled automation',
-      description: String(a.description ?? '').trim(),
-      steps: strArray(a.steps),
+      description,
+      steps,
       stepTokens,
       evidence,
-      suggestedTrigger: { kind, cron: a.suggestedTrigger?.cron || undefined, label: a.suggestedTrigger?.label ?? '' },
+      suggestedTrigger,
       confidence: typeof a.confidence === 'number' ? Math.max(0, Math.min(1, a.confidence)) : 0.5,
       status: 'new',
-    })
+      shape,
+    }
+    automation.recommendedTier = classifyAutomation(automation)
+    // Keep the evidence-grounded prompt for every tier. Users may deliberately
+    // override a skill/loop/workflow recommendation to a standing rule later.
+    if (groundedRule) automation.ruleSuggestion = groundedRule
+    // A command-driven repetition is already automated: the useful rule names the
+    // installed command instead of restating the raw slash-command prompt blob.
+    if (shape.invokedSlashCommand) {
+      automation.ruleSuggestion = `Use the installed /${shape.invokedSlashCommand} command for this: ${automation.title}`
+    }
+    results.push(automation)
   }
   return results.sort((x, y) => y.confidence - x.confidence)
 }

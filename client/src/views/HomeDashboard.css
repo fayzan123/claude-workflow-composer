@@ -664,6 +664,17 @@
   text-overflow: ellipsis;
 }
 
+.hd-list-item__name-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  min-width: 0;
+}
+
+.hd-list-item__name-row .hd-list-item__name {
+  min-width: 0;
+}
+
 .hd-list-item__meta {
   font-size: var(--text-xs);
   color: var(--color-text-tertiary);
@@ -1235,7 +1246,8 @@
   border-radius: var(--radius-md);
   background: var(--color-surface-secondary);
 }
-.hd-hero__candidate-title { font-size: var(--text-base); font-weight: 500; color: var(--color-text); }
+.hd-hero__candidate-heading { display: flex; align-items: center; justify-content: space-between; gap: var(--space-sm); min-width: 0; }
+.hd-hero__candidate-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--text-base); font-weight: 500; color: var(--color-text); }
 .hd-hero__candidate-meta { font-size: var(--text-xs); color: var(--color-text-tertiary); }
 
 /* Generating candidate: tinted border + indeterminate bar, mirroring the Detect view card

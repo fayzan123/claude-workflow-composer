@@ -79,9 +79,13 @@ export function InboxItem({ run, onChanged }: InboxItemProps) {
     }
   }
 
-  const approveDisabled = events !== null && !hasPausedEvent
+  // The server's manifest authority (run.actions.approve) is the final word: a paused
+  // run without a resumable session binding always 409s, so never offer a dead-end button.
+  const approveDisabled = (events !== null && !hasPausedEvent) || !run.actions.approve
   const approveTooltip = approveDisabled
-    ? "This run was started from a terminal, so CWC can't resume it here — continue it where you launched it, or reject to clean up."
+    ? (run.managed
+      ? "This paused run can't be resumed from CWC because it has no resumable session binding — reject it and start a new run."
+      : "This run was started from a terminal, so CWC can't resume it here — continue it where you launched it, or reject to clean up.")
     : undefined
 
   return (

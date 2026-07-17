@@ -41,7 +41,9 @@ Produce a single valid JSON object matching this exact schema:
     id: string           // generate a unique ID: use Date.now() + Math.random() pattern
     name: string         // short, title-case workflow name
     description: string  // one sentence: what this workflow does
-    version: 1
+    version: 2
+    artifactKind: "workflow"  // required for newly generated v2 files
+    artifactTier: "workflow"
     created: string      // current ISO 8601 datetime
     updated: string      // same as created
   }

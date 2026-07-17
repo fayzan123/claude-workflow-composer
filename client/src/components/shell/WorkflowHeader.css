@@ -49,6 +49,17 @@
   flex: 1;
 }
 
+.workflow-header__name-row {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.workflow-header__artifact-badge {
+  flex-shrink: 0;
+  margin-left: 4px;
+}
+
 .workflow-header__name-input {
   font-size: var(--text-base);
   font-weight: 600;

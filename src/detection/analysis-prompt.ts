@@ -19,9 +19,12 @@ Below are task digests, grouped by repository alias. Each line is one task the d
 
 ${body}
 
-Find distinct recurring tasks that appear to be done REPEATEDLY (3 or more times) and would
-be worth running automatically. Merge duplicates — the same real task may appear under slightly
-different prompts; treat those as ONE automation. Ignore one-off or exploratory work.
+Find distinct recurring tasks or standing instructions that appear REPEATEDLY (3 or more times)
+and would be worth capturing. Lines whose tools are \`(none)\` can still be useful repeated
+instructions; include them when the prompt itself clearly recurs. The server will choose the
+smallest artifact, so do not force an instruction to look like a multi-step workflow. Merge
+duplicates — the same real task may appear under slightly different prompts; treat those as ONE
+automation. Ignore one-off, exploratory, conversational, or acknowledgement-only work.
 
 Respond with ONLY a JSON object — no prose, no markdown fences:
 {
@@ -29,7 +32,7 @@ Respond with ONLY a JSON object — no prose, no markdown fences:
     {
       "title": string,            // short, e.g. "Triage flaky tests and commit the fix"
       "description": string,      // one sentence: what it does and why it recurs
-      "steps": string[],          // the procedure, 2-6 concrete steps
+      "steps": string[],          // the procedure, 1-6 concrete steps; one grounded instruction is valid
       "stepTokens": string[],     // lowercase canonical tokens for the steps, e.g. ["run-tests","commit","push"]
       "refs": string[],           // EVERY digest ref that belongs to this automation, e.g. ["r0","r4","r9"]
       "suggestedTrigger": {

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { buildAgentFileContent, buildWorkflowSkillContent } from '../../src/export/file-writer.js'
+import { buildAgentFileContent, buildManagedSkillContent, buildWorkflowSkillContent } from '../../src/export/file-writer.js'
 import type { CwcNode, CwcFile } from '../../src/schema.js'
 import type { SkillResolution } from '../../src/export/skill-resolver.js'
 import matter from 'gray-matter'
@@ -162,9 +162,48 @@ describe('buildWorkflowSkillContent', () => {
     expect(lines[lines.length - 1]).toBe('<!-- cwc:workflow:wf-uuid -->')
   })
 
+  it('declares bespoke agent slugs immediately before workflow ownership', () => {
+    const content = buildWorkflowSkillContent(
+      'tdd-pipeline',
+      'TDD description',
+      'body',
+      'wf-uuid',
+      false,
+      ['writer', 'architect'],
+    )
+    const lines = content.split('\n').filter(line => line.trim().length > 0)
+    expect(lines.at(-2)).toBe('<!-- cwc:bespoke-agents:architect,writer -->')
+    expect(lines.at(-1)).toBe('<!-- cwc:workflow:wf-uuid -->')
+  })
+
   it('produces parseable frontmatter when description contains a colon', () => {
     const content = buildWorkflowSkillContent('tdd-pipeline', 'Pipeline: builds and tests', 'body', 'wf-uuid')
     expect(() => matter(content)).not.toThrow()
     expect(matter(content).data.description).toBe('Pipeline: builds and tests')
+  })
+})
+
+describe('buildManagedSkillContent', () => {
+  it('uses the plain slug and direct body with the existing ownership marker', () => {
+    const content = buildManagedSkillContent(
+      'migration-reviewer',
+      'Use when reviewing migrations.',
+      '\n# Migration Reviewer\n\nReview the migration.\n',
+      'skill-owner',
+    )
+    const parsed = matter(content)
+    expect(parsed.data).toMatchObject({
+      name: 'migration-reviewer',
+      description: 'Use when reviewing migrations.',
+      'disable-model-invocation': true,
+    })
+    expect(parsed.content).toContain('# Migration Reviewer')
+    expect(content).toContain('<!-- cwc:bespoke-agents:- -->')
+    expect(content.split('\n').filter(Boolean).at(-1)).toBe('<!-- cwc:workflow:skill-owner -->')
+  })
+
+  it('omits disable-model-invocation when explicitly allowed', () => {
+    const content = buildManagedSkillContent('plain-skill', 'Use when needed.', '# Body', 'owner', true)
+    expect(matter(content).data).not.toHaveProperty('disable-model-invocation')
   })
 })

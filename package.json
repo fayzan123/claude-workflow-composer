@@ -1,7 +1,7 @@
 {
   "name": "claude-cwc",
   "version": "0.11.9",
-  "description": "Visual composer for Claude Code multi-agent workflows",
+  "description": "Local-first compiler for Claude Code rules, skills, loops, and multi-agent workflows",
   "type": "module",
   "engines": {
     "node": ">=18"

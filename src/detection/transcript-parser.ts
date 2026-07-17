@@ -87,6 +87,15 @@ export async function parseSessionDetailed(filePath: string, homeDir?: string): 
         for (const tu of tus) {
           cur.tools.push(tu.name)
           if (tu.name === 'Bash' && typeof tu.input?.command === 'string') cur.commands.push(tu.input.command as string)
+          // A skill/command invocation means this work is already automated by an
+          // installed artifact; record the target so detection can dedupe against it.
+          if (tu.name === 'Skill' && typeof tu.input?.skill === 'string' && tu.input.skill) {
+            (cur.invokedCommands ??= []).push(tu.input.skill as string)
+          }
+          if (tu.name === 'SlashCommand' && typeof tu.input?.command === 'string') {
+            const slash = /^\s*\/([A-Za-z0-9][\w:-]*)/.exec(tu.input.command as string)
+            if (slash) (cur.invokedCommands ??= []).push(slash[1])
+          }
         }
       }
     }

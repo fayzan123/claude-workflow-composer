@@ -49,6 +49,46 @@
 
 .workflow-view { view-transition-name: detect-morph; }
 
+.workflow-view__conversion {
+  display: grid;
+  gap: var(--space-md);
+  color: var(--color-text-secondary);
+  font-size: var(--text-sm);
+  line-height: 1.55;
+}
+
+.workflow-view__conversion p {
+  margin: 0;
+}
+
+.workflow-view__conversion-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-sm);
+  padding-top: var(--space-sm);
+}
+
+.workflow-view__conversion-cancel,
+.workflow-view__conversion-confirm {
+  min-height: 34px;
+  padding: 0 var(--space-md);
+  border-radius: var(--radius-md);
+  font: 600 var(--text-sm) var(--font-sans);
+  cursor: pointer;
+}
+
+.workflow-view__conversion-cancel {
+  color: var(--color-text-secondary);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+}
+
+.workflow-view__conversion-confirm {
+  color: var(--color-text-inverse);
+  background: var(--color-primary);
+  border: 1px solid var(--color-primary);
+}
+
 @media (prefers-reduced-motion: no-preference) {
   ::view-transition-group(detect-morph) {
     animation-duration: 420ms;

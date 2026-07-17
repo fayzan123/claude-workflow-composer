@@ -1,4 +1,5 @@
 import type { DetectedAutomation } from '../detection/types.js'
+import { validatedIndependentStepIndexes } from '../detection/automation-shape.js'
 import type { CapabilityCard, CatalogAgent, CatalogSkill } from './workflow-generator.js'
 
 export interface PlannerContext {
@@ -36,12 +37,18 @@ export function buildPlannerPrompt(automation: DetectedAutomation, ctx: PlannerC
   const steps = automation.steps.length
     ? automation.steps.map((step, i) => `${i}. ${step}`).join('\n')
     : '(no observed steps; create one small generic phase grounded in the title)'
+  const parallelIndexes = validatedIndependentStepIndexes(automation.shape, automation.steps.length)
+  const independentCount = parallelIndexes && parallelIndexes.length >= 2 ? parallelIndexes.length : 1
+  const parallelEvidence = independentCount >= 2
+    ? `\nGrounded parallel step indexes: ${parallelIndexes!.join(', ')}`
+    : ''
 
   return `You are planning a Claude Workflow Composer automation. Emit only the small WorkflowPlan JSON. The compiler will write all systemPrompts, tools, edges, layout, gates, and metadata.
 
 Automation title: ${automation.title}
 Description: ${automation.description}
 Runs in repo: ${automation.evidence.repos[0] ?? '(unspecified)'}
+Observed independent step groups: ${independentCount}${parallelEvidence}
 
 Observed steps (use these exact numbers in stepIndexes and reuse.coversStepIndexes):
 ${steps}
@@ -65,6 +72,7 @@ Return JSON only, no markdown fences, matching this shape:
       "intent": "short phrase grounded in observed steps",
       "stepIndexes": [0],
       "archetypeHint": "verify|prepare|implement|review|research|publish|communicate",
+      "dispatch": "sequential|parallel",
       "reuse": { "kind": "skill|agent", "slug": "existing-slug-only", "coversStepIndexes": [0], "why": "why this capability fits" },
       "riskHint": ["publish|deploy|push|delete|external-message|billing"]
     }
@@ -79,7 +87,9 @@ Rules:
 - reuse.coversStepIndexes must reference real observed step numbers.
 - A single reuse must not cover all steps of a multi-step automation unless the whole automation is truly one reusable capability.
 - Add riskHint for publish, deploy, push, delete, production mutation, external messaging, billing, merge, or similar irreversible work.
-- Order phases so they run sequentially; the compiler wires the handoffs.
+- When observed independent step groups is 2 or more, preserve that evidence: place each independent sibling in its own consecutive phase and set dispatch to "parallel" on EVERY sibling. Put prerequisites before the cohort and any join/follow-up phase after it.
+- Otherwise omit dispatch or use "sequential". Never invent parallelism when the observed independent step groups value is 1.
+- Do not plan conditional branches: this compact plan has no field for grounded branch predicates. Users can add conditional routing explicitly on the canvas.
 
 Respond with ONLY JSON.`
 }

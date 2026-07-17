@@ -1,51 +1,79 @@
 import React, { useState, useEffect, useRef } from 'react'
 import type { CwcFile } from '../types.ts'
 import type { WorkflowAction } from '../hooks/useWorkflow.ts'
-import type { ExportTarget, ExportResult } from '../../../src/export/exporter.ts'
-import type { DeleteExportResult } from '../../../src/server/api/export-delete.ts'
-import { workflowSkillSlug } from '../../../src/slugify.ts'
+import type { ExportTarget, ExportResult, ExportPreviewResult } from '../../../src/export/exporter.ts'
+import type { AuthorizedDeleteExportResult } from '../../../src/server/api/export-delete.ts'
 import { api } from '../lib/api.ts'
 import { isAbsolutePath } from '../lib/path.ts'
 import { toast } from '../lib/toast.ts'
+import { artifactKindOf, artifactNoun } from '../lib/artifact.ts'
+import {
+  createExportArtifactSnapshot,
+  matchesExportArtifactSnapshot,
+  type ExportArtifactSnapshot,
+} from '../lib/export-snapshot.ts'
 import { FieldHint } from './common/FieldHint.tsx'
 import './ExportFlow.css'
 
 interface Props {
   workflow: CwcFile
   dispatch: React.Dispatch<WorkflowAction>
+  workflowPath: string
+  beforeMutation: () => Promise<string>
+  acknowledgeServerSnapshot: (workflow: CwcFile, revision: string) => void
   onClose: () => void
 }
 
 type Step = 'target-select' | 'previewing' | 'confirming' | 'result' | 'delete-target' | 'deleting' | 'delete-result'
 
-interface PreviewData {
-  files: { path: string; content: string }[]
-  warnings: string[]
+interface PreviewData extends ExportPreviewResult {
   target: ExportTarget
+  snapshot: ExportArtifactSnapshot
 }
 
-export function ExportFlow({ workflow, dispatch, onClose }: Props) {
+export function ExportFlow({ workflow, dispatch, workflowPath, beforeMutation, acknowledgeServerSnapshot, onClose }: Props) {
   const [step, setStep] = useState<Step>('target-select')
   const [result, setResult] = useState<ExportResult | null>(null)
   const [preview, setPreview] = useState<PreviewData | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loadingPhase, setLoadingPhase] = useState<'preview' | 'export'>('preview')
-  const [deleteResult, setDeleteResult] = useState<DeleteExportResult | null>(null)
+  const [deleteResult, setDeleteResult] = useState<AuthorizedDeleteExportResult | null>(null)
   const [projectDir, setProjectDir] = useState(() => localStorage.getItem('cwc:lastProjectDir') ?? '')
   const [copied, setCopied] = useState(false)
   const projectPathValid = isAbsolutePath(projectDir)
   const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   useEffect(() => () => { if (copyTimerRef.current) clearTimeout(copyTimerRef.current) }, [])
+  const exportInFlight = step === 'previewing' && loadingPhase === 'export'
+  const mutationInFlight = exportInFlight || step === 'deleting'
+  useEffect(() => {
+    if (!mutationInFlight) return
+    // Canvas shortcuts are registered at document scope. Capture keys while a
+    // filesystem mutation is committing so an underlying selected node cannot
+    // change topology even though the modal visually owns the interaction.
+    const blockShortcut = (event: KeyboardEvent) => {
+      event.preventDefault()
+      event.stopImmediatePropagation()
+    }
+    document.addEventListener('keydown', blockShortcut, true)
+    return () => document.removeEventListener('keydown', blockShortcut, true)
+  }, [mutationInFlight])
 
-  const hasBeenExported = workflow.nodes.some((n) => n.exportedSlug)
+  const kind = artifactKindOf(workflow)
+  const noun = artifactNoun(workflow)
+  const nounLower = noun.toLowerCase()
+  const hasBeenExported = Boolean(
+    workflow.meta.exportedWorkflowSlug
+    || workflow.nodes.some((node) => node.exportedSlug)
+  )
 
   async function runPreview(target: ExportTarget) {
     setLoadingPhase('preview')
     setStep('previewing')
     setError(null)
     try {
-      const res = await api.exportPreview(workflow, target)
-      setPreview({ ...res, target })
+      const snapshot = createExportArtifactSnapshot(workflow)
+      const res = await api.exportPreview(snapshot.artifact, target)
+      setPreview({ ...res, target, snapshot })
       setStep('confirming')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Preview failed')
@@ -55,25 +83,29 @@ export function ExportFlow({ workflow, dispatch, onClose }: Props) {
 
   async function runExport() {
     if (!preview) return
+    if (!matchesExportArtifactSnapshot(workflow, preview.snapshot)) {
+      setPreview(null)
+      setError('This artifact changed after the preview. Review the latest export before confirming.')
+      setStep('target-select')
+      return
+    }
     setLoadingPhase('export')
     setStep('previewing')
     setError(null)
     try {
-      const res = await api.export(workflow, preview.target)
-      for (const node of res.updatedCwc.nodes) {
-        if (node.exportedSlug) {
-          dispatch({ type: 'UPDATE_EXPORTED_SLUG', payload: { nodeId: node.id, slug: node.exportedSlug } })
-        }
-      }
-      if (res.updatedCwc.meta.exportedWorkflowSlug) {
-        dispatch({ type: 'SET_EXPORTED_WORKFLOW_SLUG', payload: { slug: res.updatedCwc.meta.exportedWorkflowSlug } })
-      }
+      // A forced save doubles as an optimistic-concurrency check. A stale tab
+      // must fail here before it can replace the currently deployed artifact.
+      const expectedRevision = await beforeMutation()
+      const source = preview.snapshot.artifact
+      const res = await api.export(source, preview.target, { workflowPath, expectedRevision })
+      acknowledgeServerSnapshot(res.updatedCwc, res.recipeRevision)
+      dispatch({ type: 'COMMIT_EXPORT', payload: { source, deployed: res.updatedCwc } })
       setResult(res)
       setStep('result')
-      toast.success('Workflow exported', `/${workflowSkillSlug(res.updatedCwc.meta.name)} is ready in Claude Code`)
+      toast.success(`${noun} exported`, `/${res.artifactSlug} is ready in Claude Code`)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Export failed')
-      toast.error('Export failed', err instanceof Error ? err.message : 'Could not export workflow')
+      toast.error('Export failed', err instanceof Error ? err.message : `Could not export ${nounLower}`)
       setStep('confirming')
     }
   }
@@ -93,7 +125,10 @@ export function ExportFlow({ workflow, dispatch, onClose }: Props) {
     setStep('deleting')
     setError(null)
     try {
-      const res = await api.deleteExport(workflow, target)
+      const expectedRevision = await beforeMutation()
+      const res = await api.deleteExport(workflow, target, { workflowPath, expectedRevision })
+      acknowledgeServerSnapshot(res.updatedCwc, res.recipeRevision)
+      dispatch({ type: 'CLEAR_EXPORT_STATE' })
       setDeleteResult(res)
       setStep('delete-result')
       toast.success('Export deleted', `${res.deleted.length} file${res.deleted.length !== 1 ? 's' : ''} removed`)
@@ -109,9 +144,16 @@ export function ExportFlow({ workflow, dispatch, onClose }: Props) {
   }
 
   return (
-    <div className="export-flow-overlay" onClick={(e) => { if (e.target === e.currentTarget) onClose() }}>
-      <div className="export-flow-modal" role="dialog" aria-modal="true" aria-label="Export workflow">
-        <button className="export-flow-modal__close" onClick={onClose} type="button" aria-label="Close">
+    <div className="export-flow-overlay" onClick={(e) => { if (!mutationInFlight && e.target === e.currentTarget) onClose() }}>
+      <div className="export-flow-modal" role="dialog" aria-modal="true" aria-busy={mutationInFlight} aria-label={`Export ${nounLower}`}>
+        <button
+          className="export-flow-modal__close"
+          onClick={onClose}
+          type="button"
+          aria-label="Close"
+          disabled={mutationInFlight}
+          title={mutationInFlight ? 'Wait for the filesystem update to finish' : undefined}
+        >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <line x1="18" y1="6" x2="6" y2="18" />
             <line x1="6" y1="6" x2="18" y2="18" />
@@ -120,8 +162,12 @@ export function ExportFlow({ workflow, dispatch, onClose }: Props) {
 
         {step === 'target-select' && (
           <div className="export-flow-step">
-            <h2 className="export-flow-modal__title">Export Workflow</h2>
-            <p className="export-flow-modal__subtitle">Choose where to export your workflow agents.</p>
+            <h2 className="export-flow-modal__title">Export {noun}</h2>
+            <p className="export-flow-modal__subtitle">
+              {kind === 'workflow'
+                ? 'Choose where to export the workflow skill and its bespoke agents.'
+                : `Choose where to export this ${nounLower} as one Claude Code skill.`}
+            </p>
             <FieldHint id="export.target" />
 
             {error && (
@@ -178,17 +224,25 @@ export function ExportFlow({ workflow, dispatch, onClose }: Props) {
               </div>
             </div>
 
-            <label className="export-flow__obs-toggle">
-              <input
-                type="checkbox"
-                checked={workflow.meta.observability?.enabled !== false}
-                onChange={(e) =>
-                  dispatch({ type: 'SET_META', payload: { observability: { enabled: e.target.checked } } })
-                }
-              />
-              Report run progress to CWC (adds run logging to the exported skill)
-            </label>
-            <FieldHint id="export.observability" />
+            {kind === 'workflow' ? (
+              <>
+                <label className="export-flow__obs-toggle">
+                  <input
+                    type="checkbox"
+                    checked={workflow.meta.observability?.enabled !== false}
+                    onChange={(e) =>
+                      dispatch({ type: 'SET_META', payload: { observability: { enabled: e.target.checked } } })
+                    }
+                  />
+                  Report workflow step progress to CWC
+                </label>
+                <FieldHint id="export.observability" />
+              </>
+            ) : (
+              <p className="export-flow__managed-history-note">
+                CWC records managed test and automated launches. Direct or autonomous Claude invocation runs outside guaranteed CWC history.
+              </p>
+            )}
 
             <label className="export-flow__obs-toggle export-flow__invoke-toggle">
               <input
@@ -198,7 +252,7 @@ export function ExportFlow({ workflow, dispatch, onClose }: Props) {
                   dispatch({ type: 'SET_META', payload: { modelInvocation: e.target.checked ? 'auto' : 'off' } })
                 }
               />
-              Allow Claude to run this workflow automatically
+              Allow Claude to run this {nounLower} automatically
             </label>
             <FieldHint id="export.modelInvocation" />
             {workflow.meta.modelInvocation === 'auto' && (
@@ -211,7 +265,7 @@ export function ExportFlow({ workflow, dispatch, onClose }: Props) {
             {hasBeenExported && (
               <div className="export-flow-danger-zone">
                 <p className="export-flow-danger-zone__label">Danger Zone</p>
-                <p className="export-flow-danger-zone__desc">Remove exported agents and workflow skill from disk. Only files owned by this workflow will be deleted.</p>
+                <p className="export-flow-danger-zone__desc">Remove this exported {nounLower} from disk. Only files owned by this artifact will be deleted.</p>
                 <button className="export-flow-delete-link" onClick={() => { setError(null); setStep('delete-target') }} type="button">
                   Delete export…
                 </button>
@@ -255,6 +309,15 @@ export function ExportFlow({ workflow, dispatch, onClose }: Props) {
               </div>
             )}
 
+            {preview.deletions.length > 0 && (
+              <div className="export-flow-delete-list">
+                <p className="export-flow-delete-list__label">Owned paths replaced by this export</p>
+                <ul className="export-flow-delete-list__items">
+                  {preview.deletions.map((path) => <li key={path}>{shortenPath(path)}</li>)}
+                </ul>
+              </div>
+            )}
+
             <div className="export-flow-preview-files">
               {preview.files.map((f, i) => (
                 <details key={i} className="export-flow-preview-file">
@@ -288,7 +351,7 @@ export function ExportFlow({ workflow, dispatch, onClose }: Props) {
         )}
 
         {step === 'result' && result && (() => {
-          const invokeCmd = `/${workflowSkillSlug(result.updatedCwc.meta.name)}`
+          const invokeCmd = `/${result.artifactSlug}`
           return (
           <div className="export-flow-step">
             <div className="export-flow-success-icon" aria-hidden="true">
@@ -297,7 +360,7 @@ export function ExportFlow({ workflow, dispatch, onClose }: Props) {
               </svg>
             </div>
             <h2 className="export-flow-modal__title">Export complete!</h2>
-            <p className="export-flow-modal__subtitle">Workflow written to disk successfully.</p>
+            <p className="export-flow-modal__subtitle">{noun} written to disk successfully.</p>
 
             <div className="export-flow-invoke">
               <p className="export-flow-invoke__label">Invoke in Claude Code</p>
@@ -353,7 +416,7 @@ export function ExportFlow({ workflow, dispatch, onClose }: Props) {
         {step === 'delete-target' && (
           <div className="export-flow-step">
             <h2 className="export-flow-modal__title">Delete Export</h2>
-            <p className="export-flow-modal__subtitle">Choose where to delete from. Only files owned by this workflow will be removed.</p>
+            <p className="export-flow-modal__subtitle">Choose where to delete from. Only files owned by this artifact will be removed.</p>
 
             {error && (
               <div className="export-flow-error">
@@ -431,7 +494,7 @@ export function ExportFlow({ workflow, dispatch, onClose }: Props) {
 
             {deleteResult.skipped.length > 0 && (
               <div className="export-flow-warnings">
-                <p className="export-flow-warnings__label">Skipped (not owned by this workflow)</p>
+                <p className="export-flow-warnings__label">Skipped (not owned by this artifact)</p>
                 <ul className="export-flow-warnings__list">
                   {deleteResult.skipped.map((f, i) => <li key={i}>{shortenPath(f)}</li>)}
                 </ul>

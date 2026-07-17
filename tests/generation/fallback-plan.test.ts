@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { DetectedAutomation } from '../../src/detection/types.js'
 import { fallbackPlan } from '../../src/generation/fallback-plan.js'
 
-const auto = (steps: string[]): DetectedAutomation => ({
+const auto = (steps: string[], over: Partial<DetectedAutomation> = {}): DetectedAutomation => ({
   id: 'a1',
   title: 'T',
   description: 'D',
@@ -12,6 +12,7 @@ const auto = (steps: string[]): DetectedAutomation => ({
   suggestedTrigger: { kind: 'manual', label: 'manual' },
   confidence: 1,
   status: 'new',
+  ...over,
 })
 
 describe('fallbackPlan', () => {
@@ -33,5 +34,49 @@ describe('fallbackPlan', () => {
     const plan = fallbackPlan(auto([]))
     expect(plan.phases).toHaveLength(1)
     expect(plan.phases[0].stepIndexes).toEqual([0])
+  })
+
+  it('preserves observed fan-out in the deterministic fallback', () => {
+    const plan = fallbackPlan(auto(
+      ['prepare the inputs', 'review the API', 'independently review the UI', 'summarize the reviews'],
+      {
+        shape: {
+          stepArchetypes: ['prepare', 'review', 'review', 'communicate'],
+          distinctArchetypes: 3,
+          hasToolActivity: false,
+          hasVerifySignal: false,
+          hasRetryPattern: false,
+          hasRiskyStep: false,
+          independentStepGroups: 2,
+          independentStepIndexes: [1, 2],
+          recurring: false,
+        },
+      },
+    ))
+
+    expect(plan.phases.map(phase => phase.dispatch ?? 'sequential')).toEqual([
+      'sequential',
+      'parallel',
+      'parallel',
+      'sequential',
+    ])
+    expect(plan.phases.flatMap(phase => phase.stepIndexes)).toEqual([0, 1, 2, 3])
+  })
+
+  it('serializes ambiguous persisted parallel counts without exact indexes', () => {
+    const plan = fallbackPlan(auto(['prepare fixtures', 'review API', 'review UI'], {
+      shape: {
+        stepArchetypes: ['prepare', 'review', 'review'],
+        distinctArchetypes: 2,
+        hasToolActivity: true,
+        hasVerifySignal: false,
+        hasRetryPattern: false,
+        hasRiskyStep: false,
+        independentStepGroups: 2,
+        recurring: false,
+      },
+    }))
+
+    expect(plan.phases.every(phase => phase.dispatch !== 'parallel')).toBe(true)
   })
 })

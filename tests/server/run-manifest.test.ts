@@ -94,6 +94,20 @@ describe('RunManifestStore', () => {
     ])
   })
 
+  it('persists an immutable run artifact binding across later transitions', async () => {
+    const store = createRunManifestStore(runsDir)
+    await store.create(input())
+    const runtimeBinding = { id: '0123456789abcdef', hash: 'a'.repeat(64) }
+    await store.transition('wf-1', 'run-1', manifest => ({ ...manifest, runtimeBinding }))
+    await store.transition('wf-1', 'run-1', manifest => ({ ...manifest, lifecycleState: 'running' }))
+
+    await expect(store.read('wf-1', 'run-1')).resolves.toMatchObject({ runtimeBinding })
+    await expect(store.transition('wf-1', 'run-1', manifest => ({
+      ...manifest,
+      runtimeBinding: { ...runtimeBinding, hash: 'b'.repeat(64) },
+    }))).rejects.toThrow('runtimeBinding cannot change')
+  })
+
   it('keeps the exclusive transaction across multiple durable transitions', async () => {
     const store = createRunManifestStore(runsDir)
     await store.create(input())

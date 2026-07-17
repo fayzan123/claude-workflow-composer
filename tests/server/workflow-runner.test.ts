@@ -96,6 +96,7 @@ it('resume mode passes --resume and uses the override prompt verbatim', async ()
   const { done } = runWorkflowSkill({
     slug: 'cwc-x', runId: 'r', cwd: tmpDir, binPath: stdinEchoArgsBin,
     resume: 'sess-42', promptOverride: 'Approved — continue the workflow from the gate.\nNote: skip the README',
+    pluginDir: path.join(tmpDir, 'private-run-plugin'),
   })
   const result = await done
   expect(result.message).toContain('Approved — continue')
@@ -104,8 +105,33 @@ it('resume mode passes --resume and uses the override prompt verbatim', async ()
   const args = (await fs.readFile(logPath, 'utf-8')).trim()
   expect(args).toContain('--resume')
   expect(args).toContain('sess-42')
+  expect(args).toContain('--plugin-dir')
+  expect(args).toContain('private-run-plugin')
   // Regression: headless runs must bypass permission prompts, or Bash (git commits,
   // run-logging curls, the gate's awaiting_approval event) silently stalls.
   expect(args).toContain('--permission-mode')
   expect(args).toContain('bypassPermissions')
+})
+
+it('passes a private plugin path as one argument through Windows cmd shims', async () => {
+  if (process.platform !== 'win32') return
+  const logPath = path.join(tmpDir, 'resume-args.log')
+  const before = await fs.readFile(logPath, 'utf-8').catch(() => '')
+  const pluginDir = path.join(tmpDir, 'private plugin & binding')
+  await fs.mkdir(pluginDir, { recursive: true })
+
+  const { done } = runWorkflowSkill({
+    slug: 'cwc-x',
+    runId: 'r-win-plugin',
+    cwd: tmpDir,
+    binPath: stdinEchoArgsBin,
+    pluginDir,
+  })
+  expect((await done).status).toBe('complete')
+
+  const appended = (await fs.readFile(logPath, 'utf-8')).slice(before.length).trim()
+  const args = JSON.parse(appended) as string[]
+  const pluginFlag = args.indexOf('--plugin-dir')
+  expect(pluginFlag).toBeGreaterThanOrEqual(0)
+  expect(args[pluginFlag + 1]).toBe(pluginDir)
 })

@@ -11,6 +11,7 @@ export interface RunWorkflowOptions {
   resume?: string          // session id → adds --resume <id>
   promptOverride?: string  // replaces the default "/<slug>\nUse run id ..." stdin prompt
   env?: Record<string, string>  // extra env vars merged into process.env for the child
+  pluginDir?: string       // process-private skill binding loaded for this session only
 }
 
 export interface WorkflowRunResult {
@@ -57,6 +58,9 @@ export function runWorkflowSkill(opts: RunWorkflowOptions): RunningWorkflow {
   // never pause. Runs are confined to an isolated worktree and gated behind the
   // Test Run consent, so unprompted tool use is acceptable here.
   const args = ['-p', '--output-format', 'json', '--permission-mode', 'bypassPermissions']
+  // `.cmd` shims run through cmd.exe. Quote the private plugin path explicitly so
+  // Windows user profiles containing spaces or shell metacharacters remain one arg.
+  if (opts.pluginDir) args.push('--plugin-dir', isWinShim ? `"${opts.pluginDir}"` : opts.pluginDir)
   if (opts.resume) args.push('--resume', opts.resume)
   let settled = false
   let timedOut = false

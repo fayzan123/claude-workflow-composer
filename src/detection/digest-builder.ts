@@ -5,12 +5,22 @@ import { deriveSignature } from './signature.js'
 interface DigestLine { ref: string; unit: TaskUnit; text: string }
 export interface RepoDigest { repo: string; originalRepo: string; lines: DigestLine[] }
 
-/** A unit is worth analyzing only if it did real work (used at least one tool). */
-function isMeaningful(u: TaskUnit): boolean { return u.tools.length > 0 }
+function normalizedPromptKey(value: string): string {
+  return (value.toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? []).join(' ')
+}
+
+/** Tool work is always eligible. Prompt-only work is eligible only after the
+ * same normalized instruction appears three times, keeping social/one-off turns
+ * out of the bounded analysis digest while making the rule tier reachable. */
+function isMeaningful(u: TaskUnit, promptCounts: Map<string, number>): boolean {
+  if (u.tools.length > 0 || u.commands.length > 0) return true
+  const key = normalizedPromptKey(u.promptText)
+  return key.length > 0 && (promptCounts.get(key) ?? 0) >= 3
+}
 
 function formatLine(ref: string, u: TaskUnit): string {
   const when = u.startedAt ? u.startedAt.slice(0, 16).replace('T', ' ') : '????-??-?? ??:??'
-  const tools = [...new Set(u.tools)].slice(0, 6).join(',')
+  const tools = [...new Set(u.tools)].slice(0, 6).join(',') || '(none)'
   const sig = deriveSignature(u)
   const labels = sig ? ` · ${sig.labels.join(',')}` : ''
   const prompt = u.promptText || '(no prompt text)'
@@ -27,7 +37,8 @@ export interface BuildDigestOpts {
 /**
  * Turn task units into compact, ref-tagged per-repo digests for the LLM.
  * Refs (`r0`, `r1`, …) are assigned globally in order so the analyzer can map a
- * cited ref back to its unit to compute evidence. Trivial (no-tool) units are dropped.
+ * cited ref back to its unit to compute evidence. One-off no-tool units are dropped; repeated
+ * prompt-only instructions remain eligible for the rule tier.
  *
  * Capping (recency-first): all meaningful units are sorted descending by startedAt,
  * the overall list is capped at `maxTotal`, then each repo bucket is capped at
@@ -37,8 +48,15 @@ export function buildDigests(units: TaskUnit[], opts?: BuildDigestOpts): RepoDig
   const maxPerRepo = opts?.maxPerRepo ?? 120
   const maxTotal = opts?.maxTotal ?? 500
 
-  // 1. Filter to meaningful units
-  const meaningful = units.filter(isMeaningful)
+  // 1. Filter to meaningful units. Counts are computed before capping so all
+  // three grounded occurrences of a repeated instruction remain eligible.
+  const promptCounts = new Map<string, number>()
+  for (const unit of units) {
+    if (unit.tools.length > 0 || unit.commands.length > 0) continue
+    const key = normalizedPromptKey(unit.promptText)
+    if (key) promptCounts.set(key, (promptCounts.get(key) ?? 0) + 1)
+  }
+  const meaningful = units.filter(unit => isMeaningful(unit, promptCounts))
 
   // 2. Sort descending by startedAt; empty startedAt sorts last
   meaningful.sort((a, b) => {

@@ -6,12 +6,12 @@ import { fileURLToPath } from 'node:url'
 import { randomUUID } from 'node:crypto'
 import { healthRouter } from './api/health.js'
 import { claudeCheckRouter } from './api/claude-check.js'
-import { workflowsRouter } from './api/workflows.js'
+import { createWorkflowMutationCoordinator, workflowsRouter } from './api/workflows.js'
 import { agentsRouter } from './api/agents.js'
 import { recentsRouter } from './api/recents.js'
 import { exportRouter } from './api/export.js'
 import { exportPreviewRouter } from './api/export-preview.js'
-import { exportDeleteRouter } from './api/export-delete.js'
+import { deleteExport, exportDeleteRouter } from './api/export-delete.js'
 import { skillsRouter } from './api/skills.js'
 import { skillsGenerateRouter } from './api/skills-generate.js'
 import { fileContentRouter } from './api/file-content.js'
@@ -35,7 +35,9 @@ import type { RunStore } from './run-store.js'
 import type { CwcTrigger } from '../schema.js'
 import { serviceRouter } from './api/service.js'
 import { automationScanRouter } from './api/automation-scan.js'
-import { createScanStore } from './scan-store.js'
+import { automationRulesRouter } from './api/automation-rules.js'
+import { createAutomationActivity } from './automation-activity.js'
+import { createScanStore, type ScanStore } from './scan-store.js'
 import type { ClaudeProbe } from '../detection/scan-diagnostics.js'
 import { installUiTokenCookie, requireApiToken, resolveAuthToken, restrictCors } from './security.js'
 
@@ -60,6 +62,7 @@ export interface AppOptions {
   cwcVersion?: string             // reported in scan diagnostics; default read from package.json
   runStore?: RunStore             // test injection; default is a filesystem-backed store under runsDir
   runManifestStore?: RunManifestStore // test injection; default is a filesystem-backed store under runsDir
+  scanStore?: ScanStore         // test injection; default is the filesystem-backed automation scan store
 }
 
 /** Best-effort package version for diagnostics; works from both src/ (tsx) and dist/ layouts. */
@@ -89,6 +92,11 @@ export function createApp(opts: AppOptions): express.Express {
 
   const wfDir = opts.workflowsDir ?? path.join(os.homedir(), '.cwc', 'workflows')
   const recPath = opts.recentsPath ?? path.join(os.homedir(), '.cwc', 'recents.json')
+  const workflowMutations = createWorkflowMutationCoordinator(wfDir)
+  let scheduler: ReturnType<typeof createScheduler> | null = null
+  const onWorkflowSaved = async () => {
+    if (scheduler) await scheduler.rescan().catch(() => undefined)
+  }
 
   const homeDir = opts.userHomeDir ?? os.homedir()
   app.use('/api/service-status', serviceRouter(homeDir))
@@ -98,8 +106,8 @@ export function createApp(opts: AppOptions): express.Express {
   app.use('/api/recents', recentsRouter(recPath))
 
   app.use('/api/export/preview', exportPreviewRouter())
-  app.use('/api/export/delete', exportDeleteRouter())
-  app.use('/api/export', exportRouter())
+  app.use('/api/export/delete', exportDeleteRouter({ mutations: workflowMutations, onSaved: onWorkflowSaved }))
+  app.use('/api/export', exportRouter({ mutations: workflowMutations, onSaved: onWorkflowSaved }))
   app.use('/api/skills/generate', skillsGenerateRouter(opts.claudeRunner))
   app.use('/api/skills', skillsRouter(homeDir))
   app.use('/api/file-content', fileContentRouter(homeDir))
@@ -117,9 +125,11 @@ export function createApp(opts: AppOptions): express.Express {
   const autoState = createAutomationState(statePath)
 
   const scanPath = opts.automationScanPath ?? path.join(os.homedir(), '.cwc', 'automation-scan.json')
-  const scanStore = createScanStore(scanPath)
+  const scanStore = opts.scanStore ?? createScanStore(scanPath)
+  const automationActivity = createAutomationActivity()
   app.locals['scanStore'] = scanStore   // exposed so graceful shutdown / tests can await in-flight promotion jobs
-  app.use('/api/automation-scan', automationScanRouter({ homeDir, workflowsDir: wfDir, store: scanStore, runner: opts.claudeRunner, streamingRunner: opts.streamingRunner, claudeProbe: opts.claudeProbe, cwcVersion: opts.cwcVersion ?? resolveCwcVersion() }))
+  app.use('/api/automation-scan', automationRulesRouter({ homeDir, store: scanStore, activity: automationActivity }))
+  app.use('/api/automation-scan', automationScanRouter({ homeDir, workflowsDir: wfDir, store: scanStore, activity: automationActivity, runner: opts.claudeRunner, streamingRunner: opts.streamingRunner, claudeProbe: opts.claudeProbe, cwcVersion: opts.cwcVersion ?? resolveCwcVersion() }))
 
   // Sweep orphan worktrees on real server start only (paused/running runs keep theirs).
   // Gated on enableScheduler so test apps with default paths never touch ~/.cwc/worktrees.
@@ -139,7 +149,6 @@ export function createApp(opts: AppOptions): express.Express {
   app.use('/api/automations', automationsRouter({ state: autoState, configPath, workflowsDir: wfDir, onConfigChanged: (c) => { config = c } }))
   if (opts.enableNotifier !== false) startNotifier({ store: runStore, getConfig: () => config })
 
-  let scheduler: ReturnType<typeof createScheduler> | null = null
   if (opts.enableScheduler) {
     scheduler = createScheduler({
       workflowsDir: wfDir, state: autoState, isWorkflowBusy,
@@ -150,11 +159,13 @@ export function createApp(opts: AppOptions): express.Express {
     })
     scheduler.start()
   }
-  // workflowsRouter call gains the third arg for scheduler rescan on save
+  // Await scheduler reconciliation so a deleted recipe cannot release its run
+  // reservation while a stale trigger remains fireable. Rescan failure is
+  // intentionally best-effort because the recipe write has already committed.
   app.use('/api/workflows', workflowsRouter(
     wfDir,
     recPath,
-    () => { void scheduler?.rescan() },
+    onWorkflowSaved,
     async workflowId => {
       const reservationId = randomUUID()
       if (!runStore.reserveWorkflow(workflowId, reservationId)) {
@@ -162,6 +173,28 @@ export function createApp(opts: AppOptions): express.Express {
       }
       const release = () => runStore.releaseWorkflowReservation(workflowId, reservationId)
       try {
+        // Manifests are the durable authority after restart; JSONL may be absent or
+        // corrupt and cannot be the only thing protecting a resumable/in-flight run.
+        const authoritativeRuns = await manifestStore.listWorkflow(workflowId)
+        if (authoritativeRuns.some(run => run.lifecycleState === 'paused')) {
+          return { reason: 'Approve or reject the paused run before deleting this workflow.', release }
+        }
+        const unsettledStates = new Set([
+          'claimed',
+          'checking_precondition',
+          'preparing',
+          'worktree_created',
+          'running_setup',
+          'spawning',
+          'running',
+          'resuming',
+          'checkpointing',
+          'cleaning',
+          'rejecting',
+        ])
+        if (authoritativeRuns.some(run => unsettledStates.has(run.lifecycleState))) {
+          return { reason: 'Wait for the managed run to finish before deleting this workflow.', release }
+        }
         const runs = await runStore.listRuns(workflowId)
         if (runs.some(run => run.source === 'test' && run.status === 'running')) {
           return { reason: 'Wait for the managed run to finish before deleting this workflow.', release }
@@ -175,6 +208,8 @@ export function createApp(opts: AppOptions): express.Express {
         throw err
       }
     },
+    workflow => deleteExport(workflow, { type: 'user', userDir: homeDir }),
+    workflowMutations,
   ))
 
   if (opts.staticDir && fs.existsSync(opts.staticDir)) {
