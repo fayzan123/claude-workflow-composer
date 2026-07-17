@@ -165,7 +165,14 @@ export function automationScanRouter(opts: AutomationScanRouterOptions): Router 
   }
 
   router.get('/', (_req, res) => {
-    res.json(opts.store.getLatest() ?? { status: 'idle', automations: [] })
+    const latest = opts.store.getLatest() ?? { status: 'idle', automations: [] }
+    // The store records done/error before the router's finally releases the scan
+    // activity lock, so a client acting on "done" could still 409. Keep reporting
+    // "running" until the lock is free and mutations are actually admissible.
+    if ((latest.status === 'done' || latest.status === 'error') && opts.activity.activeKind() === 'scan') {
+      return void res.json({ ...latest, status: 'running' })
+    }
+    res.json(latest)
   })
 
   router.get('/stream', (req, res) => {
