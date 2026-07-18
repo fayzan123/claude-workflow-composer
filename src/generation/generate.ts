@@ -1,10 +1,13 @@
-import type { DetectedAutomation } from '../detection/types.js'
+import type { ArtifactTier, DetectedAutomation } from '../detection/types.js'
 import type { CwcFile, CwcTrigger } from '../schema.js'
+import { CWC_FILE_VERSION } from '../schema.js'
 import type { ClaudeRunner } from '../server/claude-runner.js'
 import { buildCapabilityCards, listReusableAgents, listReusableSkills, selectRelevantAgents, selectRelevantSkills } from '../server/skill-catalog.js'
 import { extractJsonObject } from '../json-extract.js'
 import { compile } from './compiler.js'
 import { buildPlannerPrompt } from './planner-prompt.js'
+import { generateSkillArtifact } from './skill-generator.js'
+import { observedVerificationStep } from '../detection/automation-shape.js'
 
 export interface GenerateWorkflowArgs {
   automation: DetectedAutomation
@@ -58,4 +61,67 @@ export async function generateWorkflow(args: GenerateWorkflowArgs): Promise<CwcF
     triggers: args.triggers ?? [],
     onLog,
   })
+}
+
+export interface GenerateArtifactArgs extends GenerateWorkflowArgs {
+  tier: ArtifactTier
+}
+
+export type GenerateArtifactResult =
+  | { tier: 'rule'; ruleSuggestion: string }
+  | { tier: 'skill' | 'loop'; cwc: CwcFile; fallbackUsed: boolean }
+  | { tier: 'workflow'; cwc: CwcFile }
+
+function ruleSuggestion(automation: DetectedAutomation): string {
+  const grounded = automation.ruleSuggestion?.trim()
+  if (!grounded) {
+    throw new Error('This detection has no evidence-grounded rule suggestion. Run a new history scan and try again.')
+  }
+  return grounded
+}
+
+function tagWorkflow(cwc: CwcFile, automation: DetectedAutomation): CwcFile {
+  return {
+    ...cwc,
+    meta: {
+      ...cwc.meta,
+      version: CWC_FILE_VERSION,
+      artifactKind: 'workflow',
+      artifactTier: 'workflow',
+      sourceAutomation: {
+        id: automation.id,
+        steps: [...automation.steps],
+        ...(automation.shape?.observedVerifyCommand
+          ? { verificationCommand: automation.shape.observedVerifyCommand }
+          : {}),
+        ...(observedVerificationStep(automation)
+          ? { verificationStep: observedVerificationStep(automation) }
+          : {}),
+      },
+    },
+  }
+}
+
+/** Exhaustive tier dispatcher. There is deliberately no default-to-workflow
+ * branch: an invalid tier is an error, and skill/loop failures fall back only to
+ * another artifact of the same requested tier. */
+export async function generateArtifact(args: GenerateArtifactArgs): Promise<GenerateArtifactResult> {
+  switch (args.tier) {
+    case 'rule':
+      return { tier: 'rule', ruleSuggestion: ruleSuggestion(args.automation) }
+    case 'skill': {
+      const result = await generateSkillArtifact({ ...args, tier: 'skill', triggers: [] })
+      return { tier: 'skill', ...result }
+    }
+    case 'loop': {
+      const result = await generateSkillArtifact({ ...args, tier: 'loop' })
+      return { tier: 'loop', ...result }
+    }
+    case 'workflow': {
+      const cwc = tagWorkflow(await generateWorkflow(args), args.automation)
+      return { tier: 'workflow', cwc }
+    }
+    default:
+      throw new Error(`Unsupported artifact tier: ${String(args.tier)}`)
+  }
 }

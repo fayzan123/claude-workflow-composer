@@ -8,7 +8,7 @@ import { createApp } from '../../src/server/index.js'
 import type { ClaudeRunner } from '../../src/server/claude-runner.js'
 import type { StreamingRunner } from '../../src/server/streaming-analyzer.js'
 import { triggersForAutomation } from '../../src/server/api/automation-scan.js'
-import type { ScanStore } from '../../src/server/scan-store.js'
+import { createScanStore, type ScanStore } from '../../src/server/scan-store.js'
 import type { DetectedAutomation } from '../../src/detection/types.js'
 
 let lastScanModel: string | undefined
@@ -20,8 +20,8 @@ const fakeStreaming: StreamingRunner = async (_prompt, { onLog, model }) => {
   onLog({ level: 'info', message: 'session started' })
   onLog({ level: 'claude', message: 'clustering recurring tasks' })
   return { resultText: JSON.stringify({ automations: [{
-    title: 'Run tests then push', description: 'd', steps: ['test', 'push'],
-    stepTokens: ['run-tests', 'push'], refs: ['r0', 'r1', 'r2'],
+    title: 'Run tests then publish', description: 'd', steps: ['test', 'publish to npm'],
+    stepTokens: ['run-tests', 'publish'], refs: ['r0', 'r1', 'r2'],
     suggestedTrigger: { kind: 'schedule', cron: '0 9 * * *', label: 'daily' }, confidence: 0.9,
   }] }), costUsd: 0.01 }
 }
@@ -31,8 +31,8 @@ let scanStore: ScanStore
 
 const cannedRunner = async () => ({
   result: JSON.stringify({ automations: [{
-    title: 'Run tests then push', description: 'd', steps: ['test', 'push'],
-    stepTokens: ['run-tests', 'push'], refs: ['r0', 'r1', 'r2'],
+    title: 'Run tests then publish', description: 'd', steps: ['test', 'publish to npm'],
+    stepTokens: ['run-tests', 'publish'], refs: ['r0', 'r1', 'r2'],
     suggestedTrigger: { kind: 'schedule', cron: '0 9 * * *', label: 'daily' }, confidence: 0.9,
   }] }), sessionId: 's',
 })
@@ -101,7 +101,7 @@ beforeEach(async () => {
   await fs.mkdir(proj, { recursive: true })
   const L = (o: unknown) => JSON.stringify(o) + '\n'
   const push = (ts: string) => L({ type: 'user', sessionId: 'S' + ts, cwd: '/r', timestamp: ts, message: { role: 'user', content: [{ type: 'text', text: 'ship it' }] } })
-    + L({ type: 'assistant', sessionId: 'S' + ts, cwd: '/r', timestamp: ts, message: { role: 'assistant', content: [{ type: 'tool_use', name: 'Bash', input: { command: 'npm test && git push' } }] } })
+    + L({ type: 'assistant', sessionId: 'S' + ts, cwd: '/r', timestamp: ts, message: { role: 'assistant', content: [{ type: 'tool_use', name: 'Bash', input: { command: 'npm test && npm publish' } }] } })
   await fs.writeFile(path.join(proj, 'S.jsonl'), push('2026-06-01T10:00:00Z') + push('2026-06-02T10:00:00Z') + push('2026-06-03T10:00:00Z'))
   // A real user skill so promote's slug validation has a valid set to filter against.
   const skillDir = path.join(home, '.claude', 'skills', 'real-skill')
@@ -270,7 +270,7 @@ describe('automation-scan API', () => {
     expect(start.status).toBe(202)
     const done = await waitForDone()
     expect(done.automations).toHaveLength(1)
-    expect(done.automations[0].title).toBe('Run tests then push')
+    expect(done.automations[0].title).toBe('Run tests then publish')
     // NEW: the streamed log is buffered and returned
     const withLog = await (await fetch(`${base}/api/automation-scan`)).json() as { log: { level: string; message: string }[] }
     expect(withLog.log.some(l => l.message === 'clustering recurring tasks')).toBe(true)
@@ -348,11 +348,246 @@ describe('automation-scan API', () => {
     expect(after.automations[0].status).toBe('promoted')
   })
 
-  it('keeps the legacy full-JSON generation path behind CWC_LEGACY_GEN', async () => {
-    process.env['CWC_LEGACY_GEN'] = '1'
+  it('honors a skill override without invoking the workflow planner and records the override', async () => {
     await fetch(`${base}/api/automation-scan`, { method: 'POST' })
     const done = await waitForDone()
     const id = done.automations[0].id
+
+    const res = await fetch(`${base}/api/automation-scan/${id}/promote`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tier: 'skill' }),
+    })
+    expect(res.status).toBe(202)
+    const generated = await waitForGenerationWorkflowId(id)
+    const artifactId = generated.generation.workflowId!
+
+    const [filename] = await fs.readdir(wfDir)
+    const cwc = JSON.parse(await fs.readFile(path.join(wfDir, filename), 'utf-8'))
+    expect(cwc.meta).toMatchObject({
+      id: artifactId,
+      version: 2,
+      artifactKind: 'skill',
+      artifactTier: 'skill',
+      triggers: [],
+      sourceAutomation: { id, steps: ['test', 'publish to npm'], verificationCommand: 'npm test' },
+    })
+    expect(cwc.nodes).toHaveLength(1)
+    expect(cwc.edges).toEqual([])
+    expect(lastWorkflowPrompt).toBeUndefined()
+
+    const after = await (await fetch(`${base}/api/automation-scan`)).json() as {
+      automations: Array<{ recommendedTier?: string; selectedTier?: string; generatedArtifactId?: string; generatedArtifactTier?: string; statusDetail?: string }>
+      generation?: { tier?: string; artifactId?: string }
+    }
+    expect(after.automations[0]).toMatchObject({
+      recommendedTier: 'workflow',
+      selectedTier: 'skill',
+      generatedArtifactId: artifactId,
+      generatedArtifactTier: 'skill',
+    })
+    expect(after.automations[0].statusDetail).toMatch(/recommended Workflow/)
+    expect(after.generation).toMatchObject({ tier: 'skill', artifactId })
+  })
+
+  it('rolls back to the prior artifact when the atomic promotion commit cannot persist', async () => {
+    const storePath = path.join(home, 'commit-failure-scan.json')
+    const artifactsDir = path.join(home, 'commit-failure-workflows')
+    const backing = createScanStore(storePath)
+    await backing.runScan(async () => [{
+      id: 'commit-failure',
+      title: 'Review focused changes',
+      description: 'Inspect a focused patch and summarize it.',
+      steps: ['Inspect the focused diff', 'Summarize the findings'],
+      stepTokens: ['inspect-diff', 'summarize-findings'],
+      evidence: { count: 3, repos: ['/r'], sessionIds: ['s1', 's2', 's3'], firstSeen: '', lastSeen: '' },
+      suggestedTrigger: { kind: 'manual', label: 'On demand' },
+      confidence: 0.9,
+      status: 'promoted',
+      recommendedTier: 'skill',
+      selectedTier: 'skill',
+      generatedArtifactId: 'prior-artifact',
+      generatedArtifactTier: 'skill',
+      shape: {
+        stepArchetypes: ['review', 'generic'],
+        distinctArchetypes: 1,
+        hasToolActivity: true,
+        hasVerifySignal: false,
+        hasRetryPattern: false,
+        hasRiskyStep: false,
+        independentStepGroups: 1,
+        recurring: false,
+      },
+    }])
+    await fs.mkdir(artifactsDir, { recursive: true })
+    await fs.writeFile(path.join(artifactsDir, 'prior-artifact.cwc'), '{}')
+    const failingStore: ScanStore = {
+      ...backing,
+      async commitPromotion() {
+        throw new Error('injected scan-state persistence failure')
+      },
+    }
+    const app2 = createApp({
+      staticDir: null,
+      userHomeDir: home,
+      workflowsDir: artifactsDir,
+      scanStore: failingStore,
+      claudeRunner: smartRunner,
+      enableNotifier: false,
+    })
+    const server2 = app2.listen(0)
+    const base2 = `http://localhost:${(server2.address() as AddressInfo).port}`
+    try {
+      const response = await fetch(`${base2}/api/automation-scan/commit-failure/promote`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tier: 'skill' }),
+      })
+      expect(response.status).toBe(202)
+      await failingStore.whenPromotionSettled()
+
+      expect(failingStore.getLatest()!.automations[0]).toMatchObject({
+        status: 'promotion_failed',
+        generatedArtifactId: 'prior-artifact',
+        generatedArtifactTier: 'skill',
+      })
+      expect(failingStore.getGeneration()).toMatchObject({
+        id: 'commit-failure',
+        step: 'failed',
+        error: 'injected scan-state persistence failure',
+      })
+      expect(await fs.readdir(artifactsDir)).toEqual(['prior-artifact.cwc'])
+
+      const reloaded = createScanStore(storePath)
+      expect(reloaded.getLatest()!.automations[0]).toMatchObject({
+        status: 'promotion_failed',
+        generatedArtifactId: 'prior-artifact',
+        generatedArtifactTier: 'skill',
+      })
+    } finally {
+      await new Promise<void>(resolve => server2.close(() => resolve()))
+    }
+  })
+
+  it('recomputes a stale recommendation and defaults a linear procedure to a skill', async () => {
+    const now = '2026-07-16T12:00:00.000Z'
+    await scanStore.runScan(async () => [{
+      id: 'linear-review',
+      title: 'Review focused changes',
+      description: 'Inspect a focused patch and summarize it.',
+      steps: ['Inspect the focused diff', 'Summarize the findings'],
+      stepTokens: ['inspect-diff', 'summarize-findings'],
+      evidence: { count: 3, repos: ['/r'], sessionIds: ['s1', 's2', 's3'], firstSeen: now, lastSeen: now },
+      suggestedTrigger: { kind: 'manual', label: 'On demand' },
+      confidence: 0.9,
+      status: 'new',
+      // Simulate a persisted recommendation from an earlier classifier version. The route
+      // must trust the current deterministic shape/classifier, not this stale label.
+      recommendedTier: 'workflow',
+      shape: {
+        stepArchetypes: ['review', 'generic'],
+        distinctArchetypes: 1,
+        hasToolActivity: true,
+        hasVerifySignal: false,
+        hasRetryPattern: false,
+        hasRiskyStep: false,
+        independentStepGroups: 1,
+        recurring: false,
+      },
+    }])
+
+    const res = await fetch(`${base}/api/automation-scan/linear-review/promote`, { method: 'POST' })
+    expect(res.status).toBe(202)
+    await waitForGenerationWorkflowId('linear-review')
+
+    const [filename] = await fs.readdir(wfDir)
+    const cwc = JSON.parse(await fs.readFile(path.join(wfDir, filename), 'utf-8'))
+    expect(cwc.meta).toMatchObject({ artifactKind: 'skill', artifactTier: 'skill', triggers: [] })
+    expect(cwc.nodes).toHaveLength(1)
+    expect(cwc.edges).toEqual([])
+    expect(lastWorkflowPrompt).toBeUndefined()
+
+    const after = await (await fetch(`${base}/api/automation-scan`)).json() as {
+      automations: Array<{ recommendedTier?: string; selectedTier?: string }>
+    }
+    expect(after.automations[0]).toMatchObject({ recommendedTier: 'skill', selectedTier: 'skill' })
+  })
+
+  it('generates a loop as one managed skill with a disabled seeded trigger and stop condition', async () => {
+    await fetch(`${base}/api/automation-scan`, { method: 'POST' })
+    const done = await waitForDone()
+    const id = done.automations[0].id
+
+    const res = await fetch(`${base}/api/automation-scan/${id}/promote`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tier: 'loop' }),
+    })
+    expect(res.status).toBe(202)
+    await waitForGenerationWorkflowId(id)
+
+    const [filename] = await fs.readdir(wfDir)
+    const cwc = JSON.parse(await fs.readFile(path.join(wfDir, filename), 'utf-8'))
+    expect(cwc.meta.artifactKind).toBe('skill')
+    expect(cwc.meta.artifactTier).toBe('loop')
+    expect(cwc.meta.triggers).toHaveLength(1)
+    expect(cwc.meta.triggers[0]).toMatchObject({
+      type: 'cron',
+      schedule: '0 9 * * *',
+      enabled: false,
+      isolation: 'worktree',
+    })
+    expect(cwc.nodes[0].agent.systemPrompt).toContain('## Verification stop condition')
+    expect(cwc.nodes[0].agent.systemPrompt).toContain('npm test')
+    expect(cwc.nodes[0].agent.systemPrompt).toContain('two rounds make no progress')
+  })
+
+  it('rejects invalid tiers and routes rule application through the explicit target endpoint', async () => {
+    await fetch(`${base}/api/automation-scan`, { method: 'POST' })
+    const done = await waitForDone()
+    const id = done.automations[0].id
+
+    const invalid = await fetch(`${base}/api/automation-scan/${id}/promote`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tier: 'script' }),
+    })
+    expect(invalid.status).toBe(400)
+
+    const rule = await fetch(`${base}/api/automation-scan/${id}/promote`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tier: 'rule' }),
+    })
+    expect(rule.status).toBe(400)
+    expect((await rule.json() as { error: string }).error).toMatch(/explicit target/i)
+    expect((await fs.readdir(wfDir).catch(() => []))).toEqual([])
+  })
+
+  it('keeps the legacy full-JSON generation path behind CWC_LEGACY_GEN', async () => {
+    process.env['CWC_LEGACY_GEN'] = '1'
+    const id = 'legacy-safe-workflow'
+    await scanStore.runScan(async () => [{
+      id,
+      title: 'Run tests and inspect changes',
+      description: 'Run tests and inspect changes using the existing runner agent and skill.',
+      steps: ['Run the test suite', 'Inspect the changed files'],
+      stepTokens: ['run-tests', 'inspect-changes'],
+      evidence: { count: 3, repos: ['/r'], sessionIds: ['s1'], firstSeen: '', lastSeen: '' },
+      suggestedTrigger: { kind: 'manual', label: 'On demand' },
+      confidence: 0.9,
+      status: 'new',
+      shape: {
+        stepArchetypes: ['verify', 'review'],
+        distinctArchetypes: 2,
+        hasToolActivity: true,
+        hasVerifySignal: true,
+        hasRetryPattern: false,
+        hasRiskyStep: false,
+        independentStepGroups: 2,
+        recurring: false,
+      },
+    }])
 
     const res = await fetch(`${base}/api/automation-scan/${id}/promote`, { method: 'POST' })
     expect(res.status).toBe(202)
@@ -368,6 +603,22 @@ describe('automation-scan API', () => {
     expect(cwc.nodes[0].agent.completionCriteria).toBe('')
     expect(cwc.nodes[1].agentRef).toBeUndefined()
     expect(cwc.nodes[1].agent.skills).toEqual(['real-skill'])
+  })
+
+  it('uses the deterministic safety compiler for risky workflows even when legacy generation is enabled', async () => {
+    process.env['CWC_LEGACY_GEN'] = '1'
+    await fetch(`${base}/api/automation-scan`, { method: 'POST' })
+    const done = await waitForDone()
+    const id = done.automations[0].id
+
+    const res = await fetch(`${base}/api/automation-scan/${id}/promote`, { method: 'POST' })
+    expect(res.status).toBe(202)
+    await waitForGenerationWorkflowId(id)
+
+    const files = await fs.readdir(wfDir)
+    const cwc = JSON.parse(await fs.readFile(path.join(wfDir, files[0]), 'utf-8'))
+    expect(lastWorkflowPrompt).toContain('WorkflowPlan')
+    expect(cwc.nodes.some((node: { nodeType?: string }) => node.nodeType === 'gate')).toBe(true)
   })
 
   it('persists promoting status during workflow generation and blocks conflicting actions', async () => {
@@ -446,6 +697,45 @@ describe('automation-scan API', () => {
     }
   })
 
+  it('does not relabel a successful artifact when a different regeneration is cancelled', async () => {
+    await fetch(`${base}/api/automation-scan`, { method: 'POST' })
+    const done = await waitForDone()
+    const id = done.automations[0].id
+
+    await fetch(`${base}/api/automation-scan/${id}/promote`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tier: 'skill' }),
+    })
+    const first = await waitForGenerationWorkflowId(id)
+    const firstArtifactId = first.generation.workflowId!
+
+    workflowRunnerDelay = new Promise<void>(() => {})
+    const regenerate = await fetch(`${base}/api/automation-scan/${id}/promote`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tier: 'workflow' }),
+    })
+    expect(regenerate.status).toBe(202)
+    try {
+      await waitForAutomationStatus(id, 'promoting')
+      expect((await fetch(`${base}/api/automation-scan/${id}/promote/cancel`, { method: 'POST' })).status).toBe(200)
+      await waitForAutomationStatus(id, 'promotion_cancelled')
+
+      const latest = await (await fetch(`${base}/api/automation-scan`)).json() as {
+        automations: Array<{ selectedTier?: string; generatedArtifactId?: string; generatedArtifactTier?: string }>
+      }
+      expect(latest.automations[0]).toMatchObject({
+        selectedTier: 'workflow',
+        generatedArtifactId: firstArtifactId,
+        generatedArtifactTier: 'skill',
+      })
+      expect((await fs.readdir(wfDir)).filter(file => file.endsWith('.cwc'))).toHaveLength(1)
+    } finally {
+      workflowRunnerDelay = null
+    }
+  })
+
   it('does not write a workflow if a cancelled runner returns anyway', async () => {
     await fetch(`${base}/api/automation-scan`, { method: 'POST' })
     const done = await waitForDone()
@@ -494,5 +784,54 @@ describe('triggersForAutomation', () => {
   it('seeds NO trigger for manual or event automations', () => {
     expect(triggersForAutomation(base('manual'))).toEqual([])
     expect(triggersForAutomation(base('event'))).toEqual([])
+  })
+
+  it('gives an explicit loop override recurrence when no verification condition exists', () => {
+    expect(triggersForAutomation(base('manual'), 'loop')[0]).toMatchObject({
+      type: 'cron',
+      schedule: '0 9 * * *',
+      enabled: false,
+    })
+  })
+
+  it('does not treat an ungrounded persisted verify flag as a usable loop stop condition', () => {
+    const ungrounded = base('manual')
+    ungrounded.steps = ['Inspect the result']
+    ungrounded.shape = {
+      stepArchetypes: ['review'],
+      distinctArchetypes: 1,
+      hasToolActivity: true,
+      hasVerifySignal: true,
+      hasRetryPattern: false,
+      hasRiskyStep: false,
+      independentStepGroups: 1,
+      recurring: false,
+    }
+    expect(triggersForAutomation(ungrounded, 'loop')[0]).toMatchObject({
+      type: 'cron',
+      schedule: '0 9 * * *',
+      enabled: false,
+    })
+  })
+
+  it('seeds a disabled default schedule for a recurring loop even when an old record lacks a schedule suggestion', () => {
+    const recurring = base('manual')
+    recurring.shape = {
+      stepArchetypes: [],
+      distinctArchetypes: 0,
+      hasToolActivity: true,
+      hasVerifySignal: false,
+      hasRetryPattern: false,
+      hasRiskyStep: false,
+      independentStepGroups: 1,
+      recurring: true,
+    }
+    expect(triggersForAutomation(recurring, 'loop')[0]).toMatchObject({
+      type: 'cron',
+      schedule: '0 9 * * *',
+      enabled: false,
+      isolation: 'worktree',
+    })
+    expect(triggersForAutomation(recurring, 'workflow')).toEqual([])
   })
 })

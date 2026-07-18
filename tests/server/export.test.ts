@@ -10,6 +10,7 @@ import type { ExportResult } from '../../src/export/exporter.js'
 let server: http.Server
 let tmpAgentsDir: string
 let tmpSkillsDir: string
+let workflowsDir: string
 let port: number
 
 const FIXTURE: CwcFile = {
@@ -21,7 +22,13 @@ const FIXTURE: CwcFile = {
 beforeAll(async () => {
   tmpAgentsDir = await fs.mkdtemp(path.join(os.tmpdir(), 'cwc-export-agents-'))
   tmpSkillsDir = await fs.mkdtemp(path.join(os.tmpdir(), 'cwc-export-skills-'))
-  const app = createApp({ staticDir: null })
+  workflowsDir = path.join(tmpAgentsDir, 'workflows')
+  const app = createApp({
+    staticDir: null,
+    workflowsDir,
+    userHomeDir: path.join(tmpAgentsDir, 'home'),
+    enableNotifier: false,
+  })
   await new Promise<void>((resolve) => {
     server = app.listen(0, () => { port = (server.address() as { port: number }).port; resolve() })
   })
@@ -34,12 +41,20 @@ afterAll(async () => {
 })
 
 it('POST /api/export writes agent .md and skill .md, returns updatedCwc with exportedSlug', async () => {
+  const created = await fetch(`http://localhost:${port}/api/workflows/create`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ content: FIXTURE }),
+  })
+  expect(created.status).toBe(201)
+  const authority = await created.json() as { path: string; revision: string }
   const res = await fetch(`http://localhost:${port}/api/export`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       cwcFile: FIXTURE,
       target: { type: 'project', projectDir: tmpAgentsDir },
       skillsDir: tmpSkillsDir,
+      workflowPath: authority.path,
+      expectedRevision: authority.revision,
     }),
   })
   expect(res.status).toBe(200)

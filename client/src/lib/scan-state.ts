@@ -80,7 +80,7 @@ export function homeScanContent(state: ScanUiState): HomeScanContent {
     case 'empty':
       return {
         title: 'No strong patterns yet',
-        description: 'The scan completed without enough repeated evidence to recommend a workflow.',
+        description: 'The scan completed without enough repeated evidence to recommend an automation.',
         primary: { kind: 'view', label: 'View latest scan' },
         secondary: { kind: 'start', label: 'Scan again' },
       }
@@ -94,7 +94,7 @@ export function homeScanContent(state: ScanUiState): HomeScanContent {
     case 'initial':
       return {
         title: 'Find the work you keep repeating in Claude Code',
-        description: 'CWC scans your Claude Code history, spots the tasks you do by hand again and again, and turns them into one-click workflows.',
+        description: 'CWC scans your Claude Code history, spots the tasks you repeat, and compiles each one into the smallest useful automation.',
         primary: { kind: 'start', label: 'Scan my history' },
       }
   }
@@ -123,13 +123,13 @@ export function detectResultsContent(state: ScanUiState): DetectResultsContent {
     case 'low-confidence':
       return {
         title: `${state.candidateCount} potential ${plural(state.candidateCount, 'pattern')} found`,
-        detail: 'These results have weaker evidence. Review them before generating a workflow.',
+        detail: 'These results have weaker evidence. Review them before generating an artifact.',
       }
     case 'empty':
       return {
         title: 'Automation candidates',
         emptyTitle: 'No strong patterns found',
-        emptyDescription: 'The scan completed without enough repeated evidence to suggest a workflow. Try again after a few more Claude Code sessions.',
+        emptyDescription: 'The scan completed without enough repeated evidence to suggest an automation. Try again after a few more Claude Code sessions.',
       }
     case 'error':
       return {
@@ -141,7 +141,7 @@ export function detectResultsContent(state: ScanUiState): DetectResultsContent {
       return {
         title: 'Automation candidates',
         emptyTitle: 'Start with a history scan',
-        emptyDescription: 'CWC will inspect your local Claude Code history, cluster repeated work, and show the workflows worth generating.',
+        emptyDescription: 'CWC will inspect your local Claude Code history, cluster repeated work, and recommend the right-sized artifacts worth generating.',
       }
   }
 }

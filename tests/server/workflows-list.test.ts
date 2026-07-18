@@ -22,13 +22,32 @@ beforeEach(async () => {
 afterEach(async () => { server.close(); await fs.rm(dir, { recursive: true, force: true }) })
 
 it('GET /workflows/list includes meta.id', async () => {
-  const items = await (await fetch(`${base}/api/workflows/list`)).json() as Array<{ id: string; name: string }>
+  const items = await (await fetch(`${base}/api/workflows/list`)).json() as Array<{ id: string; name: string; artifactKind: string; artifactTier: string }>
   const alpha = items.find(i => i.name === 'Alpha')
   expect(alpha?.id).toBe('wf-abc')
+  expect(alpha?.artifactKind).toBe('workflow')
+  expect(alpha?.artifactTier).toBe('workflow')
 })
 
 it('GET /workflows/list uses file mtime when embedded metadata is stale', async () => {
   const items = await (await fetch(`${base}/api/workflows/list`)).json() as Array<{ id: string; name: string; updated: string }>
   const alpha = items.find(i => i.name === 'Alpha')
   expect(alpha?.updated).toBe('2026-06-18T20:00:00.000Z')
+})
+
+it('GET /workflows/list exposes persisted skill and loop identity', async () => {
+  await fs.writeFile(path.join(dir, 'cleanup.cwc'), JSON.stringify({
+    meta: {
+      id: 'skill-1', name: 'Cleanup', description: '', version: 2, created: '', updated: '',
+      artifactKind: 'skill', artifactTier: 'loop',
+    },
+    nodes: [{
+      id: 'node-1', position: { x: 0, y: 0 }, exportedSlug: null,
+      agent: { name: 'Cleanup', description: 'Use when cleaning up.', completionCriteria: '', systemPrompt: '# Cleanup\n\nDo it.' },
+    }],
+    edges: [],
+  }))
+
+  const items = await (await fetch(`${base}/api/workflows/list`)).json() as Array<{ id: string; artifactKind: string; artifactTier: string }>
+  expect(items.find(item => item.id === 'skill-1')).toMatchObject({ artifactKind: 'skill', artifactTier: 'loop' })
 })

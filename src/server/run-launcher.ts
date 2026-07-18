@@ -13,6 +13,7 @@ import {
   getRepositoryIdentity,
   inspectManagedWorktree,
   isGitRepo,
+  removeWorktree,
   removeVerifiedWorktree,
   resolveBaseSha,
   verifyManagedResult,
@@ -21,6 +22,25 @@ import {
 } from './run-isolation.js'
 import type { RunManifest, RunManifestStore } from './run-manifest.js'
 import { killProcessTree } from './process-tree.js'
+import {
+  OwnedExportedAgentCollisionError,
+  OwnedExportedAgentDeclarationError,
+  OwnedExportedAgentDeploymentError,
+  OwnedExportedAgentReferenceError,
+  resolveExportedAgentBindings,
+  resolveOwnedExportedSkill,
+  sameExportedAgentBindings,
+  sameOwnedExportedSkill,
+  type ExportedAgentBinding,
+  type OwnedExportedSkill,
+} from './exported-skill.js'
+import { withExportTargetLease } from '../export/target-lease.js'
+import {
+  cleanupRunSkillBinding,
+  createRunSkillBinding,
+  type RunSkillBinding,
+} from './run-skill-binding.js'
+import type { RunningWorkflow } from './workflow-runner.js'
 
 export interface FireOptions {
   workflowId: string
@@ -40,6 +60,7 @@ export interface FireOptions {
   binPath?: string                // test injection
   env?: Record<string, string>    // test injection (passed to the child)
   launchGroupId?: string          // one trigger delivery may intentionally fan out to many targets
+  beforeSpawn?: () => Promise<void> // test injection at the export-lease boundary
 }
 
 export type FireOutcome =
@@ -86,6 +107,13 @@ function resultAuthority(manifest: RunManifest): ManagedResultAuthority | null {
     branch: manifest.branch,
     resultSha: manifest.resultSha,
   }
+}
+
+function agentDeploymentFailureReason(err: OwnedExportedAgentDeploymentError): string {
+  if (err instanceof OwnedExportedAgentCollisionError) return 'agent deployment collision'
+  if (err instanceof OwnedExportedAgentDeclarationError) return 'workflow must be re-exported'
+  if (err instanceof OwnedExportedAgentReferenceError) return 'agent reference unavailable'
+  return 'agent not exported'
 }
 
 async function transitionFailure(
@@ -142,16 +170,34 @@ export async function fireWorkflow(opts: FireOptions): Promise<FireOutcome> {
   }
 
   let wt: WorktreeInfo | null = null
+  let expectedSkill: OwnedExportedSkill | null = null
+  let expectedAgents: ExportedAgentBinding[] = []
+  let runtimeSkillAtBoundary: OwnedExportedSkill | null = null
+  let runtimeAgentsAtBoundary: ExportedAgentBinding[] = []
   try {
     // The skill may live in the user scope OR the target project's .claude/skills —
     // project-scoped exports are first-class, and `claude` resolves them from the run cwd.
     if (opts.skillsDir) {
-      const candidates = [
-        path.join(opts.skillsDir, opts.workflowSlug, 'SKILL.md'),
-        path.join(opts.cwd, '.claude', 'skills', opts.workflowSlug, 'SKILL.md'),
-      ]
-      const found = await Promise.all(candidates.map(candidate => fsp.access(candidate).then(() => true, () => false)))
-      if (!found.includes(true)) return await skip('skill not exported')
+      expectedSkill = await resolveOwnedExportedSkill({
+        artifactId: opts.workflowId,
+        skillSlug: opts.workflowSlug,
+        userSkillsDir: opts.skillsDir,
+        projectDir: opts.cwd,
+      })
+      if (!expectedSkill) return await skip('skill not exported')
+      try {
+        expectedAgents = await resolveExportedAgentBindings({
+          artifactId: opts.workflowId,
+          skillContent: expectedSkill.content,
+          userAgentsDir: path.join(path.dirname(opts.skillsDir), 'agents'),
+          projectDir: opts.cwd,
+        })
+      } catch (err) {
+        if (err instanceof OwnedExportedAgentDeploymentError) {
+          return await skip(agentDeploymentFailureReason(err))
+        }
+        throw err
+      }
     }
 
     if (opts.precondition) {
@@ -207,6 +253,88 @@ export async function fireWorkflow(opts: FireOptions): Promise<FireOutcome> {
     }
     const emit = (event: RunEvent) => opts.store.append(event).catch(() => { /* teardown race */ })
 
+    const rejectPreparedRun = async (reason: string): Promise<FireOutcome> => {
+      if (!wt) return await skip(reason)
+      const preparedWorktree = wt
+      let checkpointed: boolean
+      try {
+        checkpointed = await checkpointWorktree(preparedWorktree.worktreePath, runId)
+      } catch (err) {
+        const message = `${reason}; CWC could not checkpoint the prepared worktree, so it was retained at ${preparedWorktree.worktreePath}: ${err instanceof Error ? err.message : String(err)}`
+        await emit(started)
+        await transitionFailure(manifests, opts.workflowId, runId, message).catch(() => {})
+        await emit({
+          runId,
+          workflowId: opts.workflowId,
+          workflowSlug: opts.workflowSlug,
+          type: 'run_completed',
+          ts: now(),
+          status: 'error',
+          source: 'test',
+          message,
+        })
+        opts.store.releaseRun(runId)
+        return { fired: false, reason: message }
+      }
+      if (checkpointed) {
+        await emit(started)
+        await classifyAndFinish({
+          ...opts,
+          runId,
+          wt: preparedWorktree,
+          result: { status: 'error', message: reason },
+        })
+        wt = null
+        return { fired: false, reason }
+      }
+      try {
+        await removeWorktree(opts.cwd, preparedWorktree.worktreePath, preparedWorktree.branch, { keepBranch: false })
+        wt = null
+      } catch (err) {
+        return await skip(`${reason}; the unused worktree was retained: ${err instanceof Error ? err.message : String(err)}`)
+      }
+      return await skip(reason)
+    }
+
+    const verifyDeployment = async (): Promise<FireOutcome | null> => {
+      if (!opts.skillsDir) return null
+      const runtimeSkill = await resolveOwnedExportedSkill({
+        artifactId: opts.workflowId,
+        skillSlug: opts.workflowSlug,
+        userSkillsDir: opts.skillsDir,
+        projectDir: opts.cwd,
+      })
+      let runtimeAgents: ExportedAgentBinding[] = []
+      try {
+        runtimeAgents = runtimeSkill
+          ? await resolveExportedAgentBindings({
+              artifactId: opts.workflowId,
+              skillContent: runtimeSkill.content,
+              userAgentsDir: path.join(path.dirname(opts.skillsDir), 'agents'),
+              projectDir: opts.cwd,
+            })
+          : []
+      } catch (err) {
+        if (err instanceof OwnedExportedAgentDeploymentError) {
+          return await rejectPreparedRun(agentDeploymentFailureReason(err))
+        }
+        throw err
+      }
+      if (!expectedSkill || !sameOwnedExportedSkill(expectedSkill, runtimeSkill)
+        || !sameExportedAgentBindings(expectedAgents, runtimeAgents)) {
+        return await rejectPreparedRun('skill not exported')
+      }
+      runtimeSkillAtBoundary = runtimeSkill
+      runtimeAgentsAtBoundary = runtimeAgents
+      return null
+    }
+
+    // Re-resolve from the selected deployment target. Project exports are commonly
+    // untracked and therefore absent from a fresh worktree; the private plugin is
+    // what carries their verified skill/bespoke-agent bytes into the run.
+    const runtimeSkillFailure = await verifyDeployment()
+    if (runtimeSkillFailure) return runtimeSkillFailure
+
     if (opts.setupCommand) {
       await manifests.transition(opts.workflowId, runId, manifest => ({ ...manifest, lifecycleState: 'running_setup' }))
       const setup = await runShellCommand(opts.setupCommand, runCwd, 600_000)
@@ -220,16 +348,90 @@ export async function fireWorkflow(opts: FireOptions): Promise<FireOutcome> {
         })
         return { fired: true, runId, settled: Promise.resolve() }
       }
+
+      // Setup is arbitrary shell with permission to alter either export scope, so the
+      // deployment must be re-verified after it runs. Without a setup command nothing
+      // ran since the check above, and bindAndSpawn re-verifies at the lease boundary.
+      const postSetupSkillFailure = await verifyDeployment()
+      if (postSetupSkillFailure) return postSetupSkillFailure
     }
 
-    await emit(started)
     await manifests.transition(opts.workflowId, runId, manifest => ({ ...manifest, lifecycleState: 'spawning' }))
-    const prompt = `/${opts.workflowSlug}\nUse run id ${runId} when logging run events.` + (opts.payload ? `\nTrigger payload:\n${opts.payload}` : '')
-    const { stop, done } = runWorkflowSkill({ slug: opts.workflowSlug, runId, cwd: runCwd, binPath: opts.binPath, promptOverride: prompt, env: opts.env })
+    const bindAndSpawn = async (): Promise<FireOutcome | {
+      running: RunningWorkflow
+      binding: RunSkillBinding | null
+    }> => {
+      const finalSkillFailure = await verifyDeployment()
+      if (finalSkillFailure) return finalSkillFailure
+      let binding: RunSkillBinding | null = null
+      try {
+        if (opts.skillsDir) {
+          if (!runtimeSkillAtBoundary) throw new Error('The verified skill binding is unavailable.')
+          binding = await createRunSkillBinding({
+            root: opts.worktreesRoot,
+            runId,
+            workflowId: opts.workflowId,
+            skillSlug: opts.workflowSlug,
+            skillContent: runtimeSkillAtBoundary.content,
+            skillContentHash: runtimeSkillAtBoundary.contentHash,
+            agents: runtimeAgentsAtBoundary,
+          })
+          await manifests.transition(opts.workflowId, runId, manifest => ({
+            ...manifest,
+            runtimeBinding: binding!.authority,
+          }))
+        }
+        await emit(started)
+        await opts.beforeSpawn?.()
+        const invocationSlug = binding?.invocationSlug ?? opts.workflowSlug
+        const prompt = `/${invocationSlug}\nUse run id ${runId} when logging run events.` + (opts.payload ? `\nTrigger payload:\n${opts.payload}` : '')
+        return {
+          running: runWorkflowSkill({
+            slug: opts.workflowSlug,
+            runId,
+            cwd: runCwd,
+            binPath: opts.binPath,
+            promptOverride: prompt,
+            env: opts.env,
+            ...(binding ? { pluginDir: binding.pluginDir } : {}),
+          }),
+          binding,
+        }
+      } catch (err) {
+        await binding?.cleanup()
+        throw err
+      }
+    }
+    const launched = opts.skillsDir
+      ? await withExportTargetLease([
+          path.dirname(opts.skillsDir),
+          opts.skillsDir,
+          path.join(opts.cwd, '.claude'),
+          path.join(opts.cwd, '.claude', 'skills'),
+          path.join(runCwd, '.claude'),
+          path.join(runCwd, '.claude', 'skills'),
+        ], bindAndSpawn)
+      : await bindAndSpawn()
+    if ('fired' in launched) return launched
+    const { stop } = launched.running
     opts.store.registerRun(runId, opts.workflowId, stop)
-    await manifests.transition(opts.workflowId, runId, manifest => ({ ...manifest, lifecycleState: 'running' }))
-
-    const settled = done.then(result => classifyAndFinish({ ...opts, runId, wt, result }))
+    try {
+      await manifests.transition(opts.workflowId, runId, manifest => ({ ...manifest, lifecycleState: 'running' }))
+    } catch (err) {
+      stop()
+      await launched.running.done.catch(() => undefined)
+      await launched.binding?.cleanup()
+      throw err
+    }
+    // Classification decides whether a successful process exit is terminal or a
+    // gate pause. Paused sessions retain the exact plugin for a later resume.
+    const settled = launched.running.done.then(result => classifyAndFinish({
+      ...opts,
+      runId,
+      wt,
+      result,
+      runtimeBinding: launched.binding ?? undefined,
+    }))
     return { fired: true, runId, settled }
   } catch (err) {
     const reason = `launch failed: ${err instanceof Error ? err.message : String(err)}`
@@ -250,7 +452,18 @@ export async function sweepOrphanWorktrees(
   manifestStore: RunManifestStore = store.manifests,
 ): Promise<void> {
   const expectedRoot = path.resolve(worktreesRoot)
+  const cleanupTerminalBinding = async (manifest: RunManifest): Promise<void> => {
+    if (!manifest.runtimeBinding || !['completed', 'failed', 'aborted', 'rejected'].includes(manifest.lifecycleState)) return
+    await cleanupRunSkillBinding({
+      root: worktreesRoot,
+      workflowId: manifest.workflowId,
+      runId: manifest.runId,
+      skillSlug: manifest.workflowSkillSlug,
+      authority: manifest.runtimeBinding,
+    })
+  }
   for (const initial of await manifestStore.listAll()) {
+    await cleanupTerminalBinding(initial)
     if (!initial.worktreePath || !initial.branch || !initial.repositoryIdentity || !initial.baseSha) continue
     if (path.resolve(initial.worktreePath) !== path.join(expectedRoot, initial.runId)) continue
     if (!['checkpointing', 'cleaning', 'completed', 'failed', 'aborted', 'rejecting'].includes(initial.lifecycleState)) continue
@@ -371,11 +584,18 @@ export async function sweepOrphanWorktrees(
         if (verified.ok) await transaction.transition(current => ({ ...current, disposition: 'ready', failureReason: undefined }))
       }
     }).catch(() => { /* malformed/racing authority is retained */ })
+    const final = await manifestStore.read(initial.workflowId, initial.runId).catch(() => null)
+    if (final) await cleanupTerminalBinding(final)
   }
 }
 
 /** Addendum 8 precedence. Also used by the approve (resume) path. */
-export async function classifyAndFinish(args: FireOptions & { runId: string; wt: WorktreeInfo | null; result: WorkflowRunResult }): Promise<void> {
+export async function classifyAndFinish(args: FireOptions & {
+  runId: string
+  wt: WorktreeInfo | null
+  result: WorkflowRunResult
+  runtimeBinding?: RunSkillBinding
+}): Promise<void> {
   const { store, runId, workflowId, workflowSlug, wt, result } = args
   const manifests = args.manifests ?? store.manifests
   const now = () => new Date().toISOString()
@@ -492,6 +712,15 @@ export async function classifyAndFinish(args: FireOptions & { runId: string; wt:
     await transitionFailure(manifests, workflowId, runId, message).catch(() => {})
     await emit({ runId, workflowId, workflowSlug, type: 'run_completed', ts: now(), status: 'error', source: 'test', message })
   } finally {
+    if (args.runtimeBinding) {
+      try {
+        const manifest = await manifests.read(workflowId, runId)
+        if (!manifest || manifest.lifecycleState !== 'paused') await args.runtimeBinding.cleanup()
+      } catch {
+        // Unknown authority may still describe a paused run after restart. Keep
+        // its private binding rather than deleting the only safe resume source.
+      }
+    }
     store.releaseRun(runId)
   }
 }

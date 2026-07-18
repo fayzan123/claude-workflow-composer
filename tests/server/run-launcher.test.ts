@@ -8,14 +8,22 @@ import { createRunStore, type RunStore } from '../../src/server/run-store.js'
 import { fireWorkflow, classifyAndFinish, sweepOrphanWorktrees, runShellCommand } from '../../src/server/run-launcher.js'
 import { createWorktree, getRepositoryIdentity, removeWorktree } from '../../src/server/run-isolation.js'
 import { makeBin } from '../helpers/make-bin.js'
+import { withExportTargetLease } from '../../src/export/target-lease.js'
 
-let binDir: string, okBin: string, dirtyBin: string, checkpointFailBin: string, gateBin: string, gateNoSessionBin: string
+let binDir: string, okBin: string, bindingReaderBin: string, dirtyBin: string, checkpointFailBin: string, gateBin: string, gateNoSessionBin: string
 let runsDir: string, wtRoot: string, repo: string, store: RunStore
 
 beforeAll(async () => {
   binDir = await fs.mkdtemp(path.join(os.tmpdir(), 'cwc-launch-bin-'))
   okBin = await makeBin(binDir, 'claude', `const fs=require('fs');fs.readFileSync(0,'utf-8')
 process.stdout.write(JSON.stringify({ type:'result', result:'done', session_id:'s-ok', total_cost_usd:0.01 }))
+`)
+  bindingReaderBin = await makeBin(binDir, 'claude-binding-reader', `const fs=require('fs');const path=require('path');fs.readFileSync(0,'utf-8')
+const args=process.argv.slice(2);const pluginDir=args[args.indexOf('--plugin-dir')+1]
+const skill=fs.readFileSync(path.join(pluginDir,'skills','cwc-x','SKILL.md'),'utf-8')
+const referencePath=path.join(pluginDir,'agents','shared-reviewer.md')
+const reference=fs.existsSync(referencePath)?fs.readFileSync(referencePath,'utf-8'):''
+process.stdout.write(JSON.stringify({type:'result',result:skill+'\\n'+reference,session_id:'s-binding-reader'}))
 `)
   dirtyBin = await makeBin(binDir, 'claude-dirty', `const fs=require('fs');fs.readFileSync(0,'utf-8')
 fs.writeFileSync('f.txt', 'changed by run')
@@ -73,7 +81,406 @@ async function lastEvents(runId: string) {
   return (await store.getEvents('wf-1', runId))!
 }
 
+async function waitForManifestState(runId: string, lifecycleState: string): Promise<void> {
+  // Reaching a state can involve git worktree creation plus a cold node process
+  // spawn for setup commands; Windows CI runners regularly need well over 5s.
+  // Polling returns immediately on match, so a large budget costs nothing green.
+  const deadline = Date.now() + 30_000
+  while (Date.now() < deadline) {
+    if ((await store.manifests.read('wf-1', runId))?.lifecycleState === lifecycleState) return
+    await new Promise(resolve => setTimeout(resolve, 10))
+  }
+  throw new Error(`Timed out waiting for ${runId} to enter ${lifecycleState}`)
+}
+
 describe('fireWorkflow', () => {
+  it('does not launch a same-slug skill owned by a different artifact', async () => {
+    const skillsDir = path.join(runsDir, 'skills')
+    const skillDir = path.join(skillsDir, 'cwc-x')
+    await fs.mkdir(skillDir, { recursive: true })
+    await fs.writeFile(path.join(skillDir, 'SKILL.md'), '# collision\n<!-- cwc:workflow:wf-foreign -->\n')
+
+    const result = await fireWorkflow(baseOpts({ skillsDir, isolation: 'in-place' }))
+
+    expect(result).toEqual({ fired: false, reason: 'skill not exported' })
+    expect(store.hasActiveTestRun('wf-1')).toBe(false)
+  })
+
+  it('accepts the exact CWC owner marker when validating an exported skill', async () => {
+    const skillsDir = path.join(runsDir, 'skills')
+    const skillDir = path.join(skillsDir, 'cwc-x')
+    await fs.mkdir(skillDir, { recursive: true })
+    await fs.writeFile(path.join(skillDir, 'SKILL.md'), '# managed\n<!-- cwc:workflow:wf-1 -->\n')
+
+    const result = await fireWorkflow(baseOpts({ skillsDir, isolation: 'in-place' }))
+
+    if (result.fired !== true) return expect.fail(`expected launch, received ${result.reason}`)
+    await result.settled
+    expect((await lastEvents(result.runId)).at(-1)).toMatchObject({ type: 'run_completed', status: 'complete' })
+  })
+
+  it('fails closed when a foreign project agent shadows a workflow-owned user agent', async () => {
+    const skillsDir = path.join(runsDir, '.claude', 'skills')
+    const userAgentDir = path.join(runsDir, '.claude', 'agents')
+    const projectAgentDir = path.join(repo, '.claude', 'agents')
+    await fs.mkdir(path.join(skillsDir, 'cwc-x'), { recursive: true })
+    await fs.mkdir(userAgentDir, { recursive: true })
+    await fs.mkdir(projectAgentDir, { recursive: true })
+    await fs.writeFile(
+      path.join(skillsDir, 'cwc-x', 'SKILL.md'),
+      'Use `subagent_type: "writer"`.\n<!-- cwc:bespoke-agents:writer -->\n<!-- cwc:workflow:wf-1 -->\n',
+    )
+    await fs.writeFile(
+      path.join(userAgentDir, 'writer.md'),
+      '# Managed writer\n<!-- cwc:node:n1:workflow:wf-1 -->\n',
+    )
+    await fs.writeFile(path.join(projectAgentDir, 'writer.md'), '# Project-local hand-authored writer\n')
+
+    const result = await fireWorkflow(baseOpts({ skillsDir, isolation: 'in-place' }))
+
+    expect(result).toEqual({ fired: false, reason: 'agent deployment collision' })
+    expect(store.hasActiveTestRun('wf-1')).toBe(false)
+  })
+
+  it('snapshots an untracked project agent reference into an isolated run', async () => {
+    const skillsDir = path.join(runsDir, '.claude', 'skills')
+    const projectAgentDir = path.join(repo, '.claude', 'agents')
+    await fs.mkdir(path.join(skillsDir, 'cwc-x'), { recursive: true })
+    await fs.mkdir(projectAgentDir, { recursive: true })
+    await fs.writeFile(
+      path.join(skillsDir, 'cwc-x', 'SKILL.md'),
+      'Use `subagent_type: "shared-reviewer"`.\n<!-- cwc:bespoke-agents:- -->\n<!-- cwc:workflow:wf-1 -->\n',
+    )
+    await fs.writeFile(
+      path.join(projectAgentDir, 'shared-reviewer.md'),
+      '---\nname: shared-reviewer\ndescription: Shared project reviewer\n---\n\nORIGINAL_PROJECT_REFERENCE\n',
+    )
+
+    const result = await fireWorkflow(baseOpts({
+      skillsDir,
+      binPath: bindingReaderBin,
+      runId: 'run-project-reference-binding',
+    }))
+
+    if (result.fired !== true) return expect.fail(`expected launch, received ${result.reason}`)
+    await result.settled
+    const completion = (await lastEvents(result.runId)).at(-1)
+    expect(completion).toMatchObject({ type: 'run_completed', status: 'complete' })
+    expect(completion?.message).toMatch(/subagent_type: "cwc-run-[a-f0-9]+:shared-reviewer"/)
+    expect(completion?.message).toContain('ORIGINAL_PROJECT_REFERENCE')
+  })
+
+  it('fails closed when a referenced agent is no longer installed', async () => {
+    const skillsDir = path.join(runsDir, '.claude', 'skills')
+    await fs.mkdir(path.join(skillsDir, 'cwc-x'), { recursive: true })
+    await fs.writeFile(
+      path.join(skillsDir, 'cwc-x', 'SKILL.md'),
+      'Use `subagent_type: "shared-reviewer"`.\n<!-- cwc:bespoke-agents:- -->\n<!-- cwc:workflow:wf-1 -->\n',
+    )
+
+    const result = await fireWorkflow(baseOpts({ skillsDir, isolation: 'in-place' }))
+
+    expect(result).toEqual({ fired: false, reason: 'agent reference unavailable' })
+    expect(store.hasActiveTestRun('wf-1')).toBe(false)
+  })
+
+  it('fails closed when a namespaced agent dispatch cannot be snapshotted', async () => {
+    const skillsDir = path.join(runsDir, '.claude', 'skills')
+    await fs.mkdir(path.join(skillsDir, 'cwc-x'), { recursive: true })
+    await fs.writeFile(
+      path.join(skillsDir, 'cwc-x', 'SKILL.md'),
+      'Use `subagent_type: "third-party:reviewer"`.\n<!-- cwc:bespoke-agents:- -->\n<!-- cwc:workflow:wf-1 -->\n',
+    )
+
+    const result = await fireWorkflow(baseOpts({ skillsDir, isolation: 'in-place' }))
+
+    expect(result).toEqual({ fired: false, reason: 'agent reference unavailable' })
+    expect(store.hasActiveTestRun('wf-1')).toBe(false)
+  })
+
+  it.each([
+    { state: 'deleted', replacement: null },
+    { state: 'replaced', replacement: '# Hand-authored replacement\n' },
+  ])('refuses a declared bespoke user agent that was $state', async ({ replacement }) => {
+    const skillsDir = path.join(runsDir, '.claude', 'skills')
+    const userAgentDir = path.join(runsDir, '.claude', 'agents')
+    await fs.mkdir(path.join(skillsDir, 'cwc-x'), { recursive: true })
+    await fs.mkdir(userAgentDir, { recursive: true })
+    await fs.writeFile(
+      path.join(skillsDir, 'cwc-x', 'SKILL.md'),
+      'Use `subagent_type: "writer"`.\n<!-- cwc:bespoke-agents:writer -->\n<!-- cwc:workflow:wf-1 -->\n',
+    )
+    if (replacement !== null) await fs.writeFile(path.join(userAgentDir, 'writer.md'), replacement)
+
+    const result = await fireWorkflow(baseOpts({ skillsDir, isolation: 'in-place' }))
+
+    expect(result).toEqual({ fired: false, reason: 'agent not exported' })
+    expect(store.hasActiveTestRun('wf-1')).toBe(false)
+  })
+
+  it('requires a re-export for legacy workflow skills with agent dispatches', async () => {
+    const skillsDir = path.join(runsDir, 'skills')
+    await fs.mkdir(path.join(skillsDir, 'cwc-x'), { recursive: true })
+    await fs.writeFile(
+      path.join(skillsDir, 'cwc-x', 'SKILL.md'),
+      'Use `subagent_type: "writer"`.\n<!-- cwc:workflow:wf-1 -->\n',
+    )
+
+    const result = await fireWorkflow(baseOpts({ skillsDir, isolation: 'in-place' }))
+
+    expect(result).toEqual({ fired: false, reason: 'workflow must be re-exported' })
+    expect(store.hasActiveTestRun('wf-1')).toBe(false)
+  })
+
+  it('binds an untracked project export into an isolated worktree', async () => {
+    const projectSkillDir = path.join(repo, '.claude', 'skills', 'cwc-x')
+    await fs.mkdir(projectSkillDir, { recursive: true })
+    // Deliberately untracked: the fresh worktree does not contain this file, so
+    // the private plugin must carry the verified project deployment into the run.
+    await fs.writeFile(path.join(projectSkillDir, 'SKILL.md'), '# managed\n<!-- cwc:workflow:wf-1 -->\n')
+    const skillsDir = path.join(runsDir, 'user-skills')
+    const userSkillDir = path.join(skillsDir, 'cwc-x')
+    await fs.mkdir(userSkillDir, { recursive: true })
+    await fs.writeFile(path.join(userSkillDir, 'SKILL.md'), '# collision\n<!-- cwc:workflow:wf-foreign -->\n')
+
+    const result = await fireWorkflow(baseOpts({ skillsDir, binPath: bindingReaderBin, runId: 'run-runtime-owner-check' }))
+
+    if (result.fired !== true) return expect.fail(`expected launch, received ${result.reason}`)
+    await result.settled
+    expect((await lastEvents(result.runId)).at(-1)?.message).toContain('# managed')
+    expect(store.hasActiveTestRun('wf-1')).toBe(false)
+  })
+
+  it('does not fall back from the selected project export to a stale owned user export', async () => {
+    const projectSkillDir = path.join(repo, '.claude', 'skills', 'cwc-x')
+    await fs.mkdir(projectSkillDir, { recursive: true })
+    await fs.writeFile(path.join(projectSkillDir, 'SKILL.md'), '# current project deployment\n<!-- cwc:workflow:wf-1 -->\n')
+    const skillsDir = path.join(runsDir, 'user-skills')
+    const userSkillDir = path.join(skillsDir, 'cwc-x')
+    await fs.mkdir(userSkillDir, { recursive: true })
+    await fs.writeFile(path.join(userSkillDir, 'SKILL.md'), '# stale user deployment\n<!-- cwc:workflow:wf-1 -->\n')
+
+    const result = await fireWorkflow(baseOpts({ skillsDir, binPath: bindingReaderBin, runId: 'run-no-scope-fallback' }))
+
+    if (result.fired !== true) return expect.fail(`expected launch, received ${result.reason}`)
+    await result.settled
+    const completion = (await lastEvents(result.runId)).at(-1)
+    expect(completion?.message).toContain('current project deployment')
+    expect(completion?.message).not.toContain('stale user deployment')
+  })
+
+  it('binds the selected checkout revision instead of the worktree committed revision', async () => {
+    const projectSkillDir = path.join(repo, '.claude', 'skills', 'cwc-x')
+    const projectSkill = path.join(projectSkillDir, 'SKILL.md')
+    await fs.mkdir(projectSkillDir, { recursive: true })
+    await fs.writeFile(projectSkill, '# committed old deployment\n<!-- cwc:workflow:wf-1 -->\n')
+    execFileSync('git', ['-C', repo, 'add', '.claude'])
+    execFileSync('git', ['-C', repo, 'commit', '-m', 'add exported skill'])
+    await fs.writeFile(projectSkill, '# current checkout deployment\n<!-- cwc:workflow:wf-1 -->\n')
+
+    const result = await fireWorkflow(baseOpts({
+      skillsDir: path.join(runsDir, 'user-skills'),
+      binPath: bindingReaderBin,
+      runId: 'run-content-mismatch',
+    }))
+
+    if (result.fired !== true) return expect.fail(`expected launch, received ${result.reason}`)
+    await result.settled
+    const completion = (await lastEvents(result.runId)).at(-1)
+    expect(completion?.message).toContain('current checkout deployment')
+    expect(completion?.message).not.toContain('committed old deployment')
+  })
+
+  it('rechecks exact skill content after a successful setup command', async () => {
+    const skillsDir = path.join(runsDir, 'skills')
+    const skillDir = path.join(skillsDir, 'cwc-x')
+    const skillFile = path.join(skillDir, 'SKILL.md')
+    await fs.mkdir(skillDir, { recursive: true })
+    await fs.writeFile(skillFile, '# managed before setup\n<!-- cwc:workflow:wf-1 -->\n')
+    const setupScript = path.join(runsDir, 'replace-skill.cjs')
+    await fs.writeFile(
+      setupScript,
+      `require('fs').writeFileSync(${JSON.stringify(skillFile)}, '# changed by setup\\n<!-- cwc:workflow:wf-1 -->\\n')\n`,
+    )
+
+    const result = await fireWorkflow(baseOpts({
+      skillsDir,
+      isolation: 'in-place',
+      setupCommand: `"${process.execPath}" "${setupScript}"`,
+      runId: 'run-post-setup-skill-check',
+    }))
+
+    expect(result).toEqual({ fired: false, reason: 'skill not exported' })
+    expect(await store.listRuns('wf-1')).toEqual([])
+    expect(store.hasActiveTestRun('wf-1')).toBe(false)
+  })
+
+  it('checkpoints isolated setup output when post-setup deployment verification rejects launch', async () => {
+    const skillsDir = path.join(runsDir, 'skills')
+    const skillFile = path.join(skillsDir, 'cwc-x', 'SKILL.md')
+    await fs.mkdir(path.dirname(skillFile), { recursive: true })
+    await fs.writeFile(skillFile, '# managed before setup\n<!-- cwc:workflow:wf-1 -->\n')
+    const setupScript = path.join(runsDir, 'replace-skill-and-write-output.cjs')
+    await fs.writeFile(
+      setupScript,
+      `const fs = require('fs')
+fs.writeFileSync('setup-output.txt', 'recoverable post-setup output')
+fs.writeFileSync(${JSON.stringify(skillFile)}, '# changed by setup\\n<!-- cwc:workflow:wf-1 -->\\n')
+`,
+    )
+
+    const result = await fireWorkflow(baseOpts({
+      skillsDir,
+      setupCommand: `"${process.execPath}" "${setupScript}"`,
+      runId: 'run-preserve-post-setup-rejection',
+    }))
+
+    expect(result).toEqual({ fired: false, reason: 'skill not exported' })
+    const branch = 'cwc/cwc-x/run-preserve-post-setup-rejection'
+    expect(execFileSync('git', ['-C', repo, 'show', `${branch}:setup-output.txt`], { encoding: 'utf-8' })).toBe('recoverable post-setup output')
+    await expect(fs.access(path.join(wtRoot, 'run-preserve-post-setup-rejection'))).rejects.toThrow()
+    expect(await store.manifests.read('wf-1', 'run-preserve-post-setup-rejection')).toMatchObject({
+      lifecycleState: 'failed',
+      completionStatus: 'error',
+      disposition: 'ready',
+    })
+    expect((await store.listRuns('wf-1'))[0]).toMatchObject({
+      status: 'error',
+      actions: { apply: false, discard: true },
+    })
+    expect(store.hasActiveTestRun('wf-1')).toBe(false)
+  })
+
+  it('checkpoints isolated setup output when final leased deployment verification rejects launch', async () => {
+    const skillsDir = path.join(runsDir, 'skills')
+    const skillFile = path.join(skillsDir, 'cwc-x', 'SKILL.md')
+    await fs.mkdir(path.dirname(skillFile), { recursive: true })
+    await fs.writeFile(skillFile, '# managed before final check\n<!-- cwc:workflow:wf-1 -->\n')
+    const setupScript = path.join(runsDir, 'write-setup-output.cjs')
+    await fs.writeFile(setupScript, "require('fs').writeFileSync('setup-output.txt', 'recoverable final-boundary output')\n")
+
+    let releaseLease!: () => void
+    let leaseEntered!: () => void
+    const entered = new Promise<void>(resolve => { leaseEntered = resolve })
+    const held = new Promise<void>(resolve => { releaseLease = resolve })
+    const lease = withExportTargetLease([path.dirname(skillsDir), skillsDir], async () => {
+      leaseEntered()
+      await held
+    })
+    await entered
+
+    const runId = 'run-preserve-final-rejection'
+    const launch = fireWorkflow(baseOpts({
+      skillsDir,
+      setupCommand: `"${process.execPath}" "${setupScript}"`,
+      runId,
+    }))
+    await waitForManifestState(runId, 'spawning')
+    await fs.writeFile(skillFile, '# changed at final boundary\n<!-- cwc:workflow:wf-1 -->\n')
+    releaseLease()
+    await lease
+    const result = await launch
+
+    expect(result).toEqual({ fired: false, reason: 'skill not exported' })
+    const branch = `cwc/cwc-x/${runId}`
+    expect(execFileSync('git', ['-C', repo, 'show', `${branch}:setup-output.txt`], { encoding: 'utf-8' })).toBe('recoverable final-boundary output')
+    await expect(fs.access(path.join(wtRoot, runId))).rejects.toThrow()
+    expect(await store.manifests.read('wf-1', runId)).toMatchObject({
+      lifecycleState: 'failed',
+      completionStatus: 'error',
+      disposition: 'ready',
+    })
+    expect((await store.listRuns('wf-1'))[0]).toMatchObject({
+      status: 'error',
+      actions: { apply: false, discard: true },
+    })
+    expect(store.hasActiveTestRun('wf-1')).toBe(false)
+  })
+
+  it('holds the export target lease from final binding through process spawn', async () => {
+    const skillsDir = path.join(runsDir, 'skills')
+    const skillDir = path.join(skillsDir, 'cwc-x')
+    const skillFile = path.join(skillDir, 'SKILL.md')
+    await fs.mkdir(skillDir, { recursive: true })
+    await fs.writeFile(skillFile, '# managed\n<!-- cwc:workflow:wf-1 -->\n')
+    let releaseSpawn!: () => void
+    let spawnBoundaryReached!: () => void
+    const atSpawnBoundary = new Promise<void>(resolve => { spawnBoundaryReached = resolve })
+    const allowSpawn = new Promise<void>(resolve => { releaseSpawn = resolve })
+
+    const fire = fireWorkflow(baseOpts({
+      skillsDir,
+      isolation: 'in-place',
+      runId: 'run-export-lease-binding',
+      beforeSpawn: async () => {
+        spawnBoundaryReached()
+        await allowSpawn
+      },
+    }))
+    await atSpawnBoundary
+
+    let mutationEntered = false
+    const mutation = withExportTargetLease([path.dirname(skillsDir), skillsDir], async () => {
+      mutationEntered = true
+      await fs.writeFile(skillFile, '# replacement\n<!-- cwc:workflow:wf-1 -->\n')
+    })
+    await new Promise(resolve => setTimeout(resolve, 20))
+    expect(mutationEntered).toBe(false)
+
+    releaseSpawn()
+    const result = await fire
+    if (result.fired !== true) return expect.fail(`expected launch, received ${result.reason}`)
+    await mutation
+    await result.settled
+    expect(mutationEntered).toBe(true)
+  })
+
+  it('runs the private bound bytes after a post-spawn export changes the live skill and agent', async () => {
+    const skillsDir = path.join(runsDir, '.claude', 'skills')
+    const agentsDir = path.join(runsDir, '.claude', 'agents')
+    const skillFile = path.join(skillsDir, 'cwc-x', 'SKILL.md')
+    const agentFile = path.join(agentsDir, 'writer.md')
+    const mutationDone = path.join(runsDir, 'mutation-done')
+    await fs.mkdir(path.dirname(skillFile), { recursive: true })
+    await fs.mkdir(agentsDir, { recursive: true })
+    await fs.writeFile(skillFile, `---\nname: cwc-x\ndescription: Bound flow\n---\n\nORIGINAL_SKILL\nUse \`subagent_type: "writer"\`.\n<!-- cwc:bespoke-agents:writer -->\n<!-- cwc:workflow:wf-1 -->`)
+    await fs.writeFile(agentFile, `---\nname: writer\ndescription: Writer\n---\n\nORIGINAL_AGENT\n<!-- cwc:node:n1:workflow:wf-1 -->`)
+    const delayedReader = await makeBin(binDir, `claude-bound-${Date.now()}`, `const fs=require('fs');const path=require('path')
+const args=process.argv.slice(2)
+const pluginDir=args[args.indexOf('--plugin-dir') + 1]
+fs.readFileSync(0,'utf-8')
+const marker=${JSON.stringify(mutationDone)}
+const finish=()=>{
+  if(!fs.existsSync(marker)) return setTimeout(finish, 10)
+  const skill=fs.readFileSync(path.join(pluginDir,'skills','cwc-x','SKILL.md'),'utf-8')
+  const agent=fs.readFileSync(path.join(pluginDir,'agents','writer.md'),'utf-8')
+  process.stdout.write(JSON.stringify({type:'result',result:skill+'\\n'+agent,session_id:'s-bound'}))
+}
+finish()
+`)
+
+    const result = await fireWorkflow(baseOpts({
+      skillsDir,
+      isolation: 'in-place',
+      binPath: delayedReader,
+      runId: 'run-private-byte-binding',
+    }))
+    if (result.fired !== true) return expect.fail(`expected launch, received ${result.reason}`)
+
+    await withExportTargetLease([path.dirname(skillsDir), skillsDir], async () => {
+      await fs.writeFile(skillFile, '# REPLACEMENT_SKILL\n<!-- cwc:workflow:wf-1 -->')
+      await fs.writeFile(agentFile, '# REPLACEMENT_AGENT\n<!-- cwc:node:n1:workflow:wf-1 -->')
+    })
+    await fs.writeFile(mutationDone, 'done')
+    await result.settled
+
+    const completion = (await lastEvents(result.runId)).at(-1)
+    expect(completion?.message).toContain('ORIGINAL_SKILL')
+    expect(completion?.message).toContain('ORIGINAL_AGENT')
+    expect(completion?.message).not.toContain('REPLACEMENT_SKILL')
+    expect(completion?.message).not.toContain('REPLACEMENT_AGENT')
+  })
+
   it('precondition non-zero → not fired, nothing recorded as a run', async () => {
     const r = await fireWorkflow(baseOpts({ precondition: 'exit 1' }))
     expect(r).toEqual({ fired: false, reason: 'precondition' })

@@ -3,11 +3,57 @@ import type { AgentEntry } from '../../../src/server/api/agents.ts'
 import type { AgentSpec } from '../../../src/generation/agent-generator.ts'
 import type { SkillSpec } from '../../../src/generation/skill-generator.ts'
 import type { SkillEntry } from '../../../src/server/api/skills.ts'
-import type { ExportTarget, ExportResult } from '../../../src/export/exporter.ts'
-import type { DeleteExportResult } from '../../../src/server/api/export-delete.ts'
+import type { ExportTarget, ExportResult, ExportPreviewResult } from '../../../src/export/exporter.ts'
+import type { AuthorizedDeleteExportResult } from '../../../src/server/api/export-delete.ts'
 import type { ExportedWorkflowEntry } from '../../../src/server/api/exported-workflows.ts'
 import type { RunEvent } from '../../../src/run-events.ts'
 import type { RunSummary } from '../../../src/server/run-store.ts'
+import type { DetectedAutomation } from '../../../src/detection/types.ts'
+import type { ArtifactTier } from './artifact.ts'
+
+export interface WorkflowListEntry {
+  id: string
+  path: string
+  name: string
+  nodeCount: number
+  updated: string
+  artifactKind?: 'workflow' | 'skill'
+  artifactTier?: 'workflow' | 'skill' | 'loop'
+}
+
+export interface ScanGeneration {
+  id: string
+  step: string
+  startedAt: string
+  tier?: ArtifactTier
+  artifactId?: string
+  /** Compatibility field for scans persisted before artifact-aware generation. */
+  workflowId?: string
+  error?: string
+}
+
+export interface AutomationScanSnapshot {
+  status: string
+  startedAt?: string
+  finishedAt?: string
+  error?: string
+  log?: Array<{ ts: string; level: string; message: string }>
+  generation?: ScanGeneration | null
+  automations: DetectedAutomation[]
+}
+
+export type RuleTarget =
+  | { type: 'user-claude' }
+  | { type: 'project-agents'; projectDir: string }
+
+export interface RecipeAuthority {
+  workflowPath: string
+  expectedRevision: string
+}
+
+export interface AuthorizedExportResult extends ExportResult {
+  recipeRevision: string
+}
 
 const BASE = '/api'
 
@@ -32,18 +78,37 @@ async function reqWithError<T>(method: string, path: string, body?: unknown): Pr
   return json as T
 }
 
+async function readWorkflow(filePath: string): Promise<{ content: CwcFile; revision: string }> {
+  const res = await fetch(`${BASE}/workflows?path=${encodeURIComponent(filePath)}`)
+  const json = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error((json as { error?: string }).error || `GET /workflows failed: ${res.status}`)
+  const revision = res.headers.get('x-cwc-revision')
+  if (!revision || !/^[0-9a-f]{64}$/.test(revision)) {
+    throw new Error('Workflow response did not include a valid revision.')
+  }
+  return { content: json as CwcFile, revision }
+}
+
 export const api = {
   health: () => req<{ status: string }>('GET', '/health'),
   claudeCheck: () => req<{ installed: boolean; claudeDir: string }>('GET', '/claude-check'),
 
   workflows: {
-    list: () => req<{ id: string; path: string; name: string; nodeCount: number; updated: string }[]>('GET', '/workflows/list'),
-    read: (filePath: string) => req<CwcFile>('GET', `/workflows?path=${encodeURIComponent(filePath)}`),
-    create: (content: CwcFile) => req<{ saved: boolean; path: string }>('POST', '/workflows/create', { content }),
-    save: (filePath: string, content: CwcFile) => req<{ saved: boolean }>('POST', '/workflows', { path: filePath, content }),
-    delete: (filePath: string) => reqWithError<{ deleted: boolean }>('DELETE', `/workflows?path=${encodeURIComponent(filePath)}`),
-    rename: (oldPath: string, newName: string) =>
-      req<{ path: string; renamed: boolean }>('POST', '/workflows/rename', { oldPath, newName }),
+    list: () => req<WorkflowListEntry[]>('GET', '/workflows/list'),
+    read: readWorkflow,
+    create: (content: CwcFile) => req<{ saved: boolean; path: string; revision: string }>('POST', '/workflows/create', { content }),
+    save: (filePath: string, content: CwcFile, expectedRevision: string) =>
+      reqWithError<{ saved: boolean; revision: string }>('POST', '/workflows', { path: filePath, content, expectedRevision }),
+    delete: (filePath: string, cleanupUserExport = false, workflowId?: string) => reqWithError<{ deleted: boolean }>(
+      'DELETE',
+      `/workflows?path=${encodeURIComponent(filePath)}${cleanupUserExport ? '&cleanupUserExport=1' : ''}${workflowId ? `&workflowId=${encodeURIComponent(workflowId)}` : ''}`,
+    ),
+    rename: (oldPath: string, newName: string, workflowId: string | undefined, expectedRevision: string) =>
+      reqWithError<{ path: string; renamed: boolean; revision: string; content: CwcFile }>(
+        'POST',
+        '/workflows/rename',
+        { oldPath, newName, workflowId, expectedRevision },
+      ),
   },
 
   agents: (projectDir?: string) =>
@@ -75,18 +140,21 @@ export const api = {
   saveSkill: (slug: string, content: string, overwrite = false) =>
     reqWithError<{ slug: string; filePath: string }>('POST', '/skills', { slug, content, overwrite }),
 
-  export: (cwcFile: CwcFile, target: ExportTarget) =>
-    req<ExportResult>('POST', '/export', { cwcFile, target }),
+  export: (cwcFile: CwcFile, target: ExportTarget, authority: RecipeAuthority) =>
+    reqWithError<AuthorizedExportResult>('POST', '/export', { cwcFile, target, ...authority }),
 
   exportPreview: (cwcFile: CwcFile, target: ExportTarget) =>
-    req<{ files: { path: string; content: string }[]; warnings: string[] }>('POST', '/export/preview', { cwcFile, target }),
+    reqWithError<ExportPreviewResult>('POST', '/export/preview', { cwcFile, target }),
 
-  deleteExport: (cwcFile: CwcFile, target: ExportTarget) =>
-    req<DeleteExportResult>('POST', '/export/delete', { cwcFile, target }),
+  deleteExport: (cwcFile: CwcFile, target: ExportTarget, authority: RecipeAuthority) =>
+    reqWithError<AuthorizedDeleteExportResult>('POST', '/export/delete', { cwcFile, target, ...authority }),
 
   exportedWorkflows: {
     list: () => req<ExportedWorkflowEntry[]>('GET', '/exported-workflows'),
-    delete: (slug: string) => req<{ deleted: string }>('DELETE', `/exported-workflows?slug=${encodeURIComponent(slug)}`),
+    delete: (slug: string, ownerId: string) => reqWithError<{ deleted: string }>(
+      'DELETE',
+      `/exported-workflows?slug=${encodeURIComponent(slug)}&ownerId=${encodeURIComponent(ownerId)}`,
+    ),
   },
 
   fileContent: (filePath: string) =>
@@ -132,15 +200,7 @@ export const api = {
   serviceStatus: () => req<{ persistent: boolean; platform: string }>('GET', '/service-status'),
 
   automationScan: {
-    latest: () => fetch('/api/automation-scan').then(r => r.json()) as Promise<{
-      status: string
-      startedAt?: string
-      finishedAt?: string
-      error?: string
-      log?: Array<{ ts: string; level: string; message: string }>
-      generation?: { id: string; step: string; startedAt: string; workflowId?: string; error?: string } | null
-      automations: Array<{ id: string; title: string; description: string; steps: string[]; evidence: { count: number; repos: string[] }; suggestedTrigger: { label: string; cron?: string }; confidence: number; status: string; statusDetail?: string }>
-    }>,
+    latest: () => req<AutomationScanSnapshot>('GET', '/automation-scan'),
     start: (model?: string) => fetch('/api/automation-scan', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -148,11 +208,19 @@ export const api = {
     }),
     dismiss: (id: string) => fetch(`/api/automation-scan/${id}/dismiss`, { method: 'POST' }),
     restore: (id: string) => fetch(`/api/automation-scan/${id}/restore`, { method: 'POST' }),
-    promote: async (id: string) => {
-      const res = await fetch(`/api/automation-scan/${id}/promote`, { method: 'POST' })
-      const json = await res.json().catch(() => ({})) as { status?: string; error?: string; cancelled?: boolean }
+    promote: async (id: string, tier: ArtifactTier) => {
+      const res = await fetch(`/api/automation-scan/${id}/promote`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tier }),
+      })
+      const json = await res.json().catch(() => ({})) as { status?: string; tier?: ArtifactTier; error?: string; cancelled?: boolean }
       return { ok: res.ok, httpStatus: res.status, ...json }
     },
+    applyRule: (id: string, target: RuleTarget) =>
+      reqWithError<{ ok: true; change: string; automation: DetectedAutomation; filePath: string }>('POST', `/automation-scan/${encodeURIComponent(id)}/rule`, { target }),
+    removeRule: (id: string, target: RuleTarget) =>
+      reqWithError<{ ok: true; change: string; automation: DetectedAutomation; filePath: string }>('POST', `/automation-scan/${encodeURIComponent(id)}/rule/remove`, { target }),
     cancelPromote: (id: string) => fetch(`/api/automation-scan/${id}/promote/cancel`, { method: 'POST' }),
   },
 
@@ -163,7 +231,7 @@ export const api = {
     triggerStatus: (trigger: CwcTrigger) =>
       req<{ armed: boolean; lastFiredAt?: string; skippedCount: number; lastSkip?: { ts: string; reason: string } }>('POST', '/automations/trigger-status', { trigger }),
     triggers: () =>
-      req<{ workflowId: string; workflowName: string; triggerId: string; schedule: string; enabled: boolean; armed: boolean; nextFireAt: string | null; lastFiredAt: string | null; lastSkip: { ts: string; reason: string } | null }[]>('GET', '/automations/triggers'),
+      req<{ workflowId: string; workflowName: string; artifactTier?: 'workflow' | 'skill' | 'loop'; triggerId: string; schedule: string; enabled: boolean; armed: boolean; nextFireAt: string | null; lastFiredAt: string | null; lastSkip: { ts: string; reason: string } | null }[]>('GET', '/automations/triggers'),
     config: () => req<{ notifications: { macos: boolean; webhookUrl?: string } }>('GET', '/automations/config'),
     setConfig: (c: { notifications: { macos: boolean; webhookUrl?: string } }) => req<typeof c>('PUT', '/automations/config', c),
   },

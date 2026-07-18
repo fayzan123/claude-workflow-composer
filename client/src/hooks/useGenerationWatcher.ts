@@ -2,13 +2,14 @@ import { useEffect, useRef } from 'react'
 import { api } from '../lib/api.ts'
 import { scanCompletionNotification, type ScanWatcherSnapshot } from '../lib/scan-watcher.ts'
 import { toast } from '../lib/toast.ts'
+import { artifactTierLabel, type ArtifactTier } from '../lib/artifact.ts'
 
 /** Event fired on the window when a background generation finishes, so any
  *  mounted view (e.g. the dashboard's workflow list) can refresh itself. */
 export const WORKFLOW_GENERATED_EVENT = 'cwc:workflow-generated'
 
-function generationNotificationKey(gen: { id: string; startedAt: string; workflowId?: string; error?: string }): string {
-  return `${gen.id}:${gen.startedAt}:${gen.workflowId ?? gen.error ?? ''}`
+function generationNotificationKey(gen: { id: string; startedAt: string; artifactId?: string; workflowId?: string; tier?: ArtifactTier; error?: string }): string {
+  return `${gen.id}:${gen.startedAt}:${gen.artifactId ?? gen.workflowId ?? gen.error ?? ''}:${gen.tier ?? ''}`
 }
 
 /**
@@ -53,7 +54,8 @@ export function useGenerationWatcher(navigate?: (path: string) => void): void {
         generationInitialized.current = true
         return
       }
-      const terminal = Boolean(gen.workflowId) || Boolean(gen.error)
+      const artifactId = gen.artifactId ?? gen.workflowId
+      const terminal = Boolean(artifactId) || Boolean(gen.error)
       if (!terminal) {
         generationInitialized.current = true
         return
@@ -71,17 +73,19 @@ export function useGenerationWatcher(navigate?: (path: string) => void): void {
       seen.current.add(key)
 
       const title = r.automations.find(a => a.id === gen.id)?.title
-      if (gen.workflowId) {
-        const workflowId = gen.workflowId
+      if (artifactId) {
+        const tier = gen.tier ?? r.automations.find(a => a.id === gen.id)?.selectedTier ?? 'workflow'
+        const label = artifactTierLabel(tier)
         toast.success(
-          'Workflow generated',
-          title ? `"${title}" is ready in Workflows` : 'Ready in Workflows',
-          navigate ? { label: 'Open', onClick: () => navigate(`/w/${workflowId}/build`) } : undefined,
+          `${label} generated`,
+          title ? `"${title}" is ready in Saved artifacts` : 'Ready in Saved artifacts',
+          navigate ? { label: 'Open', onClick: () => navigate(`/w/${artifactId}/build`) } : undefined,
         )
-        window.dispatchEvent(new CustomEvent(WORKFLOW_GENERATED_EVENT, { detail: { workflowId: gen.workflowId } }))
+        window.dispatchEvent(new CustomEvent(WORKFLOW_GENERATED_EVENT, { detail: { artifactId, tier } }))
       } else if (gen.error) {
+        const label = artifactTierLabel(gen.tier ?? 'workflow')
         toast.error(
-          'Workflow generation failed',
+          `${label} generation failed`,
           title ? `"${title}" — ${gen.error}` : gen.error,
           navigate ? { label: 'Review', onClick: () => navigate('/detect') } : undefined,
         )

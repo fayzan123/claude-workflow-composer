@@ -1,4 +1,6 @@
 import { describe, it, expect } from 'vitest'
+import { readFileSync } from 'node:fs'
+import * as path from 'node:path'
 import { buildWorkflowGenPrompt, parseWorkflowJson } from '../../src/generation/workflow-generator.js'
 import type { DetectedAutomation } from '../../src/detection/types.js'
 
@@ -14,6 +16,16 @@ describe('workflow-generator', () => {
     expect(p).toContain('Triage flaky tests')
     expect(p).toContain('"nodes"')
     expect(p).toContain('exportedSlug')
+    expect(p).toContain('"version": 2')
+    expect(p).toContain('"artifactKind": "workflow"')
+  })
+
+  it('keeps the bundled workflow skill on the current v2 contract', () => {
+    const content = readFileSync(path.join(process.cwd(), 'src', 'skills', 'cwc-generate-workflow', 'SKILL.md'), 'utf-8')
+    expect(content).toContain('version: 2')
+    expect(content).toContain('artifactKind: "workflow"')
+    expect(content).toContain('artifactTier: "workflow"')
+    expect(content).not.toContain('version: 1')
   })
 
   it('lists available skills + a one-skill-per-agent, no-reinvention reuse instruction', () => {
@@ -73,6 +85,7 @@ describe('workflow-generator', () => {
     })
     const cwc = parseWorkflowJson('here you go:\n' + json)
     expect(cwc.meta.name).toBe('Flaky Test Triage')
+    expect(cwc.meta).toMatchObject({ version: 2, artifactKind: 'workflow', artifactTier: 'workflow' })
     expect(cwc.nodes).toHaveLength(1)
   })
 

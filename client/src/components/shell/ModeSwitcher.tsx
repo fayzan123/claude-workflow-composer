@@ -8,6 +8,7 @@ interface Props {
   id: string
   active: Mode
   pausedCount: number
+  artifactKind?: 'workflow' | 'skill'
 }
 
 const MODES: { key: Mode; label: string }[] = [
@@ -16,11 +17,11 @@ const MODES: { key: Mode; label: string }[] = [
   { key: 'automate', label: 'Automate' },
 ]
 
-export function ModeSwitcher({ id, active, pausedCount }: Props) {
+export function ModeSwitcher({ id, active, pausedCount, artifactKind = 'workflow' }: Props) {
   const navigate = useNavigate()
 
   return (
-    <nav className="mode-switcher" aria-label="Workflow modes">
+    <nav className="mode-switcher" aria-label="Artifact modes">
       {MODES.map(({ key, label }) => {
         const isActive = key === active
         const showBadge = key === 'runs' && pausedCount > 0
@@ -32,7 +33,7 @@ export function ModeSwitcher({ id, active, pausedCount }: Props) {
             type="button"
             aria-current={isActive ? 'page' : undefined}
           >
-            {showBadge ? `Approvals ${pausedCount}` : label}
+            {showBadge ? `Approvals ${pausedCount}` : key === 'build' && artifactKind === 'skill' ? 'Edit' : label}
           </button>
         )
       })}

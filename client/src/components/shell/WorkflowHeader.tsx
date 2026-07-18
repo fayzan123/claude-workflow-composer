@@ -4,6 +4,8 @@ import type { CwcFile } from '../../types.ts'
 import type { WorkflowAction } from '../../hooks/useWorkflow.ts'
 import { ThemeToggle } from '../common/ThemeToggle.tsx'
 import { ModeSwitcher } from './ModeSwitcher.tsx'
+import { artifactKindOf, artifactTierOf } from '../../lib/artifact.ts'
+import { ArtifactBadge } from '../common/ArtifactBadge.tsx'
 import './WorkflowHeader.css'
 
 interface Props {
@@ -38,6 +40,8 @@ export function WorkflowHeader({
 }: Props) {
   const navigate = useNavigate()
   const [showLeaveConfirm, setShowLeaveConfirm] = React.useState(false)
+  const artifactKind = artifactKindOf(workflow)
+  const artifactLabel = artifactKind === 'skill' ? 'Skill' : 'Workflow'
 
   function handleHomeClick() {
     if (isDirty) {
@@ -48,11 +52,13 @@ export function WorkflowHeader({
   }
 
   function handleNameChange(e: React.ChangeEvent<HTMLInputElement>) {
-    dispatch({ type: 'SET_META', payload: { name: e.target.value } })
+    dispatch(artifactKind === 'skill'
+      ? { type: 'UPDATE_SKILL', payload: { name: e.target.value } }
+      : { type: 'SET_META', payload: { name: e.target.value } })
   }
 
   function handleNameBlur() {
-    onRename(workflow.meta.name.trim() || 'Untitled Workflow')
+    onRename(workflow.meta.name.trim() || `Untitled ${artifactLabel}`)
   }
 
   function handleNameKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
@@ -79,7 +85,7 @@ export function WorkflowHeader({
           </div>
         </div>
         {/* Center column: keep ModeSwitcher in place so layout stays stable */}
-        <ModeSwitcher id={workflowId} active={activeMode} pausedCount={pausedCount} />
+        <ModeSwitcher id={workflowId} active={activeMode} pausedCount={pausedCount} artifactKind={artifactKind} />
         <div className="workflow-header__status">
           <button
             className="workflow-header__leave-btn workflow-header__leave-btn--confirm"
@@ -116,22 +122,27 @@ export function WorkflowHeader({
         </button>
 
         <div className="workflow-header__name-wrap">
-          <input
-            className="workflow-header__name-input"
-            type="text"
-            value={workflow.meta.name}
-            onChange={handleNameChange}
-            onBlur={handleNameBlur}
-            onKeyDown={handleNameKeyDown}
-            aria-label="Workflow name"
-            placeholder="Workflow name"
-          />
+          <div className="workflow-header__name-row">
+            <ArtifactBadge tier={artifactTierOf(workflow)} className="workflow-header__artifact-badge" />
+            <input
+              className="workflow-header__name-input"
+              type="text"
+              value={workflow.meta.name}
+              onChange={handleNameChange}
+              onBlur={handleNameBlur}
+              onKeyDown={handleNameKeyDown}
+              aria-label={`${artifactLabel} name`}
+              placeholder={`${artifactLabel} name`}
+            />
+          </div>
           <input
             className="workflow-header__desc-input"
             type="text"
             value={workflow.meta.description}
-            onChange={(e) => dispatch({ type: 'SET_META', payload: { description: e.target.value } })}
-            aria-label="Workflow description"
+            onChange={(e) => dispatch(artifactKind === 'skill'
+              ? { type: 'UPDATE_SKILL', payload: { description: e.target.value } }
+              : { type: 'SET_META', payload: { description: e.target.value } })}
+            aria-label={`${artifactLabel} description`}
             placeholder="Add a description…"
           />
           {renameError && (
@@ -140,7 +151,7 @@ export function WorkflowHeader({
         </div>
       </div>
 
-      <ModeSwitcher id={workflowId} active={activeMode} pausedCount={pausedCount} />
+      <ModeSwitcher id={workflowId} active={activeMode} pausedCount={pausedCount} artifactKind={artifactKind} />
 
       <div className="workflow-header__status">
         {saveError ? (

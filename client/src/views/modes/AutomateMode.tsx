@@ -7,6 +7,8 @@ import { Cron } from 'croner'
 import type { CwcTrigger } from '../../types.ts'
 import type { ModeProps } from '../modeProps.ts'
 import { isAbsolutePath } from '../../lib/path.ts'
+import { artifactNoun, artifactTierAfterTriggerChange, artifactTierOf, deployedArtifactSlug, hasExplicitLoopStop } from '../../lib/artifact.ts'
+import { ArtifactBadge } from '../../components/common/ArtifactBadge.tsx'
 import './AutomateMode.css'
 
 /** Lifecycle state of a trigger from the user's perspective. */
@@ -41,6 +43,11 @@ const LIFECYCLE_LABEL: Record<LifecycleState, string> = {
 
 export function AutomateMode({ workflow, dispatch }: ModeProps) {
   const triggers = workflow.meta.triggers ?? []
+  const noun = artifactNoun(workflow).toLowerCase()
+  const tier = artifactTierOf(workflow)
+  const verificationCommand = workflow.meta.sourceAutomation?.verificationCommand
+  const verificationStep = workflow.meta.sourceAutomation?.verificationStep
+  const showsLoopVerification = tier === 'loop' && hasExplicitLoopStop(workflow)
   const [statuses, setStatuses] = useState<Record<string, TriggerStatus>>({})
   const [modalOpen, setModalOpen] = useState(false)
   const [editingTrigger, setEditingTrigger] = useState<CwcTrigger | null>(null)
@@ -69,7 +76,10 @@ export function AutomateMode({ workflow, dispatch }: ModeProps) {
   }, [triggersKey])
 
   function setTriggers(next: CwcTrigger[]) {
-    dispatch({ type: 'SET_META', payload: { triggers: next } })
+    dispatch({
+      type: 'SET_META',
+      payload: { triggers: next, artifactTier: artifactTierAfterTriggerChange(workflow, next) },
+    })
   }
 
   function updateTrigger(id: string, patch: Partial<CwcTrigger>) {
@@ -121,9 +131,12 @@ export function AutomateMode({ workflow, dispatch }: ModeProps) {
     <div className="automate-mode">
       <div className="automate-mode__header">
         <div className="automate-mode__header-text">
-          <h2 className="automate-mode__title">Automations</h2>
+          <div className="automate-mode__title-row">
+            <h2 className="automate-mode__title">Automations</h2>
+            <ArtifactBadge tier={workflow.meta.artifactTier ?? (workflow.meta.artifactKind === 'skill' ? 'skill' : 'workflow')} />
+          </div>
           <p className="automate-mode__subtitle">
-            Schedules and webhooks that run this workflow on their own.
+            Schedules and webhooks that run this {noun} on their own.
           </p>
         </div>
         <button type="button" className="automate-mode__add-btn" onClick={openAdd}>
@@ -131,11 +144,29 @@ export function AutomateMode({ workflow, dispatch }: ModeProps) {
         </button>
       </div>
 
+      {showsLoopVerification && (verificationCommand || verificationStep) && (
+        <section className="automate-mode__verification" aria-labelledby="automation-verification-title">
+          <div>
+            <h3 id="automation-verification-title">Loop verification</h3>
+            <p>This generated loop uses the observed check below as its completion signal.</p>
+          </div>
+          {verificationCommand ? <code>{verificationCommand}</code> : <span>{verificationStep}</span>}
+        </section>
+      )}
+
+      {tier === 'loop' && workflow.meta.exportedWorkflowSlug && (
+        <p className="automate-mode__native-hint">
+          This exported skill also works with Claude Code&apos;s own loop command —{' '}
+          <code>/loop 30m /{deployedArtifactSlug(workflow)}</code> in any session. Arming a CWC
+          schedule below runs the same skill with worktree isolation, run history, and approval gates.
+        </p>
+      )}
+
       {triggers.length === 0 ? (
         <div className="automate-mode__empty">
           <p className="automate-mode__empty-headline">No automations yet.</p>
           <p className="automate-mode__empty-hint">
-            Add a schedule or webhook so this workflow can run on its own.
+            Add a schedule or webhook so this {noun} can run on its own.
           </p>
           <button type="button" className="automate-mode__add-btn" onClick={openAdd}>
             + Add automation
@@ -197,7 +228,7 @@ export function AutomateMode({ workflow, dispatch }: ModeProps) {
                         <p className="automate-mode__trust-text">
                           Turning this on lets it run commands on your machine
                           {t.type === 'cron' ? ' on schedule' : ' via webhook'}.
-                          Confirm you trust this workflow.
+                          Confirm you trust this {noun}.
                         </p>
                         <div className="automate-mode__trust-btns">
                           <button

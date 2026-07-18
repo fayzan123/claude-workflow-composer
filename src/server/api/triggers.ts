@@ -4,7 +4,7 @@ import { randomUUID } from 'node:crypto'
 import * as fs from 'node:fs/promises'
 import * as path from 'node:path'
 import type { CwcFile, CwcTrigger } from '../../schema.js'
-import { workflowSkillSlug } from '../../slugify.js'
+import { deployedArtifactSkillSlug } from '../../slugify.js'
 import type { AutomationState } from '../automation-state.js'
 import { fireWorkflow } from '../run-launcher.js'
 import type { RunStore } from '../run-store.js'
@@ -69,7 +69,7 @@ export function triggersRouter(opts: TriggersRouterOptions): Router {
     }
 
     await opts.state.recordFire(trigger.id, nowD)
-    const workflowSlug = cwc.meta.exportedWorkflowSlug ?? workflowSkillSlug(cwc.meta.name)
+    const workflowSlug = deployedArtifactSkillSlug(cwc)
     const launchGroupId = randomUUID()
     const launched = await launchTriggerTargets(trigger, cwd => fireWorkflow({
       workflowId: cwc.meta.id, workflowSlug,

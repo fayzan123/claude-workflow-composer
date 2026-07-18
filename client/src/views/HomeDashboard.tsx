@@ -5,8 +5,11 @@ import type { ExportedWorkflowEntry } from '../../../src/server/api/exported-wor
 import type { RunSummary } from '../../../src/server/run-store.ts'
 import type { RunEvent } from '../../../src/run-events.ts'
 import { api } from '../lib/api.ts'
+import type { WorkflowListEntry } from '../lib/api.ts'
 import { shouldRefreshDashboard } from '../lib/dashboard-events.ts'
 import { toast } from '../lib/toast.ts'
+import { ArtifactBadge } from '../components/common/ArtifactBadge.tsx'
+import { CWC_FILE_VERSION } from '../../../src/schema.ts'
 import { WORKFLOW_GENERATED_EVENT } from '../hooks/useGenerationWatcher.ts'
 import { TEMPLATES } from '../templates/index.ts'
 import { HelpModal } from '../components/HelpModal.tsx'
@@ -16,7 +19,6 @@ import './HomeDashboard.css'
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-type WorkflowListItem = { path: string; name: string; nodeCount: number; updated: string }
 type Tab = 'new' | 'workflows' | 'deployed'
 
 export function relativeTime(isoString: string, now = Date.now()): string {
@@ -115,7 +117,7 @@ export function HomeDashboard() {
 
   // ── Workflow state
   const [activeTab, setActiveTab] = useState<Tab>('new')
-  const [workflows, setWorkflows] = useState<WorkflowListItem[]>([])
+  const [workflows, setWorkflows] = useState<WorkflowListEntry[]>([])
   const [deployed, setDeployed] = useState<ExportedWorkflowEntry[]>([])
   const [notInstalled, setNotInstalled] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -215,7 +217,7 @@ export function HomeDashboard() {
   }
 
   async function handleOpenRecent(path: string): Promise<void> {
-    const cwc = await api.workflows.read(path)
+    const { content: cwc } = await api.workflows.read(path)
     try { await api.recents.add(path) } catch { /* non-critical */ }
     navigate(`/w/${cwc.meta.id}/build`)
   }
@@ -230,7 +232,7 @@ export function HomeDashboard() {
       toast.success('Workflow created', `"${cwc.meta.name}" is ready to edit`)
       handleSelect(cwc, resolvedPath)
     } catch {
-      setError('Failed to create workflow. Is the server running?')
+      setError('Could not create the workflow. Check that CWC is still running, then try again.')
       toast.error('Workflow creation failed', 'Check that the CWC server is running.')
       setCreating(false)
     }
@@ -242,7 +244,9 @@ export function HomeDashboard() {
         id: crypto.randomUUID(),
         name: 'Untitled Workflow',
         description: '',
-        version: 1,
+        version: CWC_FILE_VERSION,
+        artifactKind: 'workflow',
+        artifactTier: 'workflow',
         created: new Date().toISOString(),
         updated: new Date().toISOString(),
       },
@@ -258,37 +262,41 @@ export function HomeDashboard() {
 
   // ── Delete workflow
   async function handleDelete(path: string) {
-    const fallbackName = workflows.find((w) => w.path === path)?.name ?? 'Workflow'
+    const fallbackName = workflows.find((w) => w.path === path)?.name ?? 'Artifact'
     try {
       let cwcFile: CwcFile | undefined
-      try { cwcFile = await api.workflows.read(path) } catch { /* corrupted or missing */ }
+      try { cwcFile = (await api.workflows.read(path)).content } catch { /* corrupted or missing */ }
       const name = cwcFile?.meta.name ?? fallbackName
-      await api.workflows.delete(path)
-      if (cwcFile) {
-        try { await api.deleteExport(cwcFile, { type: 'user' }) } catch { /* best-effort */ }
-      }
+      // The server holds the managed-run delete lease, cleans the owned user deployment,
+      // and only then removes the recipe. A cleanup failure leaves the .cwc recoverable.
+      const workflowId = cwcFile?.meta.id ?? workflows.find(workflow => workflow.path === path)?.id
+      await api.workflows.delete(path, Boolean(cwcFile), workflowId)
       await api.recents.remove(path)
       setWorkflows((ws) => ws.filter((w) => w.path !== path))
-      toast.success('Workflow deleted', `"${name}" was removed`)
+      toast.success('Artifact deleted', `"${name}" was removed`)
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'The workflow could not be deleted.'
+      const message = err instanceof Error ? err.message : 'The artifact could not be deleted.'
       setError(message)
-      toast.error('Workflow not deleted', message)
+      toast.error('Artifact not deleted', message)
     } finally {
       setDeletingPath(null)
     }
   }
 
   // ── Delete deployed
-  async function handleDeleteDeployed(slug: string) {
+  async function handleDeleteDeployed(slug: string, ownerId: string) {
     const name = deployed.find((d) => d.slug === slug)?.name ?? slug
     try {
-      await api.exportedWorkflows.delete(slug)
-      toast.success('Export removed', `"${name}" was removed from Claude`)
-    } catch {
-      toast.info('Export removed from list', `"${name}" may already have been deleted`)
-    } finally {
+      await api.exportedWorkflows.delete(slug, ownerId)
       setDeployed((ds) => ds.filter((d) => d.slug !== slug))
+      toast.success('Export removed', `"${name}" was removed from Claude`)
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'The export could not be removed.'
+      toast.error('Export not removed', message)
+      // A stale owner is expected when another artifact reused the slug. Refresh
+      // instead of hiding the replacement and claiming deletion succeeded.
+      api.exportedWorkflows.list().then(setDeployed).catch(() => {})
+    } finally {
       setDeletingSlug(null)
     }
   }
@@ -347,7 +355,7 @@ export function HomeDashboard() {
           </span>
           <span className="hd-bar__name">Workflow Composer</span>
           <span className="hd-bar__tagline">
-            Compose multi-agent Claude Code workflows
+            Turn repeated Claude Code work into the right-sized automation
           </span>
         </div>
         <div className="hd-bar__actions">
@@ -448,7 +456,7 @@ export function HomeDashboard() {
               aria-selected={activeTab === 'workflows'}
             >
               <IconFile size={12} />
-              Workflows
+              Artifacts
               {workflows.length > 0 && (
                 <span className="hd-tab__badge">{workflows.length}</span>
               )}
@@ -514,17 +522,17 @@ export function HomeDashboard() {
             </section>
           )}
 
-          {/* ── Workflows tab ── */}
+          {/* ── Saved artifacts tab ── */}
           {activeTab === 'workflows' && (
-            <section aria-label="Saved workflows">
+            <section aria-label="Saved artifacts">
               {workflows.length === 0 ? (
                 <div className="hd-empty">
                   <div className="hd-empty__icon" aria-hidden="true">
                     <IconFile size={28} />
                   </div>
-                  <p className="hd-empty__title">No workflows yet</p>
+                  <p className="hd-empty__title">No saved artifacts yet</p>
                   <p className="hd-empty__hint">
-                    Create a new workflow from the New tab to get started.
+                    Create a workflow or generate the right-sized artifact from history.
                   </p>
                 </div>
               ) : (
@@ -543,7 +551,7 @@ export function HomeDashboard() {
                           onClick={() => {
                             handleOpenRecent(item.path).catch(() => {
                               setWorkflows((ws) => ws.filter((w) => w.path !== item.path))
-                              setError('That workflow was deleted or moved.')
+                              setError('That artifact was deleted or moved.')
                             })
                           }}
                         >
@@ -551,9 +559,14 @@ export function HomeDashboard() {
                             <IconFile size={16} />
                           </span>
                           <span className="hd-list-item__info">
-                            <span className="hd-list-item__name">{item.name}</span>
+                            <span className="hd-list-item__name-row">
+                              <span className="hd-list-item__name">{item.name}</span>
+                              <ArtifactBadge tier={item.artifactTier ?? (item.artifactKind === 'skill' ? 'skill' : 'workflow')} />
+                            </span>
                             <span className="hd-list-item__meta">
-                              {item.nodeCount} agent{item.nodeCount !== 1 ? 's' : ''} · {relativeTime(item.updated)}
+                              {item.artifactKind === 'skill'
+                                ? `Focused instructions · ${relativeTime(item.updated)}`
+                                : `${item.nodeCount} agent${item.nodeCount !== 1 ? 's' : ''} · ${relativeTime(item.updated)}`}
                             </span>
                             <span className="hd-list-item__dir">{dir}</span>
                           </span>
@@ -592,15 +605,15 @@ export function HomeDashboard() {
 
           {/* ── Deployed tab ── */}
           {activeTab === 'deployed' && (
-            <section aria-label="Deployed workflows">
+            <section aria-label="Deployed artifacts">
               {deployed.length === 0 ? (
                 <div className="hd-empty">
                   <div className="hd-empty__icon" aria-hidden="true">
                     <IconActivity size={28} />
                   </div>
-                  <p className="hd-empty__title">No deployed workflows</p>
+                  <p className="hd-empty__title">No deployed artifacts</p>
                   <p className="hd-empty__hint">
-                    Export a workflow to write it as a Claude Code skill. It will appear here.
+                    Export a skill, loop, or workflow and it will appear here.
                   </p>
                 </div>
               ) : (
@@ -629,7 +642,7 @@ export function HomeDashboard() {
                             <span className="hd-confirm__msg">Remove from Claude?</span>
                             <button
                               className="hd-confirm__btn hd-confirm__btn--yes"
-                              onClick={() => handleDeleteDeployed(item.slug)}
+                              onClick={() => handleDeleteDeployed(item.slug, item.ownerId)}
                               type="button"
                             >Remove</button>
                             <button

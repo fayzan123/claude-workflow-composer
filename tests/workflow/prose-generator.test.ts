@@ -109,6 +109,89 @@ describe('generateOrchestratorBody', () => {
     expect(body).toContain('**Frontend** and **Backend** in parallel')
   })
 
+  it('waits for every parallel branch and invokes a join target exactly once', () => {
+    const nodes = [
+      { ...node('A', 'Architect', 'to plan'), dispatchMode: 'parallel' as const },
+      node('B', 'Frontend'),
+      node('C', 'Backend'),
+      node('D', 'Reviewer'),
+    ]
+    const edges = [
+      edge('A', 'B', 'Activate Frontend.'),
+      edge('A', 'C', 'Activate Backend.'),
+      edge('B', 'D', 'Frontend is complete.'),
+      edge('C', 'D', 'Backend is complete.'),
+      { ...edge('D', null, 'Reviewer completes the workflow.'), terminalType: 'complete' as const },
+    ]
+    const body = generateOrchestratorBody(nodes, edges, 'My Workflow')
+
+    expect(body).toContain('After **Frontend** and **Backend** have all completed')
+    expect(body).toContain('invoke **Reviewer** once')
+    expect(body.match(/subagent_type: "reviewer"/g)).toHaveLength(1)
+  })
+
+  it('requires every parallel join trigger before invoking the target once', () => {
+    const nodes = [
+      { ...node('A', 'Release Lead', 'to coordinate'), dispatchMode: 'parallel' as const },
+      node('B', 'Tests'),
+      node('C', 'Security'),
+      node('D', 'Publisher'),
+    ]
+    const edges = [
+      edge('A', 'B', 'Run the release tests.'),
+      edge('A', 'C', 'Run the security scan.'),
+      edge('B', 'D', 'Only if every release test passes.'),
+      edge('C', 'D', 'Only if the security scan passes.'),
+      { ...edge('D', null, 'Publisher completes the workflow.'), terminalType: 'complete' as const },
+    ]
+    const body = generateOrchestratorBody(nodes, edges, 'Release')
+    const joinLine = body.split('\n').find(line => line.includes('invoke **Publisher** once')) ?? ''
+
+    expect(joinLine).toContain('Only if every release test passes.')
+    expect(joinLine).toContain('Only if the security scan passes.')
+    expect(joinLine).toContain(' AND ')
+    expect(joinLine).toContain('Only then, invoke **Publisher** once')
+    expect(body.match(/subagent_type: "publisher"/g)).toHaveLength(1)
+  })
+
+  it('describes an uneven-depth join only after the longer branch is started', () => {
+    const nodes = [
+      { ...node('A', 'Architect', 'to plan'), dispatchMode: 'parallel' as const },
+      node('B', 'Quick Review'),
+      node('C', 'Deep Review Start'),
+      node('D', 'Deep Review Finish'),
+      node('J', 'Reviewer'),
+    ]
+    const edges = [
+      edge('A', 'B', 'Start quick review.'),
+      edge('A', 'C', 'Start deep review.'),
+      edge('C', 'D', 'Continue the deep review.'),
+      edge('B', 'J', 'Quick review is complete.'),
+      edge('D', 'J', 'Deep review is complete.'),
+      { ...edge('J', null, 'Reviewer completes the workflow.'), terminalType: 'complete' as const },
+    ]
+    const body = generateOrchestratorBody(nodes, edges, 'My Workflow')
+    const deepStart = body.indexOf('subagent_type: "deep-review-finish"')
+    const join = body.indexOf('After **Quick Review** and **Deep Review Finish** have all completed')
+
+    expect(deepStart).toBeGreaterThanOrEqual(0)
+    expect(join).toBeGreaterThan(deepStart)
+    expect(body.match(/subagent_type: "reviewer"/g)).toHaveLength(1)
+  })
+
+  it('waits for all parallel terminal branches before completing', () => {
+    const nodes = [node('B', 'Frontend'), node('C', 'Backend')]
+    const edges = [
+      { ...edge('B', null, 'Frontend completes its workflow branch.'), terminalType: 'complete' as const },
+      { ...edge('C', null, 'Backend completes its workflow branch.'), terminalType: 'complete' as const },
+    ]
+    const body = generateOrchestratorBody(nodes, edges, 'My Workflow')
+
+    expect(body).toContain('After **Frontend** and **Backend** have all completed')
+    expect(body).toContain('their parallel branches complete the workflow')
+    expect(body).not.toContain('completes its workflow branch')
+  })
+
   it('includes workflow name in orchestrator header', () => {
     const nodes = [node('A', 'Dev', 'to build')]
     const edges = [{ ...edge('A', null, 'Done.'), terminalType: 'complete' as const }]

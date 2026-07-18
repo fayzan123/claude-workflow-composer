@@ -223,8 +223,28 @@ describe('POST /api/triggers/:token', () => {
     const { runId } = await res.json() as { runId: string }
     await waitForStatus(runId, 'complete')
     const completed = await waitForEvent(runId, 'run_completed')
-    expect(completed.message).toContain('/cwc-old-webhook-flow')
+    expect(completed.message).toMatch(/\/cwc-run-[0-9a-f]{16}:cwc-old-webhook-flow/)
     expect(completed.message).not.toContain('/cwc-renamed-webhook-flow')
+  })
+
+  it('runs a skill-tier artifact by its unprefixed slug', async () => {
+    const t = makeTrigger({ cwd: workflowsDir })
+    await writeExportedSkill('webhook-flow')
+    await writeWorkflow(t, { artifactKind: 'skill', artifactTier: 'loop' })
+    await sharedState.arm(t)
+
+    const res = await fetch(`${base}/api/triggers/${TOKEN}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: '{}',
+    })
+
+    expect(res.status).toBe(202)
+    const { runId } = await res.json() as { runId: string }
+    await waitForStatus(runId, 'complete')
+    const completed = await waitForEvent(runId, 'run_completed')
+    expect(completed.message).toMatch(/\/cwc-run-[0-9a-f]{16}:webhook-flow/)
+    expect(completed.message).not.toContain('/cwc-webhook-flow')
   })
 
   it('returns 202 and fires for an armed token; prompt contains "Trigger payload:" with JSON body', async () => {

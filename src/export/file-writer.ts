@@ -1,6 +1,7 @@
 import type { CwcNode } from '../schema.js'
 import type { SkillResolution } from './skill-resolver.js'
 import { agentSlug } from '../slugify.js'
+import { buildBespokeAgentDeclaration } from './deployment-metadata.js'
 
 /**
  * Render a string as a YAML scalar for frontmatter. Free-text fields like an
@@ -83,19 +84,42 @@ export function buildAgentFileContent(
 }
 
 export function buildWorkflowSkillContent(
-  name: string,
+  slug: string,
   description: string,
   orchestratorBody: string,
   workflowId: string,
   allowModelInvocation = false,
+  bespokeAgentSlugs: readonly string[] = [],
 ): string {
   const frontmatter = [
     '---',
-    `name: ${yamlScalar(name)}`,
+    // Claude permits this field only as a lowercase kebab-case identifier (max
+    // 64 chars). Keep it identical to the command/directory slug.
+    `name: ${yamlScalar(slug)}`,
     `description: ${yamlScalar(description)}`,
     ...(allowModelInvocation ? [] : ['disable-model-invocation: true']),
     '---',
   ].join('\n')
 
-  return `${frontmatter}\n\n${orchestratorBody}\n<!-- cwc:workflow:${workflowId} -->`
+  return `${frontmatter}\n\n${orchestratorBody}\n${buildBespokeAgentDeclaration(bespokeAgentSlugs)}\n<!-- cwc:workflow:${workflowId} -->`
+}
+
+/** Render a CWC-managed plain skill. Unlike a workflow skill, this body executes
+ * directly and has no orchestrator prose or agent dispatch. */
+export function buildManagedSkillContent(
+  slug: string,
+  description: string,
+  body: string,
+  workflowId: string,
+  allowModelInvocation = false,
+): string {
+  const frontmatter = [
+    '---',
+    `name: ${yamlScalar(slug)}`,
+    `description: ${yamlScalar(description)}`,
+    ...(allowModelInvocation ? [] : ['disable-model-invocation: true']),
+    '---',
+  ].join('\n')
+
+  return `${frontmatter}\n\n${body.trim()}\n${buildBespokeAgentDeclaration([])}\n<!-- cwc:workflow:${workflowId} -->`
 }

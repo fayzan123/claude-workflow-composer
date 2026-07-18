@@ -4,6 +4,7 @@ import * as fs from 'node:fs/promises'
 import * as os from 'node:os'
 import * as path from 'node:path'
 import * as http from 'node:http'
+import { execFileSync } from 'node:child_process'
 import type { AddressInfo } from 'node:net'
 import { createApp } from '../../src/server/index.js'
 import { makeBin } from '../helpers/make-bin.js'
@@ -106,6 +107,67 @@ describe('POST /api/runs/test', () => {
     const { runId } = (await res.json()) as { runId: string }
     const run = await waitForStatus(runId, 'complete')
     expect(run.status).toBe('complete')
+  })
+
+  it('binds a project-only untracked skill into a worktree run', async () => {
+    await fs.rm(path.join(homeDir, '.claude', 'skills', 'cwc-flow'), { recursive: true, force: true })
+    execFileSync('git', ['-C', cwd, 'init', '-b', 'main'])
+    execFileSync('git', ['-C', cwd, 'config', 'user.email', 'test@example.com'])
+    execFileSync('git', ['-C', cwd, 'config', 'user.name', 'Test User'])
+    await fs.writeFile(path.join(cwd, 'tracked.txt'), 'base\n')
+    execFileSync('git', ['-C', cwd, 'add', 'tracked.txt'])
+    execFileSync('git', ['-C', cwd, 'commit', '-m', 'base'])
+
+    const projectSkillDir = path.join(cwd, '.claude', 'skills', 'cwc-flow')
+    await fs.mkdir(projectSkillDir, { recursive: true })
+    await fs.writeFile(path.join(projectSkillDir, 'SKILL.md'), '# project only\n<!-- cwc:workflow:wf-1 -->\n', 'utf-8')
+
+    startApp(okBin)
+    const res = await fetch(`${base}/api/runs/test`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ workflowId: 'wf-1', workflowSlug: 'cwc-flow', cwd, isolation: 'worktree' }),
+    })
+
+    expect(res.status).toBe(200)
+    const { runId } = (await res.json()) as { runId: string }
+    const run = await waitForStatus(runId, 'complete')
+    expect(run).toMatchObject({ managed: true, isolation: 'worktree', status: 'complete' })
+  })
+
+  it('rejects a same-slug skill owned by a different artifact', async () => {
+    const skillFile = path.join(homeDir, '.claude', 'skills', 'cwc-flow', 'SKILL.md')
+    await fs.writeFile(skillFile, '# hand-authored collision\n<!-- cwc:workflow:some-other-artifact -->\n')
+
+    startApp(okBin)
+    const res = await fetch(`${base}/api/runs/test`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: startBody(),
+    })
+
+    expect(res.status).toBe(400)
+    expect((await res.json() as { error: string }).error).toContain('no CWC-owned skill')
+    expect((await fs.readdir(path.join(runsDir, 'wf-1')).catch(() => []))).toEqual([])
+  })
+
+  it('rejects a foreign project collision even when the user-scoped skill is owned', async () => {
+    const projectSkillDir = path.join(cwd, '.claude', 'skills', 'cwc-flow')
+    await fs.mkdir(projectSkillDir, { recursive: true })
+    await fs.writeFile(
+      path.join(projectSkillDir, 'SKILL.md'),
+      '# higher-precedence collision\n<!-- cwc:workflow:some-other-artifact -->\n',
+    )
+
+    startApp(okBin)
+    const res = await fetch(`${base}/api/runs/test`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: startBody(),
+    })
+
+    expect(res.status).toBe(400)
+    expect((await res.json() as { error: string }).error).toContain('no CWC-owned skill')
   })
 
   it('400 on missing fields or nonexistent cwd', async () => {

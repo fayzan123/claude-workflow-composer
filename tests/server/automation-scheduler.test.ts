@@ -72,6 +72,16 @@ describe('scheduler', () => {
     expect(fired[0].workflowSlug).toBe('cwc-old-flow')
   })
 
+  it('uses the plain skill slug for an unexported loop artifact', async () => {
+    await writeWorkflow('wf-1', [trig()], { name: 'Nightly Cleanup', artifactKind: 'skill', artifactTier: 'loop' })
+    const { state, sched } = await makeScheduler('2026-06-12T09:00:30')
+    await state.arm(trig())
+    await state.recordFire('trig-1', new Date('2026-06-11T09:00:00'))
+    await sched.rescan(); await sched.tick()
+    expect(fired).toHaveLength(1)
+    expect(fired[0].workflowSlug).toBe('nightly-cleanup')
+  })
+
   it('catch-up: fires once after a long gap; with catchUp=false marks consumed without firing', async () => {
     await writeWorkflow('wf-1', [trig()])
     const { state, sched } = await makeScheduler('2026-06-12T14:00:00')   // way past 9:00
@@ -169,6 +179,74 @@ describe('scheduler', () => {
     }
     expect(order).toHaveLength(3)
     expect(maxRunning).toBeLessThanOrEqual(2)  // never exceeded maxConcurrent
+  })
+
+  it('drops queued work when its persisted trigger is deleted before launch', async () => {
+    const active = trig({ id: 'trig-active' })
+    const stale = trig({ id: 'trig-stale' })
+    await writeWorkflow('a-active', [active])
+    await writeWorkflow('b-stale', [stale])
+    const state = createAutomationState(statePath)
+    let releaseActive: (() => void) | undefined
+    const order: string[] = []
+    const sched = createScheduler({
+      workflowsDir,
+      state,
+      fire: async workflowId => {
+        order.push(workflowId)
+        if (workflowId === 'a-active') await new Promise<void>(resolve => { releaseActive = resolve })
+      },
+      isWorkflowBusy: async () => false,
+      now: () => new Date('2026-06-12T09:00:30'),
+      maxConcurrent: 1,
+    })
+    for (const trigger of [active, stale]) {
+      await state.arm(trigger)
+      await state.recordFire(trigger.id, new Date('2026-06-11T09:00:00'))
+    }
+
+    await sched.rescan()
+    await sched.tick()
+    await fs.unlink(path.join(workflowsDir, 'b-stale.cwc'))
+    await sched.rescan()
+    releaseActive?.()
+    await new Promise(resolve => setTimeout(resolve, 20))
+
+    expect(order).toEqual(['a-active'])
+  })
+
+  it('rechecks the global pause before draining queued work', async () => {
+    const active = trig({ id: 'trig-active' })
+    const queued = trig({ id: 'trig-queued' })
+    await writeWorkflow('a-active', [active])
+    await writeWorkflow('b-queued', [queued])
+    const state = createAutomationState(statePath)
+    let releaseActive: (() => void) | undefined
+    const order: string[] = []
+    const sched = createScheduler({
+      workflowsDir,
+      state,
+      fire: async workflowId => {
+        order.push(workflowId)
+        if (workflowId === 'a-active') await new Promise<void>(resolve => { releaseActive = resolve })
+      },
+      isWorkflowBusy: async () => false,
+      now: () => new Date('2026-06-12T09:00:30'),
+      maxConcurrent: 1,
+    })
+    for (const trigger of [active, queued]) {
+      await state.arm(trigger)
+      await state.recordFire(trigger.id, new Date('2026-06-11T09:00:00'))
+    }
+
+    await sched.rescan()
+    await sched.tick()
+    await state.setPaused(true)
+    releaseActive?.()
+    await new Promise(resolve => setTimeout(resolve, 20))
+
+    expect(order).toEqual(['a-active'])
+    expect(state.getTriggerState(queued.id).lastSkip?.reason).toBe('automations paused')
   })
 })
 

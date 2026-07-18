@@ -1,0 +1,37 @@
+.artifact-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xs);
+  width: fit-content;
+  min-height: 22px;
+  padding: 2px 7px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-secondary);
+  color: var(--color-text-secondary);
+  font-size: var(--text-xs);
+  font-weight: 650;
+  line-height: 1.25;
+  white-space: nowrap;
+}
+
+.artifact-badge--skill,
+.artifact-badge--loop {
+  border-color: color-mix(in oklch, var(--color-primary) 32%, var(--color-border));
+  background: color-mix(in oklch, var(--color-primary-lighter) 72%, var(--color-surface));
+  color: var(--color-primary-dark);
+}
+
+.artifact-badge--loop {
+  border-style: dashed;
+}
+
+.artifact-badge--rule {
+  background: transparent;
+}
+
+.artifact-badge__recommended {
+  color: var(--color-text-tertiary);
+  font-size: 0.625rem;
+  font-weight: 500;
+}

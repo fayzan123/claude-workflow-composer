@@ -69,6 +69,33 @@ describe('validateWorkflow', () => {
     const { canExport } = validateWorkflow(cwc)
     expect(canExport).toBe(true)
   })
+
+  it('accepts one complete bespoke node as a skill', () => {
+    const cwc = makeMinimalCwc({ nodes: [makeNode({ name: 'Review patch' })], edges: [] })
+    cwc.meta.artifactKind = 'skill'
+    cwc.meta.artifactTier = 'skill'
+    cwc.nodes[0].agent.systemPrompt = 'Review the patch and report concrete findings.'
+    cwc.nodes[0].agent.description = 'Review one patch.'
+    expect(validateWorkflow(cwc)).toMatchObject({ errors: [], canExport: true })
+  })
+
+  it('blocks malformed or empty skill artifacts', () => {
+    const cwc = makeMinimalCwc({
+      nodes: [makeNode({ name: 'Review patch' })],
+      edges: [{ id: 'done', from: 'node-1', to: null, trigger: 'Done', terminalType: 'complete' }],
+    })
+    cwc.meta.artifactKind = 'skill'
+    cwc.meta.artifactTier = 'skill'
+    cwc.nodes[0].agent.description = ''
+    cwc.nodes[0].agent.systemPrompt = '   '
+    const result = validateWorkflow(cwc)
+    expect(result.canExport).toBe(false)
+    expect(result.errors.map((error) => error.type)).toEqual(expect.arrayContaining([
+      'invalid-skill-edges',
+      'missing-description',
+      'missing-body',
+    ]))
+  })
 })
 
 describe('gate validation', () => {

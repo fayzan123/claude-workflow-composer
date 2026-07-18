@@ -1,8 +1,9 @@
 import type { DetectedAutomation } from '../detection/types.js'
 import type { PlanPhase } from './plan-schema.js'
+import { hasExternalAction } from './external-action-risk.js'
 
-const RISK_RE = /\b(publish|deploy|release|push|delete|drop|rm\s+-rf|prod|production|email|slack|notify|webhook|charge|bill|payment|merge|force-push)\b/i
-const HARD_RISK_RE = /\b(publish|deploy|release|push|delete|drop|rm\s+-rf|email|slack|notify|webhook|charge|bill|payment|merge|force-push)\b/i
+const RISK_RE = /\b(delete|drop|rm\s+-rf|prod|production|charge|bill|payment|force-push)\b/i
+const HARD_RISK_RE = /\b(delete|drop|rm\s+-rf|charge|bill|payment|force-push)\b/i
 const SAFE_VERB_RE = /\b(build|test|tests|lint|typecheck|type-check|compile)\b/i
 const PROD_ONLY_RE = /\b(prod|production)\b/gi
 
@@ -12,6 +13,7 @@ export function scanRisk(phase: PlanPhase, automation: DetectedAutomation): bool
   const hintText = (phase.riskHint ?? []).join(' ')
   const text = `${phase.intent} ${stepText} ${hintText}`.toLowerCase()
 
+  if (hasExternalAction(text)) return true
   if (!RISK_RE.test(text)) return false
   if (HARD_RISK_RE.test(text)) return true
 

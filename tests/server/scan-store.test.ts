@@ -163,6 +163,138 @@ describe('createScanStore', () => {
     expect(store.getLatest()?.automations[0].status).toBe('promoted')
   })
 
+  it('preserves explicit tier, generated artifact, and rule targets across re-scans', async () => {
+    const store = createScanStore(file)
+    await store.runScan(async () => [auto({ id: 'id1' })])
+    await store.updateAutomation('id1', {
+      selectedTier: 'rule',
+      generatedArtifactId: 'artifact-1',
+      generatedArtifactTier: 'skill',
+      ruleApplications: [{ target: { type: 'user-claude' }, appliedAt: '2026-07-16T00:00:00.000Z' }],
+      status: 'promoted',
+      statusDetail: 'Rule added.',
+    })
+
+    await store.runScan(async () => [auto({ id: 'id1', recommendedTier: 'skill' })])
+    expect(store.getLatest()?.automations[0]).toMatchObject({
+      status: 'promoted',
+      statusDetail: 'Rule added.',
+      recommendedTier: 'skill',
+      selectedTier: 'rule',
+      generatedArtifactId: 'artifact-1',
+      generatedArtifactTier: 'skill',
+      ruleApplications: [{ target: { type: 'user-claude' } }],
+    })
+  })
+
+  it('retains an applied rule when a successful replacement scan no longer detects its automation', async () => {
+    const store = createScanStore(file)
+    await store.runScan(async () => [auto({ id: 'applied-rule' })])
+    await store.updateAutomation('applied-rule', {
+      selectedTier: 'rule',
+      ruleApplications: [{ target: { type: 'user-claude' }, appliedAt: '2026-07-16T00:00:00.000Z' }],
+      status: 'promoted',
+      statusDetail: 'Rule added.',
+    })
+
+    await store.runScan(async () => [auto({ id: 'fresh-detection' })])
+
+    expect(store.getLatest()?.automations).toEqual([
+      expect.objectContaining({ id: 'fresh-detection', status: 'new' }),
+      expect.objectContaining({
+        id: 'applied-rule',
+        status: 'promoted',
+        ruleApplications: [{ target: { type: 'user-claude' }, appliedAt: '2026-07-16T00:00:00.000Z' }],
+      }),
+    ])
+  })
+
+  it('keeps applied rules visible while a replacement scan is running and after it fails', async () => {
+    const store = createScanStore(file)
+    await store.runScan(async () => [auto({ id: 'applied-rule' })])
+    await store.updateAutomation('applied-rule', {
+      selectedTier: 'rule',
+      ruleApplications: [{ target: { type: 'user-claude' }, appliedAt: '2026-07-16T00:00:00.000Z' }],
+      status: 'promoted',
+    })
+
+    await store.runScan(async () => {
+      expect(store.getLatest()).toMatchObject({
+        status: 'running',
+        automations: [expect.objectContaining({ id: 'applied-rule', status: 'promoted' })],
+      })
+      throw new Error('replacement failed')
+    })
+
+    expect(store.getLatest()).toMatchObject({
+      status: 'error',
+      automations: [expect.objectContaining({ id: 'applied-rule', status: 'promoted' })],
+    })
+    expect(createScanStore(file).getLatest()?.automations[0]).toMatchObject({ id: 'applied-rule', status: 'promoted' })
+  })
+
+  it('recovers applied rules from an interrupted scan and repairs legacy dismissed records', async () => {
+    const startedAt = '2026-07-16T12:00:00.000Z'
+    await fs.writeFile(file, JSON.stringify({
+      status: 'running',
+      startedAt,
+      automations: [],
+      priorAutomations: [auto({
+        id: 'applied-rule',
+        status: 'dismissed',
+        dismissedFromStatus: 'promoted',
+        ruleApplications: [{ target: { type: 'user-claude' }, appliedAt: startedAt }],
+      })],
+      log: [],
+    }))
+
+    const store = createScanStore(file)
+    const recovered = store.getLatest()!
+    expect(recovered.status).toBe('error')
+    expect(recovered.automations).toEqual([
+      expect.objectContaining({
+        id: 'applied-rule',
+        status: 'promoted',
+        ruleApplications: [{ target: { type: 'user-claude' }, appliedAt: startedAt }],
+      }),
+    ])
+    expect(recovered.automations[0].dismissedFromStatus).toBeUndefined()
+    await store.whenPromotionSettled()
+  })
+
+  it('repairs a legacy dismissed applied rule when loading a completed scan', async () => {
+    const finishedAt = '2026-07-16T12:00:00.000Z'
+    await fs.writeFile(file, JSON.stringify({
+      status: 'done',
+      startedAt: finishedAt,
+      finishedAt,
+      automations: [auto({
+        id: 'applied-rule',
+        status: 'dismissed',
+        dismissedFromStatus: 'promoted',
+        ruleApplications: [{ target: { type: 'user-claude' }, appliedAt: finishedAt }],
+      })],
+      log: [],
+    }))
+
+    const store = createScanStore(file)
+    expect(store.getLatest()?.automations[0]).toMatchObject({ id: 'applied-rule', status: 'promoted' })
+    await store.whenPromotionSettled()
+    expect(createScanStore(file).getLatest()?.automations[0]).toMatchObject({ id: 'applied-rule', status: 'promoted' })
+  })
+
+  it('refuses to dismiss an automation while one of its rules is applied', async () => {
+    const store = createScanStore(file)
+    await store.runScan(async () => [auto({ id: 'applied-rule' })])
+    await store.updateAutomation('applied-rule', {
+      ruleApplications: [{ target: { type: 'user-claude' }, appliedAt: '2026-07-16T00:00:00.000Z' }],
+      status: 'promoted',
+    })
+
+    await expect(store.dismiss('applied-rule')).rejects.toThrow('Remove every applied rule')
+    expect(store.getLatest()?.automations[0].status).toBe('promoted')
+  })
+
   it('restores the exact status and detail that preceded dismissal across reloads', async () => {
     const store = createScanStore(file)
     await store.runScan(async () => [auto({ id: 'id1' })])

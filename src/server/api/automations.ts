@@ -5,7 +5,7 @@ import * as path from 'node:path'
 import { Cron } from 'croner'
 import type { AutomationState } from '../automation-state.js'
 import { loadConfig, saveConfig, type CwcConfig } from '../config.js'
-import type { CwcFile, CwcTrigger } from '../../schema.js'
+import { artifactTierOf, type CwcFile, type CwcTrigger } from '../../schema.js'
 import { resolveTargets } from '../trigger-targets.js'
 
 export interface AutomationsRouterOptions {
@@ -41,14 +41,19 @@ export function automationsRouter(opts: AutomationsRouterOptions): Router {
     const rows: unknown[] = []
     for (const f of files) {
       let cwc: CwcFile
-      try { cwc = JSON.parse(await fs.readFile(path.join(opts.workflowsDir, f), 'utf-8')) } catch { continue }
+      try {
+        cwc = JSON.parse(await fs.readFile(path.join(opts.workflowsDir, f), 'utf-8'))
+      } catch { continue }
+      // A bad kind/tier pair must not hide armed triggers the scheduler still fires.
+      let artifactTier: ReturnType<typeof artifactTierOf> | undefined
+      try { artifactTier = artifactTierOf(cwc) } catch { artifactTier = undefined }
       for (const t of cwc.meta.triggers ?? []) {
         if (t.type !== 'cron' || !t.schedule) continue
         const st = opts.state.getTriggerState(t.id)
         let nextFireAt: string | null = null
         try { nextFireAt = new Cron(t.schedule).nextRun()?.toISOString() ?? null } catch { /* invalid */ }
         rows.push({
-          workflowId: cwc.meta.id, workflowName: cwc.meta.name, triggerId: t.id,
+          workflowId: cwc.meta.id, workflowName: cwc.meta.name, artifactTier, triggerId: t.id,
           schedule: t.schedule, enabled: t.enabled, armed: opts.state.isArmed(t),
           nextFireAt, lastFiredAt: st.lastFiredAt ?? null, lastSkip: st.lastSkip ?? null,
         })

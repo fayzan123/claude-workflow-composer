@@ -7,6 +7,7 @@ import './RunModal.css'
 interface Props {
   workflowId: string
   workflowSlug: string
+  artifactNoun?: string
   onStarted: (runId: string) => void
   onClose: () => void
   onExport?: () => void
@@ -23,7 +24,7 @@ function saveRecentCwd(cwd: string) {
   localStorage.setItem(RECENT_CWDS_KEY, JSON.stringify(next))
 }
 
-export function RunModal({ workflowId, workflowSlug, onStarted, onClose, onExport }: Props) {
+export function RunModal({ workflowId, workflowSlug, artifactNoun = 'workflow', onStarted, onClose, onExport }: Props) {
   const recents = loadRecentCwds()
   const [cwd, setCwd] = useState(recents[0] ?? '')
   const [isolation, setIsolation] = useState<'worktree' | 'in-place'>('worktree')
@@ -84,7 +85,7 @@ export function RunModal({ workflowId, workflowSlug, onStarted, onClose, onExpor
                 className="run-modal__export-cta"
                 onClick={() => { onClose(); onExport() }}
               >
-                Export workflow…
+                Export {artifactNoun}…
               </button>
             )}
           </div>

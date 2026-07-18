@@ -4,15 +4,22 @@ import { api } from '../lib/api.ts'
 import { useWorkflow } from '../hooks/useWorkflow.ts'
 import { useAutoSave } from '../hooks/useAutoSave.ts'
 import { useRunEvents } from '../hooks/useRunEvents.ts'
-import { workflowSkillSlug } from '../../../src/slugify.ts'
 import { validateWorkflow } from '../lib/validation.ts'
+import {
+  artifactKindOf,
+  artifactNoun,
+  canDemoteArtifact,
+  deployedArtifactSlug,
+} from '../lib/artifact.ts'
 import { RunModal } from '../components/RunModal.tsx'
 import { ExportFlow } from '../components/ExportFlow.tsx'
 import { HelpModal } from '../components/HelpModal.tsx'
+import { Modal } from '../components/common/Modal.tsx'
 import { RunsMode } from './modes/RunsMode.tsx'
 import { AutomateMode } from './modes/AutomateMode.tsx'
 import { WorkflowHeader } from '../components/shell/WorkflowHeader.tsx'
 import { BuildMode } from './modes/BuildMode.tsx'
+import { SkillBuildMode } from './modes/SkillBuildMode.tsx'
 import './WorkflowView.css'
 
 type Mode = 'build' | 'runs' | 'automate'
@@ -25,6 +32,7 @@ export function WorkflowView() {
   const mode = VALID_MODES.includes(rawMode as Mode) ? (rawMode as Mode) : null
 
   const [filePath, setFilePath] = useState<string | null>(null)
+  const [workflowRevision, setWorkflowRevision] = useState<string | null>(null)
   const [notFound, setNotFound] = useState(false)
   const [loading, setLoading] = useState(true)
   const [saveError, setSaveError] = useState<Error | null>(null)
@@ -35,6 +43,7 @@ export function WorkflowView() {
   const [showExport, setShowExport] = useState(false)
   const [showHelp, setShowHelp] = useState(false)
   const [showPreview, setShowPreview] = useState(false)
+  const [conversionTarget, setConversionTarget] = useState<'workflow' | 'skill' | null>(null)
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null)
 
@@ -73,12 +82,14 @@ export function WorkflowView() {
   }, [warningsOpen])
 
   const { workflow, dispatch, canUndo, canRedo } = useWorkflow()
-  const { isSaving, isDirty, flush, suspend: suspendAutoSave, resume: resumeAutoSave } = useAutoSave(workflow, filePath, {
+  const { isSaving, isDirty, flush, acknowledge: acknowledgeServerSnapshot, suspend: suspendAutoSave, resume: resumeAutoSave } = useAutoSave(workflow, filePath, {
+    revision: workflowRevision,
     onError: (err) => setSaveError(err),
     onSuccess: () => setSaveError(null),
+    onRevision: setWorkflowRevision,
   })
   const runState = useRunEvents(workflow.meta.id || id || '')
-  const workflowSlug = workflowSkillSlug(workflow.meta.name)
+  const workflowSlug = deployedArtifactSlug(workflow)
 
   // Resolve id → file path on mount or when id changes
   useEffect(() => {
@@ -94,10 +105,11 @@ export function WorkflowView() {
           if (!cancelled) { setNotFound(true); setLoading(false) }
           return
         }
-        const cwc = await api.workflows.read(item.path)
+        const loaded = await api.workflows.read(item.path)
         if (cancelled) return
+        setWorkflowRevision(loaded.revision)
         setFilePath(item.path)
-        dispatch({ type: 'LOAD', payload: cwc })
+        dispatch({ type: 'LOAD', payload: loaded.content })
         setLoading(false)
       })
       .catch(() => { if (!cancelled) { setNotFound(true); setLoading(false) } })
@@ -112,10 +124,14 @@ export function WorkflowView() {
     suspendAutoSave()
     let resumePath: string | null | undefined
     try {
-      await flush()
-      const result = await api.workflows.rename(filePath, newName)
+      const expectedRevision = await flush()
+      const result = await api.workflows.rename(filePath, newName, workflow.meta.id, expectedRevision)
+      resumePath = result.path
+      acknowledgeServerSnapshot(result.content, result.revision, result.path)
+      if (JSON.stringify(result.content) !== JSON.stringify(workflow)) {
+        dispatch({ type: 'LOAD', payload: result.content })
+      }
       if (result.renamed) {
-        resumePath = result.path
         setFilePath(result.path)
       }
     } catch (err) {
@@ -123,12 +139,15 @@ export function WorkflowView() {
     } finally {
       resumeAutoSave(resumePath)
     }
-  }, [filePath, flush, resumeAutoSave, suspendAutoSave])
+  }, [acknowledgeServerSnapshot, dispatch, filePath, flush, resumeAutoSave, suspendAutoSave, workflow])
 
   // ── Derived values ────────────────────────────────────────────────────────
   const validation = validateWorkflow(workflow)
   const hasErrors = validation.errors.length > 0
   const hasWarnings = validation.warnings.length > 0
+  const artifactKind = artifactKindOf(workflow)
+  const noun = artifactNoun(workflow).toLowerCase()
+  const canConvertToSkill = canDemoteArtifact(workflow)
 
   const selectedNode = selectedNodeId ? workflow.nodes.find((n) => n.id === selectedNodeId) ?? null : null
   const selectedEdge = selectedEdgeId ? workflow.edges.find((e) => e.id === selectedEdgeId) ?? null : null
@@ -270,25 +289,38 @@ export function WorkflowView() {
         ?
       </button>
 
-      <button
-        className={`build-mode__action-btn${showPreview ? ' build-mode__action-btn--active' : ''}`}
-        onClick={handleTogglePreview}
-        type="button"
-        title="Toggle orchestrator preview"
-        aria-pressed={showPreview}
-      >
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z" />
-          <circle cx="12" cy="12" r="3" />
-        </svg>
-        Preview
-      </button>
+      {artifactKind === 'workflow' && (
+        <button
+          className={`build-mode__action-btn${showPreview ? ' build-mode__action-btn--active' : ''}`}
+          onClick={handleTogglePreview}
+          type="button"
+          title="Toggle orchestrator preview"
+          aria-pressed={showPreview}
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z" />
+            <circle cx="12" cy="12" r="3" />
+          </svg>
+          Preview
+        </button>
+      )}
+
+      {artifactKind === 'workflow' && canConvertToSkill && (
+        <button
+          className="build-mode__action-btn"
+          onClick={() => setConversionTarget('skill')}
+          type="button"
+          title="Use a focused skill editor for this single-step workflow"
+        >
+          Convert to skill
+        </button>
+      )}
 
       <button
         className={`build-mode__action-btn${runState.activeRun !== null ? ' build-mode__action-btn--active' : ''}`}
         onClick={() => setShowRunModal(true)}
         type="button"
-        title="Run this workflow headlessly"
+        title={`Run this ${noun} headlessly`}
       >
         {runState.activeRun !== null ? 'Running...' : 'Test run'}
       </button>
@@ -314,7 +346,7 @@ export function WorkflowView() {
       className="workflow-view__action-btn"
       onClick={() => setShowRunModal(true)}
       type="button"
-      title="Run this workflow headlessly"
+      title={`Run this ${noun} headlessly`}
     >
       {runState.activeRun !== null ? 'Running...' : 'Test run'}
     </button>
@@ -378,7 +410,7 @@ export function WorkflowView() {
 
       {/* Body swaps per mode; header above is never remounted */}
       <div className="workflow-view__body">
-        {mode === 'build' && (
+        {mode === 'build' && artifactKind === 'workflow' && (
           <BuildMode
             {...modeProps}
             workflowId={id}
@@ -392,6 +424,13 @@ export function WorkflowView() {
             onClosePreview={() => setShowPreview(false)}
           />
         )}
+        {mode === 'build' && artifactKind === 'skill' && (
+          <SkillBuildMode
+            {...modeProps}
+            workflowId={id}
+            onGraduate={() => setConversionTarget('workflow')}
+          />
+        )}
         {mode === 'runs' && <RunsMode {...modeProps} />}
         {mode === 'automate' && <AutomateMode {...modeProps} />}
       </div>
@@ -401,6 +440,9 @@ export function WorkflowView() {
         <ExportFlow
           workflow={workflow}
           dispatch={dispatch}
+          workflowPath={filePath ?? ''}
+          beforeMutation={flush}
+          acknowledgeServerSnapshot={acknowledgeServerSnapshot}
           onClose={() => setShowExport(false)}
         />
       )}
@@ -408,6 +450,7 @@ export function WorkflowView() {
         <RunModal
           workflowId={workflow.meta.id}
           workflowSlug={workflowSlug}
+          artifactNoun={noun}
           onStarted={(_runId) => {
             setShowRunModal(false)
             if (mode === 'build') navigate(`/w/${id}/runs`)
@@ -417,6 +460,42 @@ export function WorkflowView() {
         />
       )}
       {showHelp && <HelpModal onClose={() => setShowHelp(false)} initialTab={helpTab} />}
+      <Modal
+        open={conversionTarget !== null}
+        onClose={() => setConversionTarget(null)}
+        title={conversionTarget === 'workflow' ? 'Open as workflow?' : 'Convert to skill?'}
+      >
+        <div className="workflow-view__conversion">
+          {conversionTarget === 'workflow' ? (
+            <>
+              <p>CWC will move this procedure onto the canvas. Numbered steps are split conservatively when there are at least two clear items; otherwise the instructions stay together as one agent.</p>
+              <p>Your schedule, source evidence, and last exported slug stay attached. Re-export when you want Claude Code to use the new workflow shape.</p>
+            </>
+          ) : (
+            <>
+              <p>This single-role workflow will use the focused skill editor. Its lone terminal finish condition, instructions, completion criteria, and automation settings are folded into one editable body.</p>
+              <p>Agent-only tool limits and model choices become written guidance in a plain skill; Claude Code does not enforce those fields on skill frontmatter.</p>
+              <p>Re-export when you want Claude Code to use the new skill shape.</p>
+            </>
+          )}
+          <div className="workflow-view__conversion-actions">
+            <button type="button" className="workflow-view__conversion-cancel" onClick={() => setConversionTarget(null)}>Cancel</button>
+            <button
+              type="button"
+              className="workflow-view__conversion-confirm"
+              onClick={() => {
+                if (conversionTarget) dispatch({ type: 'CONVERT_ARTIFACT', payload: { to: conversionTarget } })
+                setShowPreview(false)
+                setSelectedNodeId(null)
+                setSelectedEdgeId(null)
+                setConversionTarget(null)
+              }}
+            >
+              {conversionTarget === 'workflow' ? 'Open on canvas' : 'Convert to skill'}
+            </button>
+          </div>
+        </div>
+      </Modal>
     </div>
   )
 }

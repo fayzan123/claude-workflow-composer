@@ -8,6 +8,7 @@ import { fmtDuration, fmtRelative, STATUS_LABEL, eventLabel } from '../../compon
 import { diffLineKind } from '../../lib/diff-lines.ts'
 import { INITIAL_RUN_RESULT_ACTION_STATE, runResultActionReducer, type RunResultActionKind } from '../../lib/run-result-actions.ts'
 import type { ModeProps } from '../modeProps.ts'
+import { artifactNoun } from '../../lib/artifact.ts'
 import './RunsMode.css'
 
 // Import RunPanel.css so the inbox/settings/timeline CSS classes still resolve
@@ -16,6 +17,7 @@ import '../../components/RunPanel.css'
 
 export function RunsMode({ workflow, runState }: ModeProps) {
   const { runs, liveEvents, activeRun, pausedRuns, refresh } = runState
+  const noun = artifactNoun(workflow).toLowerCase()
 
   // Selected run ID — default to active run, else most recent
   const defaultRunId = activeRun?.runId ?? runs[0]?.runId ?? null
@@ -235,7 +237,7 @@ export function RunsMode({ workflow, runState }: ModeProps) {
           <h4 className="runs-mode__section-heading">History</h4>
           {runs.length === 0 ? (
             <p className="runs-mode__empty">
-              No runs yet. Start one with Test run, or run the workflow from any terminal.
+              No runs yet. Start one with Test run, or run the {noun} from any terminal.
             </p>
           ) : (
             <ul className="runs-mode__run-list">
@@ -300,7 +302,7 @@ export function RunsMode({ workflow, runState }: ModeProps) {
           <div className="runs-mode__detail-empty">
             <p>No runs yet.</p>
             <p className="runs-mode__detail-empty-hint">
-              Start one with Test run above, or run the workflow from any terminal.
+              Start one with Test run above, or run the {noun} from any terminal.
             </p>
           </div>
         ) : timeline.length === 0 && !selectedRun ? (

@@ -1,57 +1,130 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { CwcFile } from '../types.ts'
 import { api } from '../lib/api.ts'
+import { createLatestSaveQueue, type LatestSaveQueue } from '../lib/latest-save-queue.ts'
 
 interface UseAutoSaveOptions {
+  revision?: string | null
   onError?: (err: Error) => void
   onSuccess?: () => void
+  onRevision?: (revision: string) => void
+}
+
+interface SaveSnapshot {
+  filePath: string
+  serialized: string
+  workflow: CwcFile
+}
+
+interface AutoSaveController {
+  isSaving: boolean
+  isDirty: boolean
+  flush: () => Promise<string>
+  acknowledge: (workflow: CwcFile, revision: string, nextFilePath?: string | null) => void
+  suspend: () => void
+  resume: (nextFilePath?: string | null) => void
 }
 
 export function useAutoSave(
   workflow: CwcFile,
   filePath: string | null,
   options?: UseAutoSaveOptions,
-): { isSaving: boolean; isDirty: boolean; flush: () => Promise<void>; suspend: () => void; resume: (nextFilePath?: string | null) => void } {
+): AutoSaveController {
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const prevRef = useRef<string>('')
   const onErrorRef = useRef(options?.onError)
   const onSuccessRef = useRef(options?.onSuccess)
+  const onRevisionRef = useRef(options?.onRevision)
+  const revisionRef = useRef<string | null>(options?.revision ?? null)
+  const trackedFilePathRef = useRef<string | null>(null)
   const workflowRef = useRef(workflow)
   const filePathRef = useRef(filePath)
   const suspendedRef = useRef(false)
+  const mountedRef = useRef(true)
+  const saveQueueRef = useRef<LatestSaveQueue<SaveSnapshot> | null>(null)
 
   const [isSaving, setIsSaving] = useState(false)
   const [hasPendingTimer, setHasPendingTimer] = useState(false)
   const [hasFailedSave, setHasFailedSave] = useState(false)
 
+  useEffect(() => {
+    mountedRef.current = true
+    return () => { mountedRef.current = false }
+  }, [])
+
   // Keep refs in sync with latest values (avoids stale closures in flush/callbacks)
   useEffect(() => {
     onErrorRef.current = options?.onError
     onSuccessRef.current = options?.onSuccess
+    onRevisionRef.current = options?.onRevision
+    revisionRef.current = options?.revision ?? null
     workflowRef.current = workflow
     filePathRef.current = filePath
   })
 
-  const runSave = useCallback(async (force = false) => {
+  // A newly loaded or renamed path starts from an acknowledged server snapshot.
+  // Do this before the queueing effect below so opening a recipe is not itself a save.
+  useEffect(() => {
+    if (!filePath || !options?.revision || trackedFilePathRef.current === filePath) return
+    trackedFilePathRef.current = filePath
+    revisionRef.current = options.revision
+    prevRef.current = JSON.stringify(workflow)
+    setHasFailedSave(false)
+  }, [filePath, options?.revision, workflow])
+
+  const getSaveQueue = useCallback(() => {
+    if (!saveQueueRef.current) {
+      saveQueueRef.current = createLatestSaveQueue(async (snapshot) => {
+        try {
+          const expectedRevision = revisionRef.current
+          if (!expectedRevision) throw new Error('Workflow revision is unavailable. Reload this recipe before saving.')
+          const saved = await api.workflows.save(snapshot.filePath, snapshot.workflow, expectedRevision)
+          revisionRef.current = saved.revision
+          onRevisionRef.current?.(saved.revision)
+          prevRef.current = snapshot.serialized
+          if (mountedRef.current) {
+            setHasFailedSave(false)
+            onSuccessRef.current?.()
+          }
+        } catch (err) {
+          if (mountedRef.current) {
+            setHasFailedSave(true)
+            onErrorRef.current?.(err as Error)
+          }
+          throw err
+        }
+      }, (busy) => {
+        if (mountedRef.current) setIsSaving(busy)
+      })
+    }
+    return saveQueueRef.current
+  }, [])
+
+  const enqueueCurrentSave = useCallback((force = false): Promise<void> => {
     const fp = filePathRef.current
     const wf = workflowRef.current
-    if (!fp || (!force && suspendedRef.current)) return
+    if (!fp || !revisionRef.current || (!force && suspendedRef.current)) return Promise.resolve()
     const serialized = JSON.stringify(wf)
-    setIsSaving(true)
-    try {
-      await api.workflows.save(fp, wf)
-      prevRef.current = serialized
-      setHasFailedSave(false)
-      onSuccessRef.current?.()
-    } catch (err) {
-      setHasFailedSave(true)
-      onErrorRef.current?.(err as Error)
-      throw err
-    } finally {
-      setIsSaving(false)
-      setHasPendingTimer(false)
+    // A matching previous snapshot is clean only while no older write is in
+    // flight. If the user edits and then reverts during that request, enqueue
+    // the reverted snapshot so the older request cannot become the final state.
+    if (!force && serialized === prevRef.current && !saveQueueRef.current?.isBusy()) {
+      if (mountedRef.current) {
+        setHasFailedSave(false)
+      }
+      return Promise.resolve()
     }
-  }, []) // stable — reads everything via refs
+
+    // Preserve the exact state associated with this queue entry. Reducer state
+    // is immutable today, but the serialized round trip prevents a future
+    // mutable caller from changing an in-flight request by reference.
+    const snapshot: SaveSnapshot = {
+      filePath: fp,
+      serialized,
+      workflow: JSON.parse(serialized) as CwcFile,
+    }
+    return getSaveQueue().enqueue(`${fp}\u0000${serialized}`, snapshot)
+  }, [getSaveQueue])
 
   const flush = useCallback(async () => {
     if (timerRef.current) {
@@ -59,13 +132,39 @@ export function useAutoSave(
       timerRef.current = null
     }
     setHasPendingTimer(false)
-    await runSave(true)
-  }, [runSave])
+    if (!filePathRef.current || !revisionRef.current) {
+      throw new Error('Workflow revision is unavailable. Reload this recipe before continuing.')
+    }
+    await enqueueCurrentSave(true)
+    if (!revisionRef.current) {
+      throw new Error('Workflow revision is unavailable. Reload this recipe before continuing.')
+    }
+    return revisionRef.current
+  }, [enqueueCurrentSave])
+
+  // Export/delete/rename can commit a recipe snapshot on the server while
+  // holding the shared mutation lease. Acknowledge those exact bytes before
+  // dispatching the matching reducer update so autosave does not immediately
+  // rewrite them or race another editor with a redundant request.
+  const acknowledge = useCallback((acknowledgedWorkflow: CwcFile, revision: string, nextFilePath?: string | null) => {
+    if (!/^[0-9a-f]{64}$/.test(revision)) {
+      throw new Error('Server returned an invalid workflow revision.')
+    }
+    revisionRef.current = revision
+    prevRef.current = JSON.stringify(acknowledgedWorkflow)
+    workflowRef.current = acknowledgedWorkflow
+    if (nextFilePath !== undefined) {
+      filePathRef.current = nextFilePath
+      trackedFilePathRef.current = nextFilePath
+    }
+    setHasFailedSave(false)
+    onRevisionRef.current?.(revision)
+  }, [])
 
   const queueSave = useCallback(() => {
     if (suspendedRef.current || !filePathRef.current) return
     const serialized = JSON.stringify(workflowRef.current)
-    if (serialized === prevRef.current) {
+    if (serialized === prevRef.current && !saveQueueRef.current?.isBusy()) {
       setHasFailedSave(false)
       return
     }
@@ -75,9 +174,10 @@ export function useAutoSave(
     setHasPendingTimer(true)
     timerRef.current = setTimeout(() => {
       timerRef.current = null
-      runSave().catch(() => {}) // error already surfaced via onError
+      setHasPendingTimer(false)
+      enqueueCurrentSave().catch(() => {}) // error already surfaced via onError
     }, 500)
-  }, [runSave])
+  }, [enqueueCurrentSave])
 
   const suspend = useCallback(() => {
     suspendedRef.current = true
@@ -106,7 +206,7 @@ export function useAutoSave(
         timerRef.current = null
       }
     }
-  }, [workflow, filePath, queueSave])
+  }, [workflow, filePath, options?.revision, queueSave])
 
-  return { isSaving, isDirty: hasPendingTimer || isSaving || hasFailedSave, flush, suspend, resume }
+  return { isSaving, isDirty: hasPendingTimer || isSaving || hasFailedSave, flush, acknowledge, suspend, resume }
 }

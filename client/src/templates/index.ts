@@ -1,4 +1,5 @@
 import type { CwcFile } from '../types.ts'
+import { CWC_FILE_VERSION } from '../../../src/schema.ts'
 
 export interface TemplateDefinition {
   id: string
@@ -22,7 +23,7 @@ function buildFullStackFeature(): CwcFile {
   const frontend = uid()
   const reviewer = uid()
   return {
-    meta: { id: uid(), name: 'Full-Stack Feature Builder', description: 'Plan, build backend and frontend in parallel, then review.', version: 1, created: now, updated: now },
+    meta: { id: uid(), name: 'Full-Stack Feature Builder', description: 'Plan, build backend and frontend in parallel, then review.', version: CWC_FILE_VERSION, artifactKind: 'workflow', artifactTier: 'workflow', created: now, updated: now },
     nodes: [
       {
         id: planner,
@@ -258,7 +259,7 @@ function buildCodeReviewPipeline(): CwcFile {
   const fixer = uid()
   const signoff = uid()
   return {
-    meta: { id: uid(), name: 'Code Review Pipeline', description: 'Diff analysis, security audit, fix all findings, verify clean.', version: 1, created: now, updated: now },
+    meta: { id: uid(), name: 'Code Review Pipeline', description: 'Diff analysis, security audit, fix all findings, verify clean.', version: CWC_FILE_VERSION, artifactKind: 'workflow', artifactTier: 'workflow', created: now, updated: now },
     nodes: [
       {
         id: analyst,
@@ -498,7 +499,7 @@ function buildResearchToShip(): CwcFile {
   const implementer = uid()
   const qa = uid()
   return {
-    meta: { id: uid(), name: 'Research → Spec → Ship', description: 'Research the problem space, write a technical spec, implement, then QA verify.', version: 1, created: now, updated: now },
+    meta: { id: uid(), name: 'Research → Spec → Ship', description: 'Research the problem space, write a technical spec, implement, then QA verify.', version: CWC_FILE_VERSION, artifactKind: 'workflow', artifactTier: 'workflow', created: now, updated: now },
     nodes: [
       {
         id: researcher,

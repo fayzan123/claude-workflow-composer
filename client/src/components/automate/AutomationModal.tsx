@@ -118,7 +118,7 @@ export function AutomationModal({ open, trigger, onSave, onClose }: AutomationMo
         {/* ── Step 0: type chooser (new trigger, type not yet chosen) ── */}
         {isNew && !draft && (
           <div className="automation-modal__chooser">
-            <p className="automation-modal__chooser-label">How should this workflow run automatically?</p>
+            <p className="automation-modal__chooser-label">How should this artifact run automatically?</p>
             <div className="automation-modal__chooser-cards">
               <button
                 type="button"
@@ -136,7 +136,7 @@ export function AutomationModal({ open, trigger, onSave, onClose }: AutomationMo
               >
                 <span className="automation-modal__type-icon">🔗</span>
                 <span className="automation-modal__type-name">When something calls a URL</span>
-                <span className="automation-modal__type-desc">A local webhook — any HTTP POST starts the workflow.</span>
+                <span className="automation-modal__type-desc">A local webhook — any HTTP POST starts this artifact.</span>
               </button>
             </div>
           </div>
@@ -227,7 +227,7 @@ export function AutomationModal({ open, trigger, onSave, onClose }: AutomationMo
                   <Term name="webhook">Webhook</Term> URL
                 </h3>
                 <p className="automation-modal__webhook-note">
-                  Works while CWC is running on this computer. Anything that can POST to this URL starts the workflow.
+                  Works while CWC is running on this computer. Anything that can POST to this URL starts this artifact.
                 </p>
                 <div className="automation-modal__webhook-url-row">
                   <code className="automation-modal__webhook-url">
@@ -276,7 +276,7 @@ export function AutomationModal({ open, trigger, onSave, onClose }: AutomationMo
                   onChange={(e) => { setValidationError(null); setTargetsText(e.target.value) }}
                 />
                 <span className="automation-modal__field-hint">
-                  Leave blank to run only in the working directory above. Each repo gets its own isolated run.
+                  Leave blank to run only in the working directory above. Each repo gets a separate run using the isolation choice below.
                 </span>
               </label>
 
@@ -373,7 +373,7 @@ export function AutomationModal({ open, trigger, onSave, onClose }: AutomationMo
                 Cancel
               </button>
               <button type="button" className="automation-modal__btn automation-modal__btn--primary" onClick={handleSave}>
-                Save
+                {draft.type === 'cron' ? 'Save schedule' : 'Save webhook'}
               </button>
             </div>
           </>

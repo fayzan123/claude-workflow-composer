@@ -1,5 +1,6 @@
 import type { CwcFile } from '../../../src/schema.ts'
 import { slugify } from '../../../src/slugify.ts'
+import { artifactKindOf, isBespokeNode } from './artifact.ts'
 
 export interface ValidationError { type: string; nodeId?: string; message: string }
 export interface ValidationWarning { type: string; nodeId?: string; message: string }
@@ -8,6 +9,22 @@ export interface ValidationResult { errors: ValidationError[]; warnings: Validat
 export function validateWorkflow(cwc: CwcFile): ValidationResult {
   const errors: ValidationError[] = []
   const warnings: ValidationWarning[] = []
+
+  if (artifactKindOf(cwc) === 'skill') {
+    if (cwc.nodes.length !== 1 || !isBespokeNode(cwc.nodes[0])) {
+      errors.push({ type: 'invalid-skill-shape', message: 'A skill must contain exactly one editable step' })
+    }
+    if (cwc.edges.length > 0) {
+      errors.push({ type: 'invalid-skill-edges', message: 'A skill cannot contain workflow connections' })
+    }
+    const node = cwc.nodes.length === 1 && isBespokeNode(cwc.nodes[0]) ? cwc.nodes[0] : null
+    if (node) {
+      if (!node.agent.name.trim()) errors.push({ type: 'missing-name', nodeId: node.id, message: 'Skill needs a name before export' })
+      if (!node.agent.description.trim()) errors.push({ type: 'missing-description', nodeId: node.id, message: 'Skill needs a description before export' })
+      if (!node.agent.systemPrompt?.trim()) errors.push({ type: 'missing-body', nodeId: node.id, message: 'Skill instructions cannot be empty' })
+    }
+    return { errors, warnings, canExport: errors.length === 0 }
+  }
 
   if (cwc.nodes.length === 0) {
     return { errors, warnings, canExport: false }

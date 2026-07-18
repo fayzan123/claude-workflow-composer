@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react'
 import './HelpModal.css'
 
-type Tab = 'overview' | 'nodes' | 'edges' | 'automations' | 'running'
+type Tab = 'overview' | 'tiers' | 'nodes' | 'edges' | 'automations' | 'running'
 
 interface Props {
   onClose: () => void
@@ -38,7 +38,7 @@ export function HelpModal({ onClose, initialTab }: Props) {
         </div>
 
         <div className="help-modal__tabs" role="tablist">
-          {(['overview', 'nodes', 'edges', 'automations', 'running'] as Tab[]).map((t) => (
+          {(['overview', 'tiers', 'nodes', 'edges', 'automations', 'running'] as Tab[]).map((t) => (
             <button
               key={t}
               role="tab"
@@ -46,13 +46,14 @@ export function HelpModal({ onClose, initialTab }: Props) {
               className={`help-modal__tab ${tab === t ? 'help-modal__tab--active' : ''}`}
               onClick={() => setTab(t)}
             >
-              {t === 'overview' ? 'Overview' : t === 'nodes' ? 'Node Fields' : t === 'edges' ? 'Edge Fields' : t === 'automations' ? 'Automations' : 'Running'}
+              {t === 'overview' ? 'Overview' : t === 'tiers' ? 'Tiers' : t === 'nodes' ? 'Node Fields' : t === 'edges' ? 'Edge Fields' : t === 'automations' ? 'Automations' : 'Running'}
             </button>
           ))}
         </div>
 
         <div className="help-modal__body">
           {tab === 'overview' && <OverviewTab />}
+          {tab === 'tiers' && <TiersTab />}
           {tab === 'nodes' && <NodesTab />}
           {tab === 'edges' && <EdgesTab />}
           {tab === 'automations' && <AutomationsTab />}
@@ -76,7 +77,7 @@ function OverviewTab() {
         <div>
           <h3 className="help-section__heading">What are agents?</h3>
           <p className="help-section__body">
-            Agents are Claude Code sub-agents — specialised AI roles you assign to Claude. Each agent has a name, a description of what it does, and optionally a list of skills and tools. When you run a workflow, each agent handles its assigned step using Claude Code under the hood.
+            Agents are Claude Code sub-agents — specialised AI roles used by workflow artifacts. Each agent has a name, a job, and optional skills and tools. When you run a workflow, its orchestrator gives each agent the step assigned to it.
           </p>
           <p className="help-section__body">
             Think of them like roles on a team: a <em>Backend Architect</em> handles API design, a <em>Frontend Developer</em> handles UI. You wire them together to form a pipeline.
@@ -95,7 +96,7 @@ function OverviewTab() {
         <div>
           <h3 className="help-section__heading">What are skills?</h3>
           <p className="help-section__body">
-            Skills are reusable instruction sets — markdown files that tell an agent <em>how</em> to approach a task. A skill might say "always write tests first" or "follow this design system." Attaching a skill to an agent loads those instructions every time that agent runs.
+            Skills are reusable Markdown instructions. A plain skill runs directly as one Claude Code command; a workflow agent can also load supporting skills such as "write tests first" or "follow this design system."
           </p>
           <p className="help-section__body">
             Skills live in <code>~/.claude/skills/</code>. You can write your own or grab community-made ones from the <strong>Discover</strong> tab.
@@ -137,7 +138,7 @@ function OverviewTab() {
         <div>
           <h3 className="help-section__heading">The Home dashboard</h3>
           <p className="help-section__body">
-            Home is your control room. It shows recent workflows, run activity, paused approval gates, detected automation candidates, and the global pause switch for scheduled runs. Start here when you want to open existing work, scan your history, or check what CWC has been doing.
+            Home is your control room. It shows saved and deployed artifacts, run activity, paused approval gates, detected automation candidates, and the global pause switch for scheduled runs. Start here to scan history, open existing work, or check what CWC has been doing.
           </p>
         </div>
       </section>
@@ -156,9 +157,9 @@ function OverviewTab() {
           </svg>
         </div>
         <div>
-          <h3 className="help-section__heading">Generating agents and skills</h3>
+          <h3 className="help-section__heading">Generating standalone agents and skills</h3>
           <p className="help-section__body">
-            The sidebar can help write a new agent or skill from a plain-English description. CWC first drafts a spec you can refine, then builds the file and saves it to <code>~/.claude/agents/</code> or <code>~/.claude/skills/</code>. Generated items are still yours to review and edit.
+            The workflow sidebar can write a reusable agent or supporting skill from a plain-English description. CWC first drafts a spec you can refine, then saves the file to <code>~/.claude/agents/</code> or <code>~/.claude/skills/</code>. This is separate from generating a right-sized artifact from history, and every generated file remains yours to review.
           </p>
         </div>
       </section>
@@ -187,12 +188,72 @@ function OverviewTab() {
           </svg>
         </div>
         <div>
-          <h3 className="help-section__heading">Exporting a workflow</h3>
+          <h3 className="help-section__heading">Exporting an artifact</h3>
           <p className="help-section__body">
-            When your workflow is ready, click <strong>Export</strong> in the top bar. This writes a set of <code>.md</code> files — one orchestrator skill and one per agent — that Claude Code can read and execute. See the <strong>Running</strong> tab for how to invoke them.
+            When a skill, loop, or workflow is ready, click <strong>Export</strong> in the top bar. A skill or loop writes one plain <code>SKILL.md</code>; a workflow writes an orchestrator skill plus its bespoke agent files. Preview every write or removal before confirming. See <strong>Running</strong> for invocation details.
           </p>
         </div>
       </section>
+    </>
+  )
+}
+
+function TiersTab() {
+  return (
+    <>
+      <p className="help-tab__intro">
+        CWC always recommends the <strong>smallest artifact</strong> that captures a repetition, and each
+        Detect card says why its tier was chosen. Bigger is not better: a plain skill you actually run
+        beats a workflow you avoid. You can override the tier before generating, and move between tiers later.
+      </p>
+
+      <Field term="Rule">
+        A standing instruction, not a runnable artifact. Recommended when a repetition is something you keep
+        <em> telling</em> Claude rather than something Claude <em>does</em> with tools — or when your history shows
+        you already run an installed skill or slash command for it (then the rule just points at that command).
+        <ul className="help-field__list">
+          <li><strong>What it writes:</strong> one instruction inside paired <code>&lt;!-- cwc:rule --&gt;</code> markers in your user <code>CLAUDE.md</code> or an evidence project's <code>AGENTS.md</code> — only after you pick the target and confirm.</li>
+          <li><strong>How it works:</strong> Claude Code reads the guidance file at session start; there is nothing to invoke.</li>
+          <li><strong>Undo:</strong> remove it from the Detect card any time — CWC deletes exactly its own block, byte-for-byte.</li>
+        </ul>
+      </Field>
+
+      <Field term="Skill">
+        One plain Claude Code skill: a <code>SKILL.md</code> holding a focused procedure. Recommended for the
+        most common case — a linear, single-role procedure you repeat (start the dev servers, write the handoff
+        packet, commit and push).
+        <ul className="help-field__list">
+          <li><strong>What it writes:</strong> <code>.claude/skills/&lt;slug&gt;/SKILL.md</code> — frontmatter (name, description) plus a checklist body grounded in your observed steps. No agent files, no orchestrator.</li>
+          <li><strong>How it runs:</strong> type <code>/&lt;slug&gt;</code> in any Claude Code session, or use Test Run in CWC for a managed, optionally isolated run.</li>
+          <li><strong>Automatic invocation:</strong> detection-generated skills default to letting Claude invoke them when a session matches their description — that's the payoff of mining your history. The export flow shows the switch; Claude-initiated runs follow the live session's permission settings. Workflows stay manual unless you opt in.</li>
+          <li><strong>Growing up:</strong> "Open as workflow" graduates a skill into a multi-agent canvas when it outgrows one role; the reverse demotion exists for single-node workflows.</li>
+        </ul>
+      </Field>
+
+      <Field term="Loop">
+        A skill plus recurrence and a verifiable stop condition — the same <em>trigger / action / stop</em> shape
+        as Claude Code's own <code>/loop</code> command. Recommended when your history shows the work recurring on a
+        schedule, or a verify-fix-retry cycle (run the check, fix, run it again).
+        <ul className="help-field__list">
+          <li><strong>Trigger:</strong> a cron schedule generated <em>disarmed</em> — nothing fires until you arm it in Automate.</li>
+          <li><strong>Action:</strong> the same plain <code>SKILL.md</code> a skill exports.</li>
+          <li><strong>Stop condition:</strong> the body ends with the verification command actually observed in your history — "stop when it passes, or stop and report after two rounds with no progress." The stop is objective (a command's exit), never the agent's own judgment.</li>
+          <li><strong>Two ways to run it:</strong> natively via <code>/loop 30m /&lt;slug&gt;</code> in Claude Code, or armed in CWC for worktree isolation, run history, daily caps, and approval gates.</li>
+        </ul>
+      </Field>
+
+      <Field term="Workflow">
+        The multi-agent canvas: an orchestrator skill plus one agent file per bespoke node. Recommended only when
+        the evidence demands it — genuinely parallel independent work, or an <strong>irreversible external action</strong>
+        (publish to npm, deploy, outward communication) that needs a read-only preflight and a human approval gate
+        before it happens.
+        <ul className="help-field__list">
+          <li><strong>What it writes:</strong> <code>.claude/skills/cwc-&lt;slug&gt;/SKILL.md</code> (orchestrator prose from the canvas) plus <code>.claude/agents/*.md</code> for each bespoke node.</li>
+          <li><strong>How it runs:</strong> <code>/cwc-&lt;slug&gt;</code>; the orchestrator delegates each canvas step to sub-agents and checks completion criteria between handoffs.</li>
+          <li><strong>Gates:</strong> gate nodes pause a managed run, commit work-in-progress, and show you the diff for approve/reject before anything irreversible proceeds.</li>
+          <li><strong>Note:</strong> ordinary commit/push work does <em>not</em> force this tier — only hard external actions do.</li>
+        </ul>
+      </Field>
     </>
   )
 }
@@ -331,11 +392,12 @@ function AutomationsTab() {
         <div>
           <h3 className="help-section__heading">Detecting automation ideas</h3>
           <p className="help-section__body">
-            <strong>Detect automations</strong> scans your local Claude Code history, groups repeated work, and suggests the patterns that look worth turning into workflows. It only reads local transcript files from your Claude Code history.
+            <strong>Detect automations</strong> reads local Claude Code transcripts, groups repeated work, and recommends the smallest useful result: Rule, Skill, Loop, or Workflow.
           </p>
           <ul className="help-section__list">
             <li><strong>Model choice:</strong> Haiku is fastest, Sonnet is the default balance, and Opus is best for messy histories.</li>
-            <li><strong>Evidence:</strong> each candidate shows sightings, confidence, the suggested trigger, and the observed steps CWC found.</li>
+            <li><strong>Evidence:</strong> each candidate shows sightings, confidence, observed steps, a suggested trigger, and its recommended tier.</li>
+            <li><strong>Safety:</strong> risky external actions are recommended as workflows so you can add approval gates.</li>
             <li><strong>Scan log:</strong> the right panel shows what the scan is doing so a long analysis does not feel stuck.</li>
           </ul>
         </div>
@@ -349,12 +411,15 @@ function AutomationsTab() {
           </svg>
         </div>
         <div>
-          <h3 className="help-section__heading">Generating a workflow from history</h3>
+          <h3 className="help-section__heading">Choosing the right-sized result</h3>
           <p className="help-section__body">
-            Click <strong>Generate workflow</strong> on a candidate to ask Claude to build a real <code>.cwc</code> workflow from the evidence. CWC looks for matching local skills and existing agents first, then writes the workflow into <code>~/.cwc/workflows/</code> and opens it for review.
+            Open a candidate to review CWC's recommendation or choose another tier. A <strong>Rule</strong> adds an owned, removable instruction to your user <code>CLAUDE.md</code> or an evidence project's <code>AGENTS.md</code> only after you confirm the target. A <strong>Skill</strong> is one direct procedure; a <strong>Loop</strong> adds recurrence or observed verification; a <strong>Workflow</strong> uses the multi-agent canvas.
           </p>
           <p className="help-section__body">
-            Generation can take a little while. You can cancel it, leave the page, or retry a failed/cancelled candidate. CWC blocks other scans and promotions while one workflow is being generated so two jobs do not step on each other.
+            Skills, loops, and workflows are saved as <code>.cwc</code> artifacts in <code>~/.cwc/workflows/</code> and opened for review. The recommendation is never a silent escalation: the tier shown in the confirmation is the tier CWC generates.
+          </p>
+          <p className="help-section__body">
+            Generation can take a little while. You can cancel it, leave the page, or retry a failed or cancelled candidate. CWC runs one scan or generation job at a time so jobs cannot overwrite each other's state.
           </p>
         </div>
       </section>
@@ -369,7 +434,7 @@ function AutomationsTab() {
         <div>
           <h3 className="help-section__heading">Cron schedules</h3>
           <p className="help-section__body">
-            A cron schedule is a compact way to say when a workflow should run, like <code>0 9 * * 1-5</code> for weekdays at 9:00. The schedule builder writes common schedules for you; use custom cron only when you need a pattern the builder does not cover.
+            A cron schedule is a compact way to say when an artifact should run, like <code>0 9 * * 1-5</code> for weekdays at 9:00. The schedule builder writes common schedules for you; use custom cron only when you need a pattern the builder does not cover.
           </p>
           <ul className="help-section__list">
             <li><strong>Next run</strong> shows when the schedule will fire next.</li>
@@ -389,7 +454,7 @@ function AutomationsTab() {
         <div>
           <h3 className="help-section__heading">Webhooks</h3>
           <p className="help-section__body">
-            A webhook gives the workflow a local URL. Anything that can send an HTTP <code>POST</code> to that URL can start the workflow while CWC is running on this computer. Use webhooks for events from scripts, local tools, or services that can reach your machine.
+            A webhook gives a runnable artifact a local URL. Anything that can send an HTTP <code>POST</code> to that URL can start it while CWC is running on this computer. Use webhooks for events from scripts, local tools, or services that can reach your machine.
           </p>
         </div>
       </section>
@@ -404,7 +469,7 @@ function AutomationsTab() {
         <div>
           <h3 className="help-section__heading">Arming, safety, and where runs happen</h3>
           <p className="help-section__body">
-            Scheduled and webhook automations can run commands on your machine, so CWC separates saving a trigger from <strong>arming</strong> it. Draft triggers do nothing until you confirm you trust the workflow and turn them on.
+            Scheduled and webhook automations can run commands on your machine, so CWC separates saving a trigger from <strong>arming</strong> it. Draft and generated loop triggers do nothing until you confirm that you trust the artifact and turn them on.
           </p>
           <ul className="help-section__list">
             <li><strong>Working directory</strong> is the project folder where the run starts.</li>
@@ -426,7 +491,7 @@ function AutomationsTab() {
         <div>
           <h3 className="help-section__heading">Run history, gates, and global pause</h3>
           <p className="help-section__body">
-            The Run panel shows live and recent runs, including runs started by schedules, webhooks, Test Run, or Claude Code. Gate nodes pause a run for approval and put the diff in your inbox. The Home dashboard also has a global pause switch that suspends scheduled automations without deleting or disarming their triggers.
+            The Runs view shows live and recent runs for skills, loops, and workflows, including runs started by schedules, webhooks, Test Run, or Claude Code. Workflow gate nodes pause a managed run for approval and put its diff in your inbox. The Home dashboard's global pause suspends scheduled automations without deleting or disarming them.
           </p>
           <p className="help-section__body">
             Notifications can alert you when a run finishes or reaches a gate. On macOS, CWC can show local banners; you can also send events to a webhook URL.
@@ -454,12 +519,12 @@ function RunningTab() {
             Clicking <strong>Export</strong> writes Claude Code files to your chosen output directory:
           </p>
           <ul className="help-section__list">
-            <li><strong>One workflow skill</strong> — <code>.claude/skills/&lt;workflow-slug&gt;/SKILL.md</code>. This is the slash command Claude Code runs.</li>
-            <li><strong>One agent file per bespoke node</strong> — <code>.claude/agents/&lt;agent-slug&gt;.md</code>, with the agent's name, description, tools, skills, system prompt, and completion criteria.</li>
-            <li><strong>Reference nodes</strong> — no new file is written. They point to an existing agent file already on disk.</li>
+            <li><strong>Skill or loop</strong> — one direct skill at <code>.claude/skills/&lt;skill-slug&gt;/SKILL.md</code>, with no agent files or <code>cwc-</code> prefix.</li>
+            <li><strong>Workflow</strong> — an orchestrator at <code>.claude/skills/cwc-&lt;workflow-slug&gt;/SKILL.md</code> plus one agent file per bespoke node.</li>
+            <li><strong>Reference workflow nodes</strong> — no agent file is written. They continue to point to an existing agent on disk.</li>
           </ul>
           <p className="help-section__body">
-            You can preview the orchestrator file before writing anything — the Export modal's file list shows the exact content that will be written.
+            The Export preview shows the exact files CWC will write or remove before anything changes. CWC only replaces or removes files carrying this artifact's ownership marker.
           </p>
         </div>
       </section>
@@ -472,16 +537,16 @@ function RunningTab() {
           </svg>
         </div>
         <div>
-          <h3 className="help-section__heading">How to run a workflow</h3>
+          <h3 className="help-section__heading">How to run an artifact</h3>
           <p className="help-section__body">
-            After exporting, invoke the workflow skill from Claude Code with its slash command:
+            After exporting, invoke the artifact from Claude Code with its slash command:
           </p>
-          <pre className="help-section__code">/&lt;workflow-slug&gt;</pre>
+          <pre className="help-section__code">/&lt;skill-slug&gt;{`\n`}/cwc-&lt;workflow-slug&gt;</pre>
           <p className="help-section__body">
-            Claude Code loads the orchestrator skill, reads the pipeline, and begins invoking subagents step by step using the <code>Agent</code> tool.
+            A skill or loop follows its instructions directly. A workflow loads its orchestrator and delegates canvas steps to sub-agents with the <code>Agent</code> tool.
           </p>
           <p className="help-section__body">
-            From CWC, use <strong>Test Run</strong> to run the exported workflow headlessly. You choose the working directory and whether to use worktree isolation or run in-place.
+            From CWC, use <strong>Test Run</strong> to run any exported skill, loop, or workflow headlessly. Choose the working directory and whether to use worktree isolation or run in-place.
           </p>
         </div>
       </section>
@@ -495,9 +560,9 @@ function RunningTab() {
           </svg>
         </div>
         <div>
-          <h3 className="help-section__heading">What the orchestrator does at runtime</h3>
+          <h3 className="help-section__heading">How a workflow orchestrator runs</h3>
           <p className="help-section__body">
-            The orchestrator itself is a Claude instance that only uses the <code>Agent</code> tool — it never reads, writes, or edits files directly. All real work is delegated to the subagents it spawns.
+            This section applies only to workflow artifacts. The orchestrator is a Claude instance that uses the <code>Agent</code> tool rather than reading, writing, or editing files itself. It delegates the real work to the sub-agents it starts.
           </p>
           <p className="help-section__body">
             After each subagent returns, the orchestrator checks its response against that node's Completion Criteria. If a subagent signals <code>blocked</code> or <code>escalation_needed</code>, the orchestrator stops immediately and surfaces the issue to you rather than trying to work around it.
@@ -518,7 +583,7 @@ function RunningTab() {
         <div>
           <h3 className="help-section__heading">The .cwc file</h3>
           <p className="help-section__body">
-            Your workflow is saved as a <code>.cwc</code> file in <code>~/.cwc/workflows/</code>. This is the source file for the visual editor — it stores all nodes, edges, positions, and settings. The exported <code>.md</code> files are generated from it; you can re-export at any time after making changes.
+            Every runnable CWC artifact is saved as a versioned <code>.cwc</code> file in <code>~/.cwc/workflows/</code>. Skills and loops use the focused instruction editor; workflows store the canvas graph, node positions, and handoffs. Triggers and run settings live in the same source file, and you can re-export after any change. Rule suggestions are different: they live in the guidance file you explicitly chose, not in a <code>.cwc</code> file.
           </p>
         </div>
       </section>

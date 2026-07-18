@@ -45,4 +45,27 @@ describe('buildPlannerPrompt', () => {
     expect(lower).toContain('every observed step exactly once')
     expect(lower).toMatch(/do not omit|no omissions/)
   })
+
+  it('requires grounded parallel siblings when independence was observed', () => {
+    const parallelPrompt = buildPlannerPrompt({
+      ...automation,
+      shape: {
+        stepArchetypes: ['review', 'review'],
+        distinctArchetypes: 1,
+        hasToolActivity: false,
+        hasVerifySignal: false,
+        hasRetryPattern: false,
+        hasRiskyStep: false,
+        independentStepGroups: 2,
+        independentStepIndexes: [0, 1],
+        recurring: false,
+      },
+    }, { skills: [], agents: [], cards: [] })
+
+    expect(parallelPrompt).toContain('Observed independent step groups: 2')
+    expect(parallelPrompt).toContain('Grounded parallel step indexes: 0, 1')
+    expect(parallelPrompt).toContain('"dispatch": "sequential|parallel"')
+    expect(parallelPrompt).toMatch(/set dispatch to "parallel" on EVERY sibling/i)
+    expect(parallelPrompt).toMatch(/Never invent parallelism/i)
+  })
 })
