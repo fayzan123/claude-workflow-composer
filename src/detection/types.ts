@@ -81,6 +81,8 @@ export interface DetectedAutomation {
   status: AutomationStatus
   shape?: AutomationShape    // absent on scan records created before right-sized generation
   recommendedTier?: ArtifactTier
+  /** One sentence naming the evidence behind recommendedTier; shown on the card. */
+  recommendedTierReason?: string
   selectedTier?: ArtifactTier
   generatedArtifactId?: string
   /** Tier belonging to generatedArtifactId, independent of a later generation attempt. */

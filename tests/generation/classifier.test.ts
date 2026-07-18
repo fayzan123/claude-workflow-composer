@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { classifyAutomation } from '../../src/generation/classifier.js'
+import { classifyAutomation, classifyAutomationWithReason } from '../../src/generation/classifier.js'
 import type { AutomationShape, DetectedAutomation } from '../../src/detection/types.js'
 
 const baseShape: AutomationShape = {
@@ -123,6 +123,21 @@ describe('classifyAutomation', () => {
       stepArchetypes: ['review', 'implement'],
       distinctArchetypes: 2,
     }))).toBe('skill')
+  })
+
+  it('explains every recommendation with evidence-specific language', () => {
+    expect(classifyAutomationWithReason(automation(undefined)).reason).toContain('predates shape analysis')
+    expect(classifyAutomationWithReason(automation({ ...baseShape, invokedSlashCommand: 'ship' })).reason).toContain('/ship')
+    expect(classifyAutomationWithReason(automation({
+      ...baseShape, stepArchetypes: ['publish'], hasRiskyStep: true, hasHardRiskyStep: true,
+    })).reason).toContain('irreversible external action')
+    expect(classifyAutomationWithReason(automation({ ...baseShape, recurring: true })).reason).toContain('schedule')
+    expect(classifyAutomationWithReason(automation({
+      ...baseShape, hasVerifySignal: true, hasRetryPattern: true,
+    })).reason).toContain('verify-fix-retry')
+    expect(classifyAutomationWithReason(automation(baseShape)).reason).toContain('linear single-role')
+    // The wrapper stays consistent with the reasoned recommendation.
+    expect(classifyAutomation(automation(baseShape))).toBe(classifyAutomationWithReason(automation(baseShape)).tier)
   })
 
   it('treats malformed persisted shape as legacy workflow rather than throwing or silently shrinking', () => {

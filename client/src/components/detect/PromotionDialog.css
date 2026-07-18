@@ -11,6 +11,13 @@
   line-height: 1.55;
 }
 
+.promotion-dialog__reason {
+  margin: 0;
+  color: var(--color-text-tertiary);
+  font-size: var(--text-xs);
+  line-height: 1.5;
+}
+
 .promotion-dialog__tiers {
   display: grid;
   gap: var(--space-xs);

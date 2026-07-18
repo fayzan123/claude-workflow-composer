@@ -6,7 +6,7 @@ import type { TaskUnit, DetectedAutomation, AutomationEvidence } from './types.j
 import { buildDigests } from './digest-builder.js'
 import { buildAnalysisPrompt } from './analysis-prompt.js'
 import { deriveAutomationShape, deriveRuleSuggestion } from './automation-shape.js'
-import { classifyAutomation } from '../generation/classifier.js'
+import { classifyAutomationWithReason } from '../generation/classifier.js'
 
 interface RawAutomation {
   title?: string; description?: string; steps?: unknown; stepTokens?: unknown; refs?: unknown
@@ -79,7 +79,9 @@ export function parseAutomations(resultText: string, refIndex: Map<string, TaskU
       status: 'new',
       shape,
     }
-    automation.recommendedTier = classifyAutomation(automation)
+    const recommendation = classifyAutomationWithReason(automation)
+    automation.recommendedTier = recommendation.tier
+    automation.recommendedTierReason = recommendation.reason
     // Keep the evidence-grounded prompt for every tier. Users may deliberately
     // override a skill/loop/workflow recommendation to a standing rule later.
     if (groundedRule) automation.ruleSuggestion = groundedRule

@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react'
 import './HelpModal.css'
 
-type Tab = 'overview' | 'nodes' | 'edges' | 'automations' | 'running'
+type Tab = 'overview' | 'tiers' | 'nodes' | 'edges' | 'automations' | 'running'
 
 interface Props {
   onClose: () => void
@@ -38,7 +38,7 @@ export function HelpModal({ onClose, initialTab }: Props) {
         </div>
 
         <div className="help-modal__tabs" role="tablist">
-          {(['overview', 'nodes', 'edges', 'automations', 'running'] as Tab[]).map((t) => (
+          {(['overview', 'tiers', 'nodes', 'edges', 'automations', 'running'] as Tab[]).map((t) => (
             <button
               key={t}
               role="tab"
@@ -46,13 +46,14 @@ export function HelpModal({ onClose, initialTab }: Props) {
               className={`help-modal__tab ${tab === t ? 'help-modal__tab--active' : ''}`}
               onClick={() => setTab(t)}
             >
-              {t === 'overview' ? 'Overview' : t === 'nodes' ? 'Node Fields' : t === 'edges' ? 'Edge Fields' : t === 'automations' ? 'Automations' : 'Running'}
+              {t === 'overview' ? 'Overview' : t === 'tiers' ? 'Tiers' : t === 'nodes' ? 'Node Fields' : t === 'edges' ? 'Edge Fields' : t === 'automations' ? 'Automations' : 'Running'}
             </button>
           ))}
         </div>
 
         <div className="help-modal__body">
           {tab === 'overview' && <OverviewTab />}
+          {tab === 'tiers' && <TiersTab />}
           {tab === 'nodes' && <NodesTab />}
           {tab === 'edges' && <EdgesTab />}
           {tab === 'automations' && <AutomationsTab />}
@@ -193,6 +194,66 @@ function OverviewTab() {
           </p>
         </div>
       </section>
+    </>
+  )
+}
+
+function TiersTab() {
+  return (
+    <>
+      <p className="help-tab__intro">
+        CWC always recommends the <strong>smallest artifact</strong> that captures a repetition, and each
+        Detect card says why its tier was chosen. Bigger is not better: a plain skill you actually run
+        beats a workflow you avoid. You can override the tier before generating, and move between tiers later.
+      </p>
+
+      <Field term="Rule">
+        A standing instruction, not a runnable artifact. Recommended when a repetition is something you keep
+        <em> telling</em> Claude rather than something Claude <em>does</em> with tools — or when your history shows
+        you already run an installed skill or slash command for it (then the rule just points at that command).
+        <ul className="help-field__list">
+          <li><strong>What it writes:</strong> one instruction inside paired <code>&lt;!-- cwc:rule --&gt;</code> markers in your user <code>CLAUDE.md</code> or an evidence project's <code>AGENTS.md</code> — only after you pick the target and confirm.</li>
+          <li><strong>How it works:</strong> Claude Code reads the guidance file at session start; there is nothing to invoke.</li>
+          <li><strong>Undo:</strong> remove it from the Detect card any time — CWC deletes exactly its own block, byte-for-byte.</li>
+        </ul>
+      </Field>
+
+      <Field term="Skill">
+        One plain Claude Code skill: a <code>SKILL.md</code> holding a focused procedure. Recommended for the
+        most common case — a linear, single-role procedure you repeat (start the dev servers, write the handoff
+        packet, commit and push).
+        <ul className="help-field__list">
+          <li><strong>What it writes:</strong> <code>.claude/skills/&lt;slug&gt;/SKILL.md</code> — frontmatter (name, description) plus a checklist body grounded in your observed steps. No agent files, no orchestrator.</li>
+          <li><strong>How it runs:</strong> type <code>/&lt;slug&gt;</code> in any Claude Code session, or use Test Run in CWC for a managed, optionally isolated run.</li>
+          <li><strong>Safety default:</strong> exported skills carry <code>disable-model-invocation: true</code> — Claude won't invoke them on its own unless you opt in.</li>
+          <li><strong>Growing up:</strong> "Open as workflow" graduates a skill into a multi-agent canvas when it outgrows one role; the reverse demotion exists for single-node workflows.</li>
+        </ul>
+      </Field>
+
+      <Field term="Loop">
+        A skill plus recurrence and a verifiable stop condition — the same <em>trigger / action / stop</em> shape
+        as Claude Code's own <code>/loop</code> command. Recommended when your history shows the work recurring on a
+        schedule, or a verify-fix-retry cycle (run the check, fix, run it again).
+        <ul className="help-field__list">
+          <li><strong>Trigger:</strong> a cron schedule generated <em>disarmed</em> — nothing fires until you arm it in Automate.</li>
+          <li><strong>Action:</strong> the same plain <code>SKILL.md</code> a skill exports.</li>
+          <li><strong>Stop condition:</strong> the body ends with the verification command actually observed in your history — "stop when it passes, or stop and report after two rounds with no progress." The stop is objective (a command's exit), never the agent's own judgment.</li>
+          <li><strong>Two ways to run it:</strong> natively via <code>/loop 30m /&lt;slug&gt;</code> in Claude Code, or armed in CWC for worktree isolation, run history, daily caps, and approval gates.</li>
+        </ul>
+      </Field>
+
+      <Field term="Workflow">
+        The multi-agent canvas: an orchestrator skill plus one agent file per bespoke node. Recommended only when
+        the evidence demands it — genuinely parallel independent work, or an <strong>irreversible external action</strong>
+        (publish to npm, deploy, outward communication) that needs a read-only preflight and a human approval gate
+        before it happens.
+        <ul className="help-field__list">
+          <li><strong>What it writes:</strong> <code>.claude/skills/cwc-&lt;slug&gt;/SKILL.md</code> (orchestrator prose from the canvas) plus <code>.claude/agents/*.md</code> for each bespoke node.</li>
+          <li><strong>How it runs:</strong> <code>/cwc-&lt;slug&gt;</code>; the orchestrator delegates each canvas step to sub-agents and checks completion criteria between handoffs.</li>
+          <li><strong>Gates:</strong> gate nodes pause a managed run, commit work-in-progress, and show you the diff for approve/reject before anything irreversible proceeds.</li>
+          <li><strong>Note:</strong> ordinary commit/push work does <em>not</em> force this tier — only hard external actions do.</li>
+        </ul>
+      </Field>
     </>
   )
 }

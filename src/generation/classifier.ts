@@ -44,27 +44,76 @@ function validShape(value: AutomationShape | undefined, stepCount: number): valu
   return true
 }
 
+export interface TierRecommendation {
+  tier: ArtifactTier
+  /** One user-facing sentence naming the evidence that selected the tier. */
+  reason: string
+}
+
 /** Deterministic and ordered: first match wins. Missing/malformed persisted shape
  * stays on the legacy workflow path so an upgrade never silently removes agents or gates. */
-export function classifyAutomation(automation: DetectedAutomation): ArtifactTier {
+export function classifyAutomationWithReason(automation: DetectedAutomation): TierRecommendation {
   const shape = automation.shape
-  if (!validShape(shape, automation.steps.length)) return 'workflow'
+  if (!validShape(shape, automation.steps.length)) {
+    return {
+      tier: 'workflow',
+      reason: 'This record predates shape analysis, so it keeps the full workflow treatment.',
+    }
+  }
 
   // The repetition is already an installed slash command. A wrapper artifact would
   // duplicate it; the right output is a standing rule pointing at the command.
-  if (shape.invokedSlashCommand) return 'rule'
+  if (shape.invokedSlashCommand) {
+    return {
+      tier: 'rule',
+      reason: `Most sightings already invoke the installed /${shape.invokedSlashCommand} command — a standing rule pointing at it beats a duplicate artifact.`,
+    }
+  }
 
   // Hard external actions (publish, deploy, external comms, destructive deletes)
   // keep the gate-capable workflow path. Soft VCS collaboration (commit/push/PR)
   // stays eligible for the smaller tiers with its observed tool names retained.
   // Legacy shapes without the hard/soft split classify conservatively as hard.
-  if (shape.hasHardRiskyStep ?? shape.hasRiskyStep) return 'workflow'
+  if (shape.hasHardRiskyStep ?? shape.hasRiskyStep) {
+    return {
+      tier: 'workflow',
+      reason: 'An irreversible external action was observed (publish, deploy, or outward communication), so it gets the workflow tier\'s read-only preflight and approval gate.',
+    }
+  }
 
-  if (!shape.hasToolActivity && automation.evidence.count >= 3) return 'rule'
-  if (shape.independentStepGroups >= 2) return 'workflow'
+  if (!shape.hasToolActivity && automation.evidence.count >= 3) {
+    return {
+      tier: 'rule',
+      reason: 'This repeats as an instruction with no tool activity — standing guidance in CLAUDE.md/AGENTS.md covers it without any artifact to run.',
+    }
+  }
+  if (shape.independentStepGroups >= 2) {
+    return {
+      tier: 'workflow',
+      reason: `The evidence shows ${shape.independentStepGroups} independent step groups that ran in parallel — the canvas can fan those out to separate agents.`,
+    }
+  }
   // Archetype variety is deliberately NOT a workflow signal: verb diversity in a
   // linear checklist is not multi-role evidence; grounded parallelism above is.
 
-  if (shape.recurring || (shape.hasVerifySignal && shape.hasRetryPattern)) return 'loop'
-  return 'skill'
+  if (shape.recurring) {
+    return {
+      tier: 'loop',
+      reason: 'This work recurs on a schedule, so it generates as a skill plus a timer trigger you can arm.',
+    }
+  }
+  if (shape.hasVerifySignal && shape.hasRetryPattern) {
+    return {
+      tier: 'loop',
+      reason: 'A verify-fix-retry cycle was observed, so the skill gets the observed check as its stop condition.',
+    }
+  }
+  return {
+    tier: 'skill',
+    reason: 'A linear single-role procedure — one plain skill is the smallest artifact that runs it.',
+  }
+}
+
+export function classifyAutomation(automation: DetectedAutomation): ArtifactTier {
+  return classifyAutomationWithReason(automation).tier
 }

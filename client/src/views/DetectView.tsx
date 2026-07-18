@@ -459,6 +459,11 @@ export function DetectView() {
                     <span>{a.suggestedTrigger.label || 'On demand'}</span>
                     <span>{Math.round(a.confidence * 100)}% confidence</span>
                   </div>
+                  {a.recommendedTierReason && (
+                    <p className="detect__card-reason">
+                      <strong>{artifactTierLabel(tier)}</strong> — {a.recommendedTierReason}
+                    </p>
+                  )}
                   {a.description && <p className="detect__card-desc">{a.description}</p>}
                   {a.steps.length > 0 && (
                     <ol className="detect__steps">

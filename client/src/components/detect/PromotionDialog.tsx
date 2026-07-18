@@ -66,6 +66,11 @@ export function PromotionDialog({ automation, busy = false, onClose, onConfirm }
         <p className="promotion-dialog__intro">
           CWC recommends the smallest artifact that captures this repetition. You can override it before anything is generated.
         </p>
+        {automation.recommendedTierReason && (
+          <p className="promotion-dialog__reason">
+            Why this recommendation: {automation.recommendedTierReason}
+          </p>
+        )}
 
         <fieldset className="promotion-dialog__tiers">
           <legend>Generate as</legend>

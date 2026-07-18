@@ -81,6 +81,17 @@ actionable sections such as:
 ## Steps        (numbered, specific, imperative — each step says exactly what to do)
 ## Output       (what the skill should produce, and in what form)
 
+Authoring standards (the same ones good hand-written skills follow):
+- Write for the agent that will execute this, not for a human reader: imperative
+  mood, second person, one action per step.
+- Include the exact commands, file paths, and names the procedure uses — an agent
+  cannot run "the usual checks", it can run \`npm test\`.
+- State what done looks like: every procedure ends with a verifiable outcome the
+  agent can check, not a vibe.
+- Keep the whole body readable in one screen. If a step needs a caveat, put it on
+  the step, not in a preamble.
+- Never add steps, tools, or side effects the procedure does not actually need.
+
 Be specific to THIS skill's job. Do NOT write generic filler like "You are a helpful assistant that ...". Every instruction must be concrete and directly usable.`
 }
 

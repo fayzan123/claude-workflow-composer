@@ -406,6 +406,18 @@
   line-height: 1.55;
 }
 
+.detect__card-reason {
+  margin: var(--space-sm) 0 0;
+  color: var(--color-text-tertiary);
+  font-size: var(--text-xs);
+  line-height: 1.5;
+}
+
+.detect__card-reason strong {
+  color: var(--color-text-secondary);
+  font-weight: 500;
+}
+
 .detect__steps {
   list-style: none;
   margin: var(--space-lg) 0 0;
