@@ -1,6 +1,6 @@
 {
   "name": "claude-cwc",
-  "version": "0.11.9",
+  "version": "0.12.0",
   "description": "Local-first compiler for Claude Code rules, skills, loops, and multi-agent workflows",
   "type": "module",
   "engines": {
