@@ -6,7 +6,7 @@ import type { AuthorizedDeleteExportResult } from '../../../src/server/api/expor
 import { api } from '../lib/api.ts'
 import { isAbsolutePath } from '../lib/path.ts'
 import { toast } from '../lib/toast.ts'
-import { artifactKindOf, artifactNoun } from '../lib/artifact.ts'
+import { artifactKindOf, artifactNoun, currentArtifactSlug } from '../lib/artifact.ts'
 import {
   createExportArtifactSnapshot,
   matchesExportArtifactSnapshot,
@@ -244,23 +244,32 @@ export function ExportFlow({ workflow, dispatch, workflowPath, beforeMutation, a
               </p>
             )}
 
-            <label className="export-flow__obs-toggle export-flow__invoke-toggle">
-              <input
-                type="checkbox"
-                checked={workflow.meta.modelInvocation === 'auto'}
-                onChange={(e) =>
-                  dispatch({ type: 'SET_META', payload: { modelInvocation: e.target.checked ? 'auto' : 'off' } })
-                }
-              />
-              Allow Claude to run this {nounLower} automatically
-            </label>
-            <FieldHint id="export.modelInvocation" />
-            {workflow.meta.modelInvocation === 'auto' && (
-              <p className="export-flow__invoke-warning" role="status">
-                Autonomous invocation bypasses CWC's test-run launcher: no worktree
-                isolation, no stop button, and no guaranteed run history.
+            <div className="export-flow__invoke-block" role="group" aria-labelledby="invoke-choice-heading">
+              <p id="invoke-choice-heading" className="export-flow__invoke-heading">
+                Automatic invocation
               </p>
-            )}
+              <label className="export-flow__obs-toggle export-flow__invoke-toggle">
+                <input
+                  type="checkbox"
+                  checked={workflow.meta.modelInvocation === 'auto'}
+                  onChange={(e) =>
+                    dispatch({ type: 'SET_META', payload: { modelInvocation: e.target.checked ? 'auto' : 'off' } })
+                  }
+                />
+                Let Claude invoke this {nounLower} on its own when a session matches its description
+              </label>
+              <FieldHint id="export.modelInvocation" />
+              {workflow.meta.modelInvocation === 'auto' ? (
+                <p className="export-flow__invoke-warning" role="status">
+                  Claude-initiated runs happen in the live session under its permission
+                  settings — outside CWC's isolated launcher, stop button, and run history.
+                </p>
+              ) : (
+                <p className="export-flow__invoke-warning" role="status">
+                  Off means this {nounLower} only runs when you type /{currentArtifactSlug(workflow)} or start a CWC test run.
+                </p>
+              )}
+            </div>
 
             {hasBeenExported && (
               <div className="export-flow-danger-zone">

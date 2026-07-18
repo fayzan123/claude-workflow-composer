@@ -309,6 +309,11 @@ export async function generateSkillArtifact(args: GenerateSkillArtifactArgs): Pr
       updated: now,
       artifactKind: 'skill',
       artifactTier: tier,
+      // Detection-generated skills describe work the user already repeats, so
+      // Claude may auto-select them by description — that discovery moment is
+      // the point. The export flow surfaces the switch; tool calls still run
+      // under the invoking session's own permission mode. Workflows stay off.
+      modelInvocation: 'auto',
       sourceAutomation: {
         id: automation.id,
         steps: [...automation.steps],

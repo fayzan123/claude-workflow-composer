@@ -114,6 +114,9 @@ describe('generateSkillArtifact', () => {
     expect(result.cwc.meta).toMatchObject({
       artifactKind: 'skill',
       artifactTier: 'skill',
+      // Detection-generated skills opt into model auto-invocation by default;
+      // the export flow surfaces the switch and workflows remain off.
+      modelInvocation: 'auto',
       sourceAutomation: { id: 'auto-1', steps: automation.steps },
     })
     expect(result.cwc.nodes).toHaveLength(1)

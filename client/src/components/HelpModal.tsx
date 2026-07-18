@@ -225,7 +225,7 @@ function TiersTab() {
         <ul className="help-field__list">
           <li><strong>What it writes:</strong> <code>.claude/skills/&lt;slug&gt;/SKILL.md</code> — frontmatter (name, description) plus a checklist body grounded in your observed steps. No agent files, no orchestrator.</li>
           <li><strong>How it runs:</strong> type <code>/&lt;slug&gt;</code> in any Claude Code session, or use Test Run in CWC for a managed, optionally isolated run.</li>
-          <li><strong>Safety default:</strong> exported skills carry <code>disable-model-invocation: true</code> — Claude won't invoke them on its own unless you opt in.</li>
+          <li><strong>Automatic invocation:</strong> detection-generated skills default to letting Claude invoke them when a session matches their description — that's the payoff of mining your history. The export flow shows the switch; Claude-initiated runs follow the live session's permission settings. Workflows stay manual unless you opt in.</li>
           <li><strong>Growing up:</strong> "Open as workflow" graduates a skill into a multi-agent canvas when it outgrows one role; the reverse demotion exists for single-node workflows.</li>
         </ul>
       </Field>
