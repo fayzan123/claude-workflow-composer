@@ -385,9 +385,28 @@ export function createRunManifestStore(runsDir: string, options: { now?: () => s
     const temp = path.join(dir, `.${manifest.runId}.${process.pid}.${randomUUID()}.manifest.tmp`)
     try {
       await fs.writeFile(temp, `${JSON.stringify(manifest, null, 2)}\n`, { encoding: 'utf-8', flag: 'wx', mode: 0o600 })
-      await fs.rename(temp, target)
+      await renameWithWindowsRetry(temp, target)
     } finally {
       await fs.rm(temp, { force: true }).catch(() => {})
+    }
+  }
+
+  /** Windows fails rename with transient EPERM/EACCES/EBUSY while a reader (a UI
+   * runs poll, antivirus) holds the destination open; POSIX renames never surface
+   * these transiently. Retry briefly so a live run is not failed by an observer,
+   * then rethrow so a genuine permission problem still fails loudly. */
+  async function renameWithWindowsRetry(from: string, to: string): Promise<void> {
+    const deadline = Date.now() + 2_000
+    for (;;) {
+      try {
+        await fs.rename(from, to)
+        return
+      } catch (err) {
+        const code = (err as NodeJS.ErrnoException).code
+        const transient = code === 'EPERM' || code === 'EACCES' || code === 'EBUSY'
+        if (!transient || Date.now() >= deadline) throw err
+        await new Promise(resolve => setTimeout(resolve, 25))
+      }
     }
   }
 
