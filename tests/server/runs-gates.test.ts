@@ -236,7 +236,18 @@ describe('gate endpoints', () => {
     // branch kept
     const branches = execFileSync('git', ['-C', repo, 'branch', '--list', `cwc/cwc-x/${runId}`], { encoding: 'utf-8' })
     expect(branches).toContain(runId)
-    await expect(fs.access(bindingDir)).rejects.toThrow()
+    // Binding cleanup is post-terminal housekeeping, so poll instead of asserting
+    // the directory is already gone the instant the run reports complete.
+    const cleanupDeadline = Date.now() + 8_000
+    for (;;) {
+      try {
+        await fs.access(bindingDir)
+      } catch {
+        break
+      }
+      if (Date.now() >= cleanupDeadline) throw new Error('run skill binding directory was never cleaned up')
+      await new Promise(r => setTimeout(r, 100))
+    }
   })
 
   it('4a. Approve on a non-paused run → 409', async () => {
